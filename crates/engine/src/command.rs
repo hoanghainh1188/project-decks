@@ -201,6 +201,10 @@ pub enum Command {
         uid: u32,
         minutes: i64,
     },
+    SetDeadline {
+        uid: u32,
+        date: Option<i64>,
+    },
 }
 
 pub fn apply_one(project: &mut Project, command: &Command) -> Result<(), EngineError> {
@@ -650,6 +654,10 @@ pub fn apply_one(project: &mut Project, command: &Command) -> Result<(), EngineE
         Command::SetLevelingDelay { uid, minutes } => {
             let task = project.task_mut(*uid).ok_or(EngineError::TaskNotFound)?;
             task.leveling_delay = (*minutes).max(0);
+        }
+        Command::SetDeadline { uid, date } => {
+            let task = project.task_mut(*uid).ok_or(EngineError::TaskNotFound)?;
+            task.deadline = *date;
         }
     }
     Ok(())

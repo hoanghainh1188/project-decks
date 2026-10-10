@@ -3,11 +3,12 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import { DateTimeField } from "./DateTimeField";
 import { formatDuration, formatInstant, parseDuration } from "../format";
 import type { Assignment, Calendar, Task } from "../types";
+import type { ViewRow } from "../viewRows";
 
 const ROW = 28;
 
 interface Props {
-  tasks: Task[];
+  rows: ViewRow[];
   calendars: Calendar[];
   assignments: Assignment[];
   selected: number | null;
@@ -44,7 +45,7 @@ export function TaskSheet(props: Props) {
     if (!body) return;
     const start = Math.max(0, Math.floor(body.scrollTop / ROW) - 6);
     const visible = Math.ceil(body.clientHeight / ROW) + 12;
-    const end = Math.min(props.tasks.length, start + visible);
+    const end = Math.min(props.rows.length, start + visible);
     setWindowRange((current) => (current.start === start && current.end === end ? current : { start, end }));
   }
 
@@ -55,9 +56,9 @@ export function TaskSheet(props: Props) {
     const observer = new ResizeObserver(() => measure());
     observer.observe(body);
     return () => observer.disconnect();
-  }, [props.tasks.length, props.tracking]);
+  }, [props.rows.length, props.tracking]);
 
-  const visible = props.tasks.slice(windowRange.start, windowRange.end);
+  const visible = props.rows.slice(windowRange.start, windowRange.end);
 
   return (
     <div className="sheet">
@@ -79,14 +80,35 @@ export function TaskSheet(props: Props) {
           props.onScroll();
         }}
       >
-        <div style={{ height: props.tasks.length * ROW, minWidth, position: "relative" }}>
-          {visible.map((task, offset) => (
+        <div style={{ height: props.rows.length * ROW, minWidth, position: "relative" }}>
+          {visible.map((row, offset) => {
+            const top = (windowRange.start + offset) * ROW;
+            if (row.kind === "group") {
+              return (
+                <div
+                  key={row.key}
+                  className="sheet-row group-head"
+                  style={{
+                    position: "absolute",
+                    top,
+                    left: 0,
+                    right: 0,
+                    height: ROW,
+                    gridTemplateColumns: template,
+                  }}
+                >
+                  <span className="group-name">{row.label}</span>
+                </div>
+              );
+            }
+            const task = row.task;
+            return (
             <div
-              key={task.uid}
-              className={`sheet-row${task.uid === props.selected ? " selected" : ""}${task.critical ? " critical" : ""}`}
+              key={row.key}
+              className={`sheet-row${task.uid === props.selected ? " selected" : ""}${task.critical ? " critical" : ""}${row.highlighted ? " highlighted" : ""}`}
               style={{
                 position: "absolute",
-                top: (windowRange.start + offset) * ROW,
+                top,
                 left: 0,
                 right: 0,
                 height: ROW,
@@ -160,7 +182,8 @@ export function TaskSheet(props: Props) {
               />
               <span className={`ro${task.total_slack < 0 ? " bad" : ""}`}>{formatDuration(task.total_slack)}</span>
             </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>

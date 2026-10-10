@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 
 import { shiftDays, utcMidnight } from "../format";
 import type { Project, Scale, Task } from "../types";
+import type { ViewRow } from "../viewRows";
 
 const ROW = 28;
 const HEAD = 48;
@@ -9,6 +10,7 @@ const HEAD = 48;
 interface DragState {
   kind: "move" | "resize" | "link";
   uid: number;
+  row: number;
   originX: number;
   originY: number;
   start: number;
@@ -20,6 +22,7 @@ interface DragState {
 
 interface Props {
   project: Project;
+  rows: ViewRow[];
   scale: Scale;
   selected: number | null;
   tracking: boolean;
@@ -33,6 +36,7 @@ interface Props {
 
 export function GanttChart({
   project,
+  rows,
   scale,
   selected,
   tracking,
@@ -59,12 +63,14 @@ export function GanttChart({
     paintBody(
       canvas,
       project,
+      rows,
       model,
       px,
       selected,
       tracking,
       drag,
       scroller.scrollTop,
+      scroller.scrollLeft,
       scroller.clientHeight,
     );
   }
@@ -76,7 +82,7 @@ export function GanttChart({
     const observer = new ResizeObserver(() => paint());
     observer.observe(scroller);
     return () => observer.disconnect();
-  }, [project, model, px, selected, tracking, drag]);
+  }, [project, rows, model, px, selected, tracking, drag]);
 
   function contentPoint(event: { clientX: number; clientY: number; currentTarget: HTMLCanvasElement }) {
     const bounds = event.currentTarget.getBoundingClientRect();
@@ -88,18 +94,19 @@ export function GanttChart({
 
   function hit(x: number, y: number) {
     const row = Math.floor(y / ROW);
-    const task = project.tasks[row];
-    if (!task) return null;
+    const item = rows[row];
+    if (!item || item.kind !== "task") return null;
+    const task = item.task;
     const rect = barBox(task, row, model.origin, px);
     const handle = { x: rect.x + Math.max(rect.w, 8), y: rect.y + rect.h / 2 };
-    if (Math.hypot(x - handle.x, y - handle.y) <= 7) return { task, zone: "link" as const, rect };
+    if (Math.hypot(x - handle.x, y - handle.y) <= 7) return { task, row, zone: "link" as const, rect };
     if (!task.summary && !task.milestone && x >= rect.x + rect.w - 6 && x <= rect.x + rect.w + 2 && y >= rect.y && y <= rect.y + rect.h) {
-      return { task, zone: "resize" as const, rect };
+      return { task, row, zone: "resize" as const, rect };
     }
     if (x >= rect.x - 4 && x <= rect.x + Math.max(rect.w, 10) && y >= rect.y - 2 && y <= rect.y + rect.h + 2) {
-      return { task, zone: "body" as const, rect };
+      return { task, row, zone: "body" as const, rect };
     }
-    return { task, zone: "row" as const, rect };
+    return { task, row, zone: "row" as const, rect };
   }
 
   return (
@@ -117,12 +124,14 @@ export function GanttChart({
             paintBody(
               canvas,
               project,
+              rows,
               model,
               px,
               selected,
               tracking,
               drag,
               event.currentTarget.scrollTop,
+              event.currentTarget.scrollLeft,
               event.currentTarget.clientHeight,
             );
           }
@@ -133,7 +142,7 @@ export function GanttChart({
           style={{
             position: "relative",
             width: model.days.length * px,
-            height: Math.max(project.tasks.length, 1) * ROW,
+            height: rows.length * ROW,
           }}
         >
         <canvas
@@ -149,6 +158,7 @@ export function GanttChart({
             setDrag({
               kind: found.zone === "link" ? "link" : found.zone === "resize" ? "resize" : "move",
               uid: found.task.uid,
+              row: found.row,
               originX: x,
               originY: y,
               start: found.task.start,
@@ -272,16 +282,18 @@ function paintHeader(canvas: HTMLCanvasElement, model: Model, px: number) {
 function paintBody(
   canvas: HTMLCanvasElement,
   project: Project,
+  rows: ViewRow[],
   model: Model,
   px: number,
   selected: number | null,
   tracking: boolean,
   drag: DragState | null,
   scrollTop: number,
+  scrollLeft: number,
   viewHeight: number,
 ) {
   const width = model.days.length * px;
-  const contentHeight = Math.max(project.tasks.length, 1) * ROW;
+  const contentHeight = Math.max(rows.length * ROW, 1);
   const canvasHeight = Math.max(1, Math.min(Math.max(viewHeight, ROW), contentHeight));
   const ratio = window.devicePixelRatio || 1;
   sizeCanvas(canvas, width, canvasHeight, ratio);
@@ -291,7 +303,7 @@ function paintBody(
   ctx.clearRect(0, scrollTop, width, canvasHeight);
   const windowHeight = Math.max(viewHeight, canvasHeight);
   const rowStart = Math.max(0, Math.floor(scrollTop / ROW) - 6);
-  const rowEnd = Math.min(project.tasks.length, rowStart + Math.ceil(windowHeight / ROW) + 12);
+  const rowEnd = Math.min(rows.length, rowStart + Math.ceil(windowHeight / ROW) + 12);
   const holidays = new Set(Object.keys(project.calendars.find((item) => item.id === project.calendar_id)?.exceptions ?? {}).filter((key) => (project.calendars.find((item) => item.id === project.calendar_id)?.exceptions[key] ?? []).length === 0));
   model.days.forEach((day, index) => {
     const key = isoDate(day);
@@ -306,10 +318,31 @@ function paintBody(
     ctx.stroke();
   });
   for (let row = rowStart; row < rowEnd; row += 1) {
-    const task = project.tasks[row];
+    const item = rows[row];
     const y = row * ROW;
+    if (item.kind === "group") {
+      ctx.fillStyle = "#ececf1";
+      ctx.fillRect(0, y, width, ROW);
+      ctx.fillStyle = "#1d1d1f";
+      ctx.font = "600 12px -apple-system, sans-serif";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "middle";
+      ctx.fillText(item.label, scrollLeft + 8, y + ROW / 2);
+      ctx.strokeStyle = "#e4e4e8";
+      ctx.beginPath();
+      ctx.moveTo(0, y + ROW - 0.5);
+      ctx.lineTo(width, y + ROW - 0.5);
+      ctx.stroke();
+      continue;
+    }
+    const task = item.task;
+    if (item.highlighted) {
+      // Amber wash stays lighter than the critical-path bar so both remain readable.
+      ctx.fillStyle = "rgba(255, 214, 64, 0.38)";
+      ctx.fillRect(0, y, width, ROW);
+    }
     if (task.uid === selected) {
-      ctx.fillStyle = "rgba(10, 132, 255, 0.08)";
+      ctx.fillStyle = "rgba(10, 132, 255, 0.10)";
       ctx.fillRect(0, y, width, ROW);
     }
     ctx.strokeStyle = "#f0f0f2";
@@ -318,7 +351,7 @@ function paintBody(
     ctx.lineTo(width, y + ROW - 0.5);
     ctx.stroke();
     if (tracking) {
-      const baseline = task.baselines.find((item) => item.number === 0);
+      const baseline = task.baselines.find((baselineItem) => baselineItem.number === 0);
       if (baseline) drawBar(ctx, task, row, model.origin, px, "#c5c5cb", true, baseline.start, baseline.finish);
     }
     const moved = drag && drag.moved && drag.uid === task.uid && drag.kind !== "link" ? drag : null;
@@ -333,7 +366,10 @@ function paintBody(
       ctx.fillRect(rect.x, rect.y, rect.w * Math.min(task.percent_complete, 100) / 100, rect.h);
     }
   }
-  const indexOf = new Map(project.tasks.map((task, index) => [task.uid, index]));
+  const indexOf = new Map<number, number>();
+  rows.forEach((item, index) => {
+    if (item.kind === "task" && !indexOf.has(item.task.uid)) indexOf.set(item.task.uid, index);
+  });
   const viewTop = scrollTop;
   const viewBottom = scrollTop + canvasHeight;
   ctx.lineWidth = 1.2;
@@ -344,8 +380,11 @@ function paintBody(
     const linkTop = Math.min(from, to) * ROW;
     const linkBottom = Math.max(from, to) * ROW + ROW;
     if (linkBottom < viewTop || linkTop > viewBottom) continue;
-    const pred = project.tasks[from];
-    const succ = project.tasks[to];
+    const predRow = rows[from];
+    const succRow = rows[to];
+    if (predRow.kind !== "task" || succRow.kind !== "task") continue;
+    const pred = predRow.task;
+    const succ = succRow.task;
     const a = barBox(pred, from, model.origin, px);
     const b = barBox(succ, to, model.origin, px);
     const startX = dep.kind === "ss" || dep.kind === "sf" ? a.x : a.x + a.w;
@@ -369,9 +408,9 @@ function paintBody(
     ctx.fill();
   }
   if (drag?.kind === "link" && drag.moved) {
-    const from = indexOf.get(drag.uid);
-    if (from !== undefined) {
-      const rect = barBox(project.tasks[from], from, model.origin, px);
+    const from = rows[drag.row];
+    if (from?.kind === "task") {
+      const rect = barBox(from.task, drag.row, model.origin, px);
       ctx.strokeStyle = "#0a84ff";
       ctx.setLineDash([4, 3]);
       ctx.beginPath();
