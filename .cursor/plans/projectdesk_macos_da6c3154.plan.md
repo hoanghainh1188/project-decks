@@ -1,6 +1,6 @@
 ---
 name: ProjectDesk macOS
-overview: "ProjectDesk là ứng dụng desktop Tauri (Rust + React) quản lý dự án theo hướng Microsoft Project. Pha 1–9 đã xong trên main; pha 10 (chỉ số EVM và burn-down) chưa làm."
+overview: "ProjectDesk là ứng dụng desktop Tauri (Rust + React) quản lý dự án theo hướng Microsoft Project. Pha 1–10 đã xong; pha 10 (chỉ số EVM và burn-down) qua PR của nhánh phase-10-evm."
 todos:
   - id: scaffold
     content: Tauri 2 + React + crate engine
@@ -40,13 +40,13 @@ todos:
     status: completed
   - id: evm-burndown
     content: "Pha 10: chỉ số EVM và burn-down chart"
-    status: pending
+    status: completed
 isProject: false
 ---
 
 # ProjectDesk — quản lý dự án kiểu Microsoft Project
 
-Pha 1–9 đã xong trên `main`. Pha 1 gồm bảng task, Gantt, menu và cột WBS (PR #3). Pha 2–5 (nguồn lực, theo dõi và chi phí, leveling, MSPDI) đã merge qua PR #5. Pha 6 (lịch trên giao diện) qua PR #6. Pha 7 (lọc, nhóm, highlight) qua PR #7. Pha 8 (PDF Gantt) qua PR #8; hộp thoại file được sửa trong PR #9 đã merge. Pha 9 (công việc lặp) qua PR của nhánh `phase-9-recurring`. Pha 10 chưa làm.
+Pha 1–9 đã xong trên `main`. Pha 1 gồm bảng task, Gantt, menu và cột WBS (PR #3). Pha 2–5 (nguồn lực, theo dõi và chi phí, leveling, MSPDI) đã merge qua PR #5. Pha 6 (lịch trên giao diện) qua PR #6. Pha 7 (lọc, nhóm, highlight) qua PR #7. Pha 8 (PDF Gantt) qua PR #8; hộp thoại file được sửa trong PR #9 đã merge. Pha 9 (công việc lặp) qua PR của nhánh `phase-9-recurring`. Pha 10 (chỉ số EVM và burn-down) qua PR của nhánh `phase-10-evm`.
 
 Giao diện tiếng Việt. Các pha mở rộng cùng một mô hình lịch trong engine Rust.
 
@@ -179,9 +179,24 @@ Giới hạn:
 - Nguồn lực của chuỗi luôn gán với đơn vị 1.0; hộp thoại chưa cho chọn đơn vị. Muốn khác thì sửa riêng từng lần (lần đó thành tách).
 - Chưa kiểm thử tự động phần giao diện; engine có test, giao diện cần kiểm tay trong cửa sổ Tauri.
 
-## Pha 10 — chỉ số EVM và burn-down — chưa làm
+## Pha 10 — chỉ số EVM và burn-down — đã xong
 
-Pha 10 chưa làm. Cả panel EVM và burn-down chỉ đọc số do engine trả về. JavaScript không tính lại EVM.
+Đã làm (module `evm.rs` trong engine, lệnh Tauri `project_metrics`, panel `EvmPanel`). Cả panel EVM và burn-down chỉ đọc số do engine trả về. JavaScript không tính lại EVM.
+
+- Engine tính BAC, PV, EV, AC, SV, CV, SPI, CPI, EAC, ETC, VAC đúng công thức dưới đây, cộng trên task lá. Cách cộng dồn của PV lấy từ trường cộng dồn của task (Đầu / Phân bổ / Cuối), cùng trường pha 3 dùng cho chi phí thực tế. Với `prorated`, thời lượng baseline là số phút làm việc giữa baseline start và baseline finish trên lịch của task. Baseline thời lượng 0 (mốc) coi như đã lên kế hoạch hết khi tới baseline finish.
+- Mẫu số không lớn hơn 0 thì SPI, CPI, EAC, ETC, VAC là `null`; giao diện hiện "—" kèm chú thích. Thiếu ngày trạng thái hoặc không task lá nào có baseline 0 thì engine không trả chỉ số; panel báo rõ thiếu gì và có nút mở hộp thoại tương ứng.
+- Snapshot burn-down (ngày, remaining work, EV, AC) nằm trong bảng `burndown` của file `.pdproj`, ngoài command log nên undo không xóa. Ghi khi lưu tệp (Lưu, Lưu thành…) và khi một lệnh làm đổi ngày trạng thái sang một ngày khác rỗng. Ngày của snapshot là 00:00 của ngày trạng thái; chưa có ngày trạng thái thì lấy ngày hiện tại. Cùng ngày thì ghi đè. File cũ không có bảng thì mở với danh sách rỗng.
+- Engine trả đường lý tưởng (baseline start, tổng work baseline 0 của task lá) → (baseline finish, 0), các snapshot có ngày không sau ngày trạng thái, và remaining work hiện tại.
+- Giao diện: nút "EVM" trên thanh công cụ và mục "Xem → Chỉ số EVM và burn-down" mở panel bên phải Gantt (trong view Gantt và Gantt theo dõi). Panel có bảng 11 chỉ số với nhãn bên dưới, và biểu đồ burn-down vẽ tay bằng SVG cùng bảng màu với Gantt: đường lý tưởng nét đứt xám, đường thực tế xanh có điểm, ngày trạng thái nét đứt đỏ, trục dọc tính bằng giờ.
+- Test engine trong `crates/engine/tests/engine.rs`: từng kiểu cộng dồn (kể cả giờ nghỉ trưa trên lịch), bộ chỉ số tính tay, chỉ cộng task lá, các trường hợp chia cho 0, đường lý tưởng, ghi và ghi đè snapshot, lưu/mở, undo, lọc theo ngày trạng thái, file cũ không có bảng.
+
+Giới hạn:
+
+- AC là tổng chi phí thực tế hiện tại của task lá (pha 3 suy ra từ % complete và cách cộng dồn). Engine không có chi phí theo thời gian nên không cắt AC đúng tại ngày trạng thái.
+- Task lá chưa có baseline 0 (thêm sau khi đặt baseline) không góp vào BAC, PV, EV nhưng vẫn góp vào AC. Chi phí cố định đặt trên chính summary không được tính, vì chỉ cộng task lá.
+- Đường thực tế chỉ có điểm từ lúc dùng bản này: không dựng lại lịch sử cho file cũ. Hoàn tác việc đổi ngày trạng thái không xóa snapshot đã ghi. Ngày "hiện tại" khi chưa có ngày trạng thái lấy theo giờ UTC, giống ngày bắt đầu mặc định của dự án mới.
+- Kế hoạch không yêu cầu đường cong S (PV/EV/AC theo thời gian) nên chưa vẽ, dù snapshot đã lưu EV và AC.
+- Chưa kiểm thử tự động phần giao diện; panel và biểu đồ cần kiểm tay trong cửa sổ Tauri.
 
 ### EVM
 
