@@ -6,6 +6,48 @@ import type { Assignment, Calendar, Task } from "../types";
 import type { ViewRow } from "../viewRows";
 
 const ROW = 28;
+/** Keep in sync with .sheet-head / .sheet-row column-gap and horizontal padding. */
+const COLUMN_GAP = 4;
+const COLUMN_PAD = 12;
+const NAME_WIDTH = 200;
+
+interface SheetColumn {
+  label: string;
+  width: number;
+}
+
+function sheetColumns(tracking: boolean, nameWidth: number): SheetColumn[] {
+  return [
+    { label: "ID", width: 42 },
+    { label: "WBS", width: 72 },
+    { label: "Tên", width: nameWidth },
+    { label: "Thời lượng", width: 100 },
+    ...(tracking
+      ? [
+          { label: "%", width: 52 },
+          { label: "Còn lại", width: 84 },
+        ]
+      : []),
+    { label: "Bắt đầu", width: 168 },
+    { label: "Kết thúc", width: 168 },
+    ...(tracking
+      ? [
+          { label: "Bắt đầu thực", width: 168 },
+          { label: "Kết thúc thực", width: 168 },
+          { label: "Việc còn lại", width: 96 },
+          { label: "Làm thêm", width: 84 },
+          { label: "Lịch", width: 120 },
+        ]
+      : []),
+    { label: "Tiền nhiệm", width: 120 },
+    { label: "Trễ", width: 80 },
+  ];
+}
+
+function sheetWidthOf(columns: SheetColumn[]): number {
+  const tracks = columns.reduce((sum, column) => sum + column.width, 0);
+  return tracks + COLUMN_GAP * Math.max(0, columns.length - 1) + COLUMN_PAD;
+}
 
 interface Props {
   rows: ViewRow[];
@@ -32,13 +74,14 @@ interface Props {
 export function TaskSheet(props: Props) {
   const headRef = useRef<HTMLDivElement>(null);
   const [windowRange, setWindowRange] = useState({ start: 0, end: 40 });
-  const columns = props.tracking
-    ? ["ID", "WBS", "Tên", "Thời lượng", "%", "Còn lại", "Bắt đầu", "Kết thúc", "Bắt đầu thực", "Kết thúc thực", "Việc còn lại", "Làm thêm", "Lịch", "Tiền nhiệm", "Trễ"]
-    : ["ID", "WBS", "Tên", "Thời lượng", "Bắt đầu", "Kết thúc", "Tiền nhiệm", "Trễ"];
-  const template = props.tracking
-    ? "42px 72px minmax(140px, 1.4fr) 92px 52px 84px 176px 146px 210px 210px 96px 84px 120px 110px 72px"
-    : "42px 72px minmax(160px, 1.6fr) 100px 176px 146px 120px 80px";
-  const minWidth = props.tracking ? 1860 : undefined;
+  const [paneWidth, setPaneWidth] = useState(0);
+  const baseColumns = sheetColumns(props.tracking, NAME_WIDTH);
+  const baseWidth = sheetWidthOf(baseColumns);
+  const nameWidth = NAME_WIDTH + Math.max(0, paneWidth - baseWidth);
+  const columns = sheetColumns(props.tracking, nameWidth);
+  const template = columns.map((column) => `${column.width}px`).join(" ");
+  // Header and body use this same pixel width so tracks, including columns past the viewport, stay aligned.
+  const sheetWidth = sheetWidthOf(columns);
 
   function measure() {
     const body = props.bodyRef.current;
@@ -47,6 +90,7 @@ export function TaskSheet(props: Props) {
     const visible = Math.ceil(body.clientHeight / ROW) + 12;
     const end = Math.min(props.rows.length, start + visible);
     setWindowRange((current) => (current.start === start && current.end === end ? current : { start, end }));
+    setPaneWidth((current) => (current === body.clientWidth ? current : body.clientWidth));
   }
 
   useEffect(() => {
@@ -63,9 +107,9 @@ export function TaskSheet(props: Props) {
   return (
     <div className="sheet">
       <div className="sheet-head-clip" ref={headRef}>
-        <div className="sheet-head" style={{ gridTemplateColumns: template, minWidth }}>
+        <div className="sheet-head" style={{ gridTemplateColumns: template, width: sheetWidth, minWidth: sheetWidth }}>
           {columns.map((column) => (
-            <span key={column}>{column}</span>
+            <span key={column.label}>{column.label}</span>
           ))}
         </div>
       </div>
@@ -80,7 +124,7 @@ export function TaskSheet(props: Props) {
           props.onScroll();
         }}
       >
-        <div style={{ height: props.rows.length * ROW, minWidth, position: "relative" }}>
+        <div style={{ height: props.rows.length * ROW, width: sheetWidth, minWidth: sheetWidth, position: "relative" }}>
           {visible.map((row, offset) => {
             const top = (windowRange.start + offset) * ROW;
             if (row.kind === "group") {
@@ -92,7 +136,7 @@ export function TaskSheet(props: Props) {
                     position: "absolute",
                     top,
                     left: 0,
-                    right: 0,
+                    width: sheetWidth,
                     height: ROW,
                     gridTemplateColumns: template,
                   }}
@@ -110,7 +154,7 @@ export function TaskSheet(props: Props) {
                 position: "absolute",
                 top,
                 left: 0,
-                right: 0,
+                width: sheetWidth,
                 height: ROW,
                 gridTemplateColumns: template,
               }}

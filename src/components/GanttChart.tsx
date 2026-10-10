@@ -1,18 +1,17 @@
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
 
 import { shiftDays } from "../format";
 import {
-  HEAD,
   ROW,
   barBox,
   barColor,
   buildTimescale,
   dayLabel,
-  groupLabel,
   holidayKeys,
   isWeekend,
   isoDate,
   pixelsPerDay,
+  timescaleBands,
   type Timescale,
 } from "../ganttLayout";
 import type { Project, Scale, Task } from "../types";
@@ -59,18 +58,17 @@ export function GanttChart({
   onScroll,
 }: Props) {
   const headRef = useRef<HTMLDivElement>(null);
-  const headCanvas = useRef<HTMLCanvasElement>(null);
   const bodyCanvas = useRef<HTMLCanvasElement>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
   const px = pixelsPerDay(scale);
   const model = useMemo(() => buildTimescale(project), [project]);
+  const bands = useMemo(() => timescaleBands(model.days, px), [model.days, px]);
+  const timelineWidth = model.days.length * px;
 
   function paint() {
-    const head = headCanvas.current;
     const canvas = bodyCanvas.current;
     const scroller = bodyRef.current;
-    if (!head || !canvas || !scroller) return;
-    paintHeader(head, model, px);
+    if (!canvas || !scroller) return;
     paintBody(
       canvas,
       project,
@@ -123,7 +121,22 @@ export function GanttChart({
   return (
     <div className="gantt">
       <div className="gantt-head" ref={headRef}>
-        <canvas ref={headCanvas} />
+        <div className="gantt-scale" style={{ width: timelineWidth, minWidth: timelineWidth }}>
+          <div className="gantt-bands">
+            {bands.map((band, index) => (
+              <div key={`${band.label}-${index}`} className="gantt-band" style={fixedSpan(band.count * px)}>
+                {band.label}
+              </div>
+            ))}
+          </div>
+          <div className="gantt-days">
+            {model.days.map((day) => (
+              <div key={day} className={`gantt-day${isWeekend(day) ? " weekend" : ""}`} style={fixedSpan(px)}>
+                {dayLabel(day, px)}
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
       <div
         className="gantt-body"
@@ -150,15 +163,15 @@ export function GanttChart({
         }}
       >
         <div
+          className="gantt-canvas-host"
           style={{
-            position: "relative",
-            width: model.days.length * px,
+            width: timelineWidth,
+            minWidth: timelineWidth,
             height: rows.length * ROW,
           }}
         >
         <canvas
           ref={bodyCanvas}
-          style={{ position: "sticky", top: 0, display: "block" }}
           onPointerDown={(event) => {
             const { x, y } = contentPoint(event);
             const found = hit(x, y);
@@ -205,51 +218,9 @@ export function GanttChart({
   );
 }
 
-function paintHeader(canvas: HTMLCanvasElement, model: Timescale, px: number) {
-  const width = model.days.length * px;
-  const ratio = window.devicePixelRatio || 1;
-  sizeCanvas(canvas, width, HEAD, ratio);
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return;
-  ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-  ctx.clearRect(0, 0, width, HEAD);
-  ctx.fillStyle = "#f6f6f8";
-  ctx.fillRect(0, 0, width, HEAD);
-  ctx.font = "11px -apple-system, sans-serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  let groupStart = 0;
-  for (let index = 0; index <= model.days.length; index += 1) {
-    const day = model.days[index];
-    const previous = model.days[index - 1];
-    const split = index === model.days.length || !previous || groupLabel(previous, px) !== groupLabel(day, px);
-    if (split && index > 0) {
-      const label = groupLabel(model.days[groupStart], px);
-      const x = groupStart * px;
-      const w = (index - groupStart) * px;
-      ctx.fillStyle = "#1d1d1f";
-      ctx.fillText(label, x + w / 2, 14, w - 4);
-      ctx.strokeStyle = "#d5d5da";
-      ctx.beginPath();
-      ctx.moveTo(x + w, 0);
-      ctx.lineTo(x + w, HEAD);
-      ctx.stroke();
-      groupStart = index;
-    }
-    if (!day) continue;
-    ctx.fillStyle = isWeekend(day) ? "#8e8e93" : "#3a3a3c";
-    ctx.fillText(dayLabel(day, px), index * px + px / 2, 34, px - 2);
-    ctx.strokeStyle = "#e4e4e8";
-    ctx.beginPath();
-    ctx.moveTo(index * px, 24);
-    ctx.lineTo(index * px, HEAD);
-    ctx.stroke();
-  }
-  ctx.strokeStyle = "#d0d0d5";
-  ctx.beginPath();
-  ctx.moveTo(0, HEAD - 0.5);
-  ctx.lineTo(width, HEAD - 0.5);
-  ctx.stroke();
+function fixedSpan(width: number): CSSProperties {
+  // flex-shrink 0 keeps later weeks and months the same width as the current period.
+  return { width, minWidth: width, maxWidth: width, flex: `0 0 ${width}px` };
 }
 
 function paintBody(
@@ -269,6 +240,7 @@ function paintBody(
   const contentHeight = Math.max(rows.length * ROW, 1);
   const canvasHeight = Math.max(1, Math.min(Math.max(viewHeight, ROW), contentHeight));
   const ratio = window.devicePixelRatio || 1;
+  canvas.style.top = `${scrollTop}px`;
   sizeCanvas(canvas, width, canvasHeight, ratio);
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
@@ -453,6 +425,9 @@ function drawBar(
 function sizeCanvas(canvas: HTMLCanvasElement, width: number, height: number, ratio: number) {
   canvas.style.width = `${width}px`;
   canvas.style.height = `${height}px`;
+  canvas.style.minWidth = `${width}px`;
+  canvas.style.maxWidth = "none";
+  canvas.style.flexShrink = "0";
   canvas.width = Math.max(1, Math.floor(width * ratio));
   canvas.height = Math.max(1, Math.floor(height * ratio));
 }
