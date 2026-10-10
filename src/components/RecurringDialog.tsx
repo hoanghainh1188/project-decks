@@ -2,7 +2,7 @@ import { useState } from "react";
 
 import { DateTimeField } from "./DateTimeField";
 import { formatDuration, parseDuration } from "../format";
-import type { Project, RecurrenceEnd, RecurrencePattern, RecurrenceSpec } from "../types";
+import type { Command, Project, RecurrenceEnd, RecurrencePattern, RecurrenceSpec, Task } from "../types";
 
 const WEEKDAYS = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"];
 const DAY_MS = 86_400_000;
@@ -16,6 +16,19 @@ interface Props {
   defaultStart: number;
   onClose: () => void;
   onSubmit: (spec: RecurrenceSpec) => Promise<unknown>;
+}
+
+/** Updates the series when `seriesUid` is a recurring summary; otherwise creates one after `afterUid`. */
+export function recurringCommand(
+  tasks: Task[],
+  seriesUid: number,
+  afterUid: number | null,
+  spec: RecurrenceSpec,
+): Command {
+  const series = tasks.find((item) => item.uid === seriesUid);
+  return series?.recurrence
+    ? { type: "update_recurring_task", uid: series.uid, spec }
+    : { type: "create_recurring_task", after_uid: afterUid, spec };
 }
 
 /** Instants are UTC-formatted wall-clock time, so the weekday comes from getUTCDay. */

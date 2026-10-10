@@ -444,7 +444,10 @@ function NumberCell({
       }}
       onBlur={() => {
         setEditing(false);
-        const parsed = Number(text.replace(",", "."));
+        // The shown value is rounded, so committing it unchanged would overwrite the real one.
+        const raw = text.trim();
+        if (!raw || raw === value) return;
+        const parsed = Number(raw.replace(",", "."));
         if (Number.isFinite(parsed)) onCommit(parsed);
       }}
     />

@@ -21,7 +21,7 @@ import { CalendarEditor } from "./components/CalendarEditor";
 import { DateTimeField } from "./components/DateTimeField";
 import { EvmPanel } from "./components/EvmPanel";
 import { GanttChart } from "./components/GanttChart";
-import { RecurringDialog } from "./components/RecurringDialog";
+import { RecurringDialog, recurringCommand } from "./components/RecurringDialog";
 import { ResourceSheet } from "./components/ResourceSheet";
 import { TaskSheet } from "./components/TaskSheet";
 import { TaskUsage } from "./components/TaskUsage";
@@ -508,12 +508,7 @@ export default function App() {
           initial={project.tasks.find((item) => item.uid === seriesDialog)?.recurrence?.spec ?? null}
           defaultStart={task && !task.summary ? task.start : project.start}
           onClose={() => setSeriesDialog(null)}
-          onSubmit={(spec) => {
-            const series = project.tasks.find((item) => item.uid === seriesDialog);
-            return series?.recurrence
-              ? send({ type: "update_recurring_task", uid: series.uid, spec })
-              : send({ type: "create_recurring_task", after_uid: selected, spec });
-          }}
+          onSubmit={(spec) => send(recurringCommand(project.tasks, seriesDialog, selected, spec))}
         />
       )}
       {baselineOpen && (
