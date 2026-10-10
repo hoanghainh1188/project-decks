@@ -18,15 +18,28 @@ pub const MAX_OCCURRENCES: usize = 999;
 /// Search horizon in civil days, so a calendar without working days cannot loop forever.
 const HORIZON_DAYS: i64 = 366 * 100;
 
+/// Ordinal value meaning "the last such weekday of the month".
+pub const LAST_WEEK: u8 = 5;
+
+/// Weekdays are 0 = Monday … 6 = Sunday. Ordinals are 1–4, or `LAST_WEEK`.
+/// The serialized `kind` tags are stored in `.pdproj` files and must not change.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum RecurrencePattern {
     /// Every N working days on the series calendar.
     Daily { every: u32 },
-    /// Every N weeks on the listed weekdays (0 = Monday … 6 = Sunday).
+    /// Every N calendar days; one falling on a non-working day moves to the next working time.
+    CalendarDaily { every: u32 },
+    /// Every N weeks on the listed weekdays.
     Weekly { every: u32, weekdays: Vec<u8> },
     /// Day X of every N months; X past the month end falls on the last day.
     Monthly { every: u32, day: u32 },
+    /// The Nth weekday of every N months, e.g. the second Tuesday or the last Friday.
+    MonthlyNth { every: u32, ordinal: u8, weekday: u8 },
+    /// Day X of a month every N years; X past the month end falls on the last day.
+    Yearly { every: u32, month: u32, day: u32 },
+    /// The Nth weekday of a month every N years.
+    YearlyNth { every: u32, month: u32, ordinal: u8, weekday: u8 },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -48,8 +61,19 @@ pub struct RecurrenceSpec {
     pub end: RecurrenceEnd,
     #[serde(default)]
     pub calendar_id: Option<u32>,
-    #[serde(default)]
+    /// Older files list resources without units; `clean_spec` moves them into
+    /// `resources` at 1.0, so this stays empty for new specs.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub resource_uids: Vec<u32>,
+    #[serde(default)]
+    pub resources: Vec<SeriesResource>,
+}
+
+/// A resource assigned to every attached occurrence. Units are 1.0 for 100 %.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SeriesResource {
+    pub uid: u32,
+    pub units: f64,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -84,6 +108,91 @@ fn last_day_of_month(year: i32, month: u32) -> u32 {
         .and_then(|first| first.pred_opt())
         .map(|last| last.day())
         .unwrap_or(28)
+}
+
+fn month_index(year: i32, month: u32) -> i64 {
+    i64::from(year) * 12 + i64::from(month) - 1
+}
+
+fn day_of_month(year: i32, month: u32, day: u32) -> Option<NaiveDate> {
+    NaiveDate::from_ymd_opt(year, month, day.min(last_day_of_month(year, month)))
+}
+
+/// The `ordinal`-th `weekday` of the month, or the last one for `LAST_WEEK`.
+fn nth_weekday(year: i32, month: u32, ordinal: u8, weekday: u8) -> Option<NaiveDate> {
+    let weekday = u32::from(weekday);
+    if ordinal == LAST_WEEK {
+        let last = NaiveDate::from_ymd_opt(year, month, last_day_of_month(year, month))?;
+        let back = (last.weekday().num_days_from_monday() + 7 - weekday) % 7;
+        return last.checked_sub_signed(Duration::days(i64::from(back)));
+    }
+    let first = NaiveDate::from_ymd_opt(year, month, 1)?;
+    let ahead = (weekday + 7 - first.weekday().num_days_from_monday()) % 7;
+    // The fourth weekday is at most day 28, so it always exists.
+    NaiveDate::from_ymd_opt(year, month, 1 + ahead + 7 * (u32::from(ordinal) - 1))
+}
+
+fn check_day(day: u32) -> Result<(), EngineError> {
+    if (1..=31).contains(&day) {
+        Ok(())
+    } else {
+        Err(EngineError::Store("Ngày trong tháng phải từ 1 đến 31".into()))
+    }
+}
+
+fn check_month(month: u32) -> Result<(), EngineError> {
+    if (1..=12).contains(&month) {
+        Ok(())
+    } else {
+        Err(EngineError::Store("Tháng phải từ 1 đến 12".into()))
+    }
+}
+
+fn check_nth(ordinal: u8, weekday: u8) -> Result<(), EngineError> {
+    if !(1..=LAST_WEEK).contains(&ordinal) {
+        return Err(EngineError::Store("Tuần trong tháng phải là thứ nhất đến thứ tư hoặc cuối cùng".into()));
+    }
+    if weekday >= 7 {
+        return Err(EngineError::Store("Thứ trong tuần không hợp lệ".into()));
+    }
+    Ok(())
+}
+
+/// Visit every `every`-th month from `first` (a `month_index`), feeding the date
+/// `pick` returns for that month to `accept` until it stops or passes `limit`.
+fn step_months<A, P>(
+    first: i64,
+    every: u32,
+    start: NaiveDate,
+    limit: NaiveDate,
+    dates: &mut Vec<NaiveDate>,
+    accept: &A,
+    pick: P,
+) -> Result<(), EngineError>
+where
+    A: Fn(NaiveDate, &mut Vec<NaiveDate>) -> Result<bool, EngineError>,
+    P: Fn(i32, u32) -> Option<NaiveDate>,
+{
+    let every = i64::from(every.max(1));
+    let mut index = first;
+    loop {
+        let year = index.div_euclid(12) as i32;
+        let month = index.rem_euclid(12) as u32 + 1;
+        index += every;
+        let Some(date) = pick(year, month) else {
+            break;
+        };
+        if date > limit {
+            break;
+        }
+        if date < start {
+            continue;
+        }
+        if !accept(date, dates)? {
+            break;
+        }
+    }
+    Ok(())
 }
 
 fn too_many() -> EngineError {
@@ -166,32 +275,50 @@ pub fn occurrence_dates(spec: &RecurrenceSpec, calendar: &Calendar) -> Result<Ve
                 };
             }
         }
-        RecurrencePattern::Monthly { every, day } => {
-            if !(1..=31).contains(day) {
-                return Err(EngineError::Store("Ngày trong tháng phải từ 1 đến 31".into()));
-            }
+        RecurrencePattern::CalendarDaily { every } => {
             let every = i64::from((*every).max(1));
-            let base = i64::from(start.year()) * 12 + i64::from(start.month0());
-            let mut step = 0i64;
-            loop {
-                let index = base + step * every;
-                step += 1;
-                let year = (index.div_euclid(12)) as i32;
-                let month = (index.rem_euclid(12)) as u32 + 1;
-                let day = (*day).min(last_day_of_month(year, month));
-                let Some(date) = NaiveDate::from_ymd_opt(year, month, day) else {
-                    break;
-                };
-                if date > limit {
-                    break;
-                }
-                if date < start {
-                    continue;
-                }
+            let mut date = start;
+            while date <= limit {
                 if !accept(date, &mut dates)? {
                     break;
                 }
+                date = match date.checked_add_signed(Duration::days(every)) {
+                    Some(next) => next,
+                    None => break,
+                };
             }
+        }
+        RecurrencePattern::Monthly { every, day } => {
+            check_day(*day)?;
+            let first = month_index(start.year(), start.month());
+            step_months(first, *every, start, limit, &mut dates, &accept, |year, month| {
+                day_of_month(year, month, *day)
+            })?;
+        }
+        RecurrencePattern::MonthlyNth { every, ordinal, weekday } => {
+            check_nth(*ordinal, *weekday)?;
+            let first = month_index(start.year(), start.month());
+            step_months(first, *every, start, limit, &mut dates, &accept, |year, month| {
+                nth_weekday(year, month, *ordinal, *weekday)
+            })?;
+        }
+        RecurrencePattern::Yearly { every, month, day } => {
+            check_month(*month)?;
+            check_day(*day)?;
+            let first = month_index(start.year(), *month);
+            let every = (*every).max(1).saturating_mul(12);
+            step_months(first, every, start, limit, &mut dates, &accept, |year, month| {
+                day_of_month(year, month, *day)
+            })?;
+        }
+        RecurrencePattern::YearlyNth { every, month, ordinal, weekday } => {
+            check_month(*month)?;
+            check_nth(*ordinal, *weekday)?;
+            let first = month_index(start.year(), *month);
+            let every = (*every).max(1).saturating_mul(12);
+            step_months(first, every, start, limit, &mut dates, &accept, |year, month| {
+                nth_weekday(year, month, *ordinal, *weekday)
+            })?;
         }
     }
     if dates.is_empty() {
@@ -206,10 +333,18 @@ pub fn validate_spec(project: &Project, spec: &RecurrenceSpec) -> Result<(), Eng
             return Err(EngineError::Store("Không có lịch này".into()));
         }
     }
-    for uid in &spec.resource_uids {
+    let uids = spec.resource_uids.iter().chain(spec.resources.iter().map(|resource| &resource.uid));
+    for uid in uids {
         if project.resources.iter().all(|resource| resource.uid != *uid) {
             return Err(EngineError::ResourceNotFound);
         }
+    }
+    if spec
+        .resources
+        .iter()
+        .any(|resource| !resource.units.is_finite() || resource.units <= 0.0)
+    {
+        return Err(EngineError::Store("Đơn vị nguồn lực phải lớn hơn 0".into()));
     }
     if spec.duration < 0 {
         return Err(EngineError::Store("Thời lượng không hợp lệ".into()));
@@ -226,8 +361,10 @@ pub fn clean_spec(spec: &RecurrenceSpec) -> RecurrenceSpec {
         name.to_string()
     };
     spec.duration = spec.duration.max(0);
+    let legacy = std::mem::take(&mut spec.resource_uids);
+    spec.resources.extend(legacy.into_iter().map(|uid| SeriesResource { uid, units: 1.0 }));
     let mut seen = HashSet::new();
-    spec.resource_uids.retain(|uid| seen.insert(*uid));
+    spec.resources.retain(|resource| seen.insert(resource.uid));
     if let RecurrencePattern::Weekly { weekdays, .. } = &mut spec.pattern {
         weekdays.retain(|day| *day < 7);
         weekdays.sort_unstable();
@@ -352,8 +489,8 @@ pub fn regenerate(project: &mut Project, summary_uid: u32) -> Result<(), EngineE
     let mut ordered: Vec<u32> = rebuilt.into_iter().collect();
     ordered.sort_unstable();
     for uid in ordered {
-        for resource_uid in &spec.resource_uids {
-            work::add_assignment(project, uid, *resource_uid, 1.0);
+        for resource in &spec.resources {
+            work::add_assignment(project, uid, resource.uid, resource.units);
         }
     }
     Ok(())

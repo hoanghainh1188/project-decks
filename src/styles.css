@@ -209,6 +209,9 @@ button.on { background: #0a84ff; color: white; border-color: #0a84ff; }
 .swatch.ideal { border-top: 2px dashed #8e8e93; }
 .swatch.actual { border-color: #0a84ff; }
 .swatch.status { border-top: 2px dashed #c23b3b; }
+.swatch.pv { border-top: 2px dashed #8e8e93; }
+.swatch.ev { border-color: #34a853; }
+.swatch.ac { border-color: #e8890c; }
 .inspector {
   display: flex;
   flex-wrap: wrap;
@@ -353,6 +356,8 @@ tr.child td:first-child { padding-left: 22px; color: #3a3a3c; }
 .recurring-dialog .recurring-inline input:not([type]) { width: 72px; }
 .recurring-dialog .recurring-inline .datetime-field { flex: 1; }
 .recurring-dialog .bad { color: #b42318; }
+.recurring-dialog .recurring-resource { display: inline-flex; align-items: center; gap: 4px; }
+.recurring-dialog .recurring-resource input:not([type]) { width: 48px; }
 .name-cell { display: flex; align-items: center; min-width: 0; }
 .name-cell input { flex: 1; }
 .series-icon {

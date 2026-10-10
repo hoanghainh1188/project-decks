@@ -165,3 +165,46 @@ describe("EvmPanel burn-down", () => {
     expect(screen.queryByText(/Chưa có điểm thực tế/)).not.toBeInTheDocument();
   });
 });
+
+describe("EvmPanel S-curve", () => {
+  it("explains that a baseline is needed when there are no points", () => {
+    renderPanel(makeMetrics());
+    expect(screen.getByText("Cần đường cơ sở 0 để vẽ đường cong S.")).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: /Đường cong S/ })).not.toBeInTheDocument();
+  });
+
+  it("draws PV through the baseline finish and EV/AC up to the status date", () => {
+    const { container } = render(
+      <EvmPanel
+        metrics={makeMetrics(
+          {},
+          {},
+          {
+            status_date: at(2026, 1, 6, 12),
+            baseline_finish: at(2026, 1, 7),
+            step: "week",
+            points: [
+              { date: at(2026, 1, 5), pv: 0, ev: 0, ac: 0 },
+              { date: at(2026, 1, 6, 12), pv: 1_750, ev: 750, ac: 1_000 },
+              { date: at(2026, 1, 7), pv: 3_000, ev: null, ac: null },
+            ],
+          },
+        )}
+        onOpenProjectInfo={vi.fn()}
+        onOpenBaseline={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    const chart = screen.getByRole("img", { name: /Đường cong S/ });
+    expect(screen.getByText(/cộng dồn theo tuần/)).toBeInTheDocument();
+    const paths = Array.from(chart.querySelectorAll("path")).map((path) => path.getAttribute("d") ?? "");
+    // PV has three vertices; EV and AC stop at the status date with two each.
+    expect(paths.map((d) => d.split(/[ML]/).filter(Boolean).length)).toEqual([3, 2, 2]);
+    const tips = Array.from(container.querySelectorAll("rect title")).map((title) => title.textContent ?? "");
+    expect(tips[2]).toMatch(/^07\/01\/2026 · PV /);
+    expect(tips[2]).not.toMatch(/EV|AC/);
+    expect(tips[1]).toMatch(/EV .* · AC /);
+    expect(screen.getByText("EV (đạt được)")).toBeInTheDocument();
+    expect(screen.getAllByText("Ngày trạng thái")).toHaveLength(1);
+  });
+});

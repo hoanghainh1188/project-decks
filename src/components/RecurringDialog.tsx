@@ -5,9 +5,30 @@ import { formatDuration, parseDuration } from "../format";
 import type { Command, Project, RecurrenceEnd, RecurrencePattern, RecurrenceSpec, Task } from "../types";
 
 const WEEKDAYS = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"];
+const WEEKDAY_NAMES = ["thứ Hai", "thứ Ba", "thứ Tư", "thứ Năm", "thứ Sáu", "thứ Bảy", "Chủ nhật"];
+const ORDINALS = [
+  { value: 1, label: "đầu tiên" },
+  { value: 2, label: "thứ hai" },
+  { value: 3, label: "thứ ba" },
+  { value: 4, label: "thứ tư" },
+  { value: 5, label: "cuối cùng" },
+];
 const DAY_MS = 86_400_000;
 
-type PatternKind = RecurrencePattern["kind"];
+type Group = "daily" | "weekly" | "monthly" | "yearly";
+
+function groupOf(kind: RecurrencePattern["kind"] | undefined): Group {
+  if (kind === "daily" || kind === "calendar_daily") return "daily";
+  if (kind === "monthly" || kind === "monthly_nth") return "monthly";
+  if (kind === "yearly" || kind === "yearly_nth") return "yearly";
+  return "weekly";
+}
+
+/** Which occurrence of its weekday a date is in its month: 1–4, or 5 (last) past day 28. */
+function ordinalOf(ms: number): number {
+  const day = new Date(ms).getUTCDate();
+  return day > 28 ? 5 : Math.ceil(day / 7);
+}
 
 interface Props {
   project: Project;
@@ -42,13 +63,26 @@ export function RecurringDialog({ project, initial, defaultStart, onClose, onSub
   const [name, setName] = useState(initial?.name ?? "Họp định kỳ");
   const [durationText, setDurationText] = useState(formatDuration(initial?.duration ?? 60));
   const [start, setStart] = useState(start0);
-  const [kind, setKind] = useState<PatternKind>(pattern0?.kind ?? "weekly");
+  const [group, setGroup] = useState<Group>(groupOf(pattern0?.kind));
+  const [calendarDays, setCalendarDays] = useState(pattern0?.kind === "calendar_daily");
+  const [byNth, setByNth] = useState(pattern0?.kind === "monthly_nth" || pattern0?.kind === "yearly_nth");
   const [every, setEvery] = useState(String(pattern0?.every ?? 1));
   const [weekdays, setWeekdays] = useState<number[]>(
     pattern0?.kind === "weekly" ? pattern0.weekdays : [weekdayOf(start0)],
   );
   const [monthDay, setMonthDay] = useState(
-    String(pattern0?.kind === "monthly" ? pattern0.day : new Date(start0).getUTCDate()),
+    String(
+      pattern0?.kind === "monthly" || pattern0?.kind === "yearly" ? pattern0.day : new Date(start0).getUTCDate(),
+    ),
+  );
+  const [ordinal, setOrdinal] = useState(
+    pattern0?.kind === "monthly_nth" || pattern0?.kind === "yearly_nth" ? pattern0.ordinal : ordinalOf(start0),
+  );
+  const [nthWeekday, setNthWeekday] = useState(
+    pattern0?.kind === "monthly_nth" || pattern0?.kind === "yearly_nth" ? pattern0.weekday : weekdayOf(start0),
+  );
+  const [month, setMonth] = useState(
+    pattern0?.kind === "yearly" || pattern0?.kind === "yearly_nth" ? pattern0.month : new Date(start0).getUTCMonth() + 1,
   );
   const [endKind, setEndKind] = useState<RecurrenceEnd["kind"]>(initial?.end.kind ?? "count");
   const [count, setCount] = useState(String(initial?.end.kind === "count" ? initial.end.count : 5));
@@ -56,7 +90,13 @@ export function RecurringDialog({ project, initial, defaultStart, onClose, onSub
     initial?.end.kind === "until" ? initial.end.date : start0 + 30 * DAY_MS,
   );
   const [calendarId, setCalendarId] = useState<number | null>(initial?.calendar_id ?? null);
-  const [resources, setResources] = useState<number[]>(initial?.resource_uids ?? []);
+  // Units text per selected resource UID; series saved before units existed read as 1.
+  const [resourceUnits, setResourceUnits] = useState<Record<number, string>>(() => {
+    const entries: Record<number, string> = {};
+    for (const uid of initial?.resource_uids ?? []) entries[uid] = "1";
+    for (const resource of initial?.resources ?? []) entries[resource.uid] = String(resource.units);
+    return entries;
+  });
   const [problem, setProblem] = useState<string | null>(null);
 
   function buildSpec(): RecurrenceSpec | string {
@@ -64,16 +104,32 @@ export function RecurringDialog({ project, initial, defaultStart, onClose, onSub
     if (duration === null) return "Thời lượng không hợp lệ";
     const step = Math.floor(Number(every));
     if (!Number.isFinite(step) || step < 1) return "Chu kỳ lặp phải từ 1 trở lên";
+    const day = Math.floor(Number(monthDay));
+    const dayValid = Number.isFinite(day) && day >= 1 && day <= 31;
     let pattern: RecurrencePattern;
-    if (kind === "daily") {
-      pattern = { kind, every: step };
-    } else if (kind === "weekly") {
+    if (group === "daily") {
+      pattern = { kind: calendarDays ? "calendar_daily" : "daily", every: step };
+    } else if (group === "weekly") {
       if (weekdays.length === 0) return "Hãy chọn ít nhất một thứ trong tuần";
-      pattern = { kind, every: step, weekdays: [...weekdays].sort((a, b) => a - b) };
+      pattern = { kind: "weekly", every: step, weekdays: [...weekdays].sort((a, b) => a - b) };
+    } else if (group === "monthly") {
+      if (byNth) {
+        pattern = { kind: "monthly_nth", every: step, ordinal, weekday: nthWeekday };
+      } else {
+        if (!dayValid) return "Ngày trong tháng phải từ 1 đến 31";
+        pattern = { kind: "monthly", every: step, day };
+      }
+    } else if (byNth) {
+      pattern = { kind: "yearly_nth", every: step, month, ordinal, weekday: nthWeekday };
     } else {
-      const day = Math.floor(Number(monthDay));
-      if (!Number.isFinite(day) || day < 1 || day > 31) return "Ngày trong tháng phải từ 1 đến 31";
-      pattern = { kind, every: step, day };
+      if (!dayValid) return "Ngày trong tháng phải từ 1 đến 31";
+      pattern = { kind: "yearly", every: step, month, day };
+    }
+    const resources = [];
+    for (const [uid, text] of Object.entries(resourceUnits)) {
+      const units = Number(text.replace(",", "."));
+      if (!Number.isFinite(units) || units <= 0) return "Đơn vị nguồn lực phải lớn hơn 0 (1 = 100%)";
+      resources.push({ uid: Number(uid), units });
     }
     let end: RecurrenceEnd;
     if (endKind === "count") {
@@ -90,7 +146,7 @@ export function RecurringDialog({ project, initial, defaultStart, onClose, onSub
       pattern,
       end,
       calendar_id: calendarId,
-      resource_uids: resources,
+      resources,
     };
   }
 
@@ -109,7 +165,40 @@ export function RecurringDialog({ project, initial, defaultStart, onClose, onSub
     return list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
   }
 
-  const unit = kind === "daily" ? "ngày làm việc" : kind === "weekly" ? "tuần" : "tháng";
+  function toggleResource(uid: number) {
+    setResourceUnits((current) => {
+      const next = { ...current };
+      if (uid in next) delete next[uid];
+      else next[uid] = "1";
+      return next;
+    });
+  }
+
+  const unit =
+    group === "daily"
+      ? calendarDays
+        ? "ngày lịch"
+        : "ngày làm việc"
+      : group === "weekly"
+        ? "tuần"
+        : group === "monthly"
+          ? "tháng"
+          : "năm";
+
+  const nthFields = (
+    <>
+      <select aria-label="Thứ trong tuần" disabled={!byNth} value={nthWeekday} onChange={(event) => setNthWeekday(Number(event.target.value))}>
+        {WEEKDAY_NAMES.map((label, index) => (
+          <option key={label} value={index}>{label}</option>
+        ))}
+      </select>
+      <select aria-label="Lần thứ mấy trong tháng" disabled={!byNth} value={ordinal} onChange={(event) => setOrdinal(Number(event.target.value))}>
+        {ORDINALS.map((item) => (
+          <option key={item.value} value={item.value}>{item.label}</option>
+        ))}
+      </select>
+    </>
+  );
 
   return (
     <div className="modal">
@@ -125,19 +214,31 @@ export function RecurringDialog({ project, initial, defaultStart, onClose, onSub
         />
         <label>Lặp theo</label>
         <div className="row recurring-kinds">
-          {(["daily", "weekly", "monthly"] as const).map((item) => (
+          {(["daily", "weekly", "monthly", "yearly"] as const).map((item) => (
             <label key={item} className="check">
-              <input type="radio" name="recurring-kind" checked={kind === item} onChange={() => setKind(item)} />
-              {item === "daily" ? "Ngày" : item === "weekly" ? "Tuần" : "Tháng"}
+              <input type="radio" name="recurring-kind" checked={group === item} onChange={() => setGroup(item)} />
+              {item === "daily" ? "Ngày" : item === "weekly" ? "Tuần" : item === "monthly" ? "Tháng" : "Năm"}
             </label>
           ))}
         </div>
+        {group === "daily" && (
+          <div className="row recurring-inline">
+            <label className="check">
+              <input type="radio" name="recurring-days" checked={!calendarDays} onChange={() => setCalendarDays(false)} />
+              Ngày làm việc
+            </label>
+            <label className="check">
+              <input type="radio" name="recurring-days" checked={calendarDays} onChange={() => setCalendarDays(true)} />
+              Ngày lịch (ngày nghỉ dời sang giờ làm việc kế tiếp)
+            </label>
+          </div>
+        )}
         <label>Mỗi</label>
         <div className="row recurring-inline">
           <input aria-label="Chu kỳ lặp" value={every} onChange={(event) => setEvery(event.target.value)} />
           <span>{unit}</span>
         </div>
-        {kind === "weekly" && (
+        {group === "weekly" && (
           <>
             <label>Vào các thứ</label>
             <div className="row recurring-weekdays">
@@ -154,12 +255,39 @@ export function RecurringDialog({ project, initial, defaultStart, onClose, onSub
             </div>
           </>
         )}
-        {kind === "monthly" && (
+        {(group === "monthly" || group === "yearly") && (
           <>
-            <label>Vào ngày</label>
+            {group === "yearly" && (
+              <>
+                <label>Vào tháng</label>
+                <select aria-label="Tháng trong năm" value={month} onChange={(event) => setMonth(Number(event.target.value))}>
+                  {Array.from({ length: 12 }, (_, index) => (
+                    <option key={index} value={index + 1}>Tháng {index + 1}</option>
+                  ))}
+                </select>
+              </>
+            )}
+            <label>Vào</label>
             <div className="row recurring-inline">
-              <input aria-label="Ngày trong tháng" value={monthDay} onChange={(event) => setMonthDay(event.target.value)} />
-              <span>(ngày lớn hơn số ngày của tháng rơi vào ngày cuối tháng)</span>
+              <label className="check">
+                <input type="radio" name="recurring-on" checked={!byNth} onChange={() => setByNth(false)} />
+                Theo ngày
+              </label>
+              <input
+                aria-label="Ngày trong tháng"
+                disabled={byNth}
+                value={monthDay}
+                onChange={(event) => setMonthDay(event.target.value)}
+              />
+              <span>(lớn hơn số ngày của tháng thì rơi vào ngày cuối tháng)</span>
+            </div>
+            <div className="row recurring-inline">
+              <label className="check">
+                <input type="radio" name="recurring-on" checked={byNth} onChange={() => setByNth(true)} />
+                Theo thứ
+              </label>
+              {nthFields}
+              <span>của tháng</span>
             </div>
           </>
         )}
@@ -215,16 +343,28 @@ export function RecurringDialog({ project, initial, defaultStart, onClose, onSub
           <span className="meta">Chưa có nguồn lực</span>
         ) : (
           <div className="row recurring-resources">
-            {project.resources.map((resource) => (
-              <label key={resource.uid} className="check">
-                <input
-                  type="checkbox"
-                  checked={resources.includes(resource.uid)}
-                  onChange={() => setResources((current) => toggle(current, resource.uid))}
-                />
-                {resource.name.trim() || `NL ${resource.uid}`}
-              </label>
-            ))}
+            {project.resources.map((resource) => {
+              const label = resource.name.trim() || `NL ${resource.uid}`;
+              const selected = resource.uid in resourceUnits;
+              return (
+                <span key={resource.uid} className="recurring-resource">
+                  <label className="check">
+                    <input type="checkbox" checked={selected} onChange={() => toggleResource(resource.uid)} />
+                    {label}
+                  </label>
+                  {selected && (
+                    <input
+                      aria-label={`Đơn vị của ${label}`}
+                      title="Đơn vị: 1 = 100%"
+                      value={resourceUnits[resource.uid]}
+                      onChange={(event) =>
+                        setResourceUnits((current) => ({ ...current, [resource.uid]: event.target.value }))
+                      }
+                    />
+                  )}
+                </span>
+              );
+            })}
           </div>
         )}
         {initial && (

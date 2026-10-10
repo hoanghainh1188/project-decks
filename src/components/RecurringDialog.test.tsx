@@ -69,7 +69,7 @@ describe("RecurringDialog defaults", () => {
       pattern: { kind: "weekly", every: 1, weekdays: [2] },
       end: { kind: "count", count: 5 },
       calendar_id: null,
-      resource_uids: [],
+      resources: [],
     });
     expect(onClose).toHaveBeenCalledOnce();
   });
@@ -191,12 +191,53 @@ describe("RecurringDialog payload", () => {
     await user.selectOptions(screen.getByLabelText("Lịch chuỗi lặp"), "Ca đêm");
     await user.click(screen.getByLabelText("NL 11"));
     await user.click(screen.getByLabelText("An"));
+    await replace(user, "Đơn vị của An", "0,5");
     await user.click(screen.getByRole("button", { name: "Tạo chuỗi" }));
     expect(lastSpec(onSubmit)).toMatchObject({
       start: at(2026, 1, 12, 10, 0),
       calendar_id: 2,
-      resource_uids: [11, 10],
+      resources: [
+        { uid: 10, units: 0.5 },
+        { uid: 11, units: 1 },
+      ],
     });
+  });
+
+  it("rejects resource units that are not above zero", async () => {
+    const { user, onSubmit } = renderDialog();
+    await user.click(screen.getByLabelText("An"));
+    await replace(user, "Đơn vị của An", "0");
+    await user.click(screen.getByRole("button", { name: "Tạo chuỗi" }));
+    expect(screen.getByText("Đơn vị nguồn lực phải lớn hơn 0 (1 = 100%)")).toBeInTheDocument();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("builds calendar-day, nth-weekday and yearly patterns", async () => {
+    const { user, onSubmit } = renderDialog();
+    await user.click(screen.getByLabelText("Ngày"));
+    await user.click(screen.getByLabelText(/^Ngày lịch/));
+    expect(screen.getByText("ngày lịch")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Tạo chuỗi" }));
+    expect(lastSpec(onSubmit).pattern).toEqual({ kind: "calendar_daily", every: 1 });
+
+    // 07/01/2026 is the first Wednesday of January.
+    await user.click(screen.getByLabelText("Tháng"));
+    await user.click(screen.getByLabelText("Theo thứ"));
+    expect(screen.getByLabelText("Ngày trong tháng")).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Tạo chuỗi" }));
+    expect(lastSpec(onSubmit).pattern).toEqual({ kind: "monthly_nth", every: 1, ordinal: 1, weekday: 2 });
+
+    await user.selectOptions(screen.getByLabelText("Thứ trong tuần"), "thứ Sáu");
+    await user.selectOptions(screen.getByLabelText("Lần thứ mấy trong tháng"), "cuối cùng");
+    await user.click(screen.getByLabelText("Năm"));
+    await user.selectOptions(screen.getByLabelText("Tháng trong năm"), "Tháng 11");
+    await user.click(screen.getByRole("button", { name: "Tạo chuỗi" }));
+    expect(lastSpec(onSubmit).pattern).toEqual({ kind: "yearly_nth", every: 1, month: 11, ordinal: 5, weekday: 4 });
+
+    await user.click(screen.getByLabelText("Theo ngày"));
+    await replace(user, "Ngày trong tháng", "29");
+    await user.click(screen.getByRole("button", { name: "Tạo chuỗi" }));
+    expect(lastSpec(onSubmit).pattern).toEqual({ kind: "yearly", every: 1, month: 11, day: 29 });
   });
 
   it("prefills an existing series and submits it unchanged", async () => {
@@ -207,9 +248,10 @@ describe("RecurringDialog payload", () => {
       pattern: { kind: "monthly", every: 2, day: 31 },
       end: { kind: "until", date: at(2026, 12, 31) },
       calendar_id: 2,
-      resource_uids: [10],
+      resources: [{ uid: 10, units: 0.5 }],
     };
     const { user, onSubmit } = renderDialog({ initial });
+    expect(screen.getByLabelText("Đơn vị của An")).toHaveValue("0.5");
     expect(screen.getByRole("heading", { name: "Sửa công việc lặp" })).toBeInTheDocument();
     expect(screen.getByLabelText("Thời lượng mỗi lần")).toHaveValue("4 giờ");
     expect(screen.getByLabelText("Ngày trong tháng")).toHaveValue("31");
@@ -217,6 +259,25 @@ describe("RecurringDialog payload", () => {
     expect(screen.getByText(/Các lần đã sửa riêng được giữ nguyên/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Cập nhật chuỗi" }));
     expect(onSubmit).toHaveBeenCalledExactlyOnceWith(initial);
+  });
+
+  it("reads a series saved before units as units 1", async () => {
+    const initial: RecurrenceSpec = {
+      name: "Họp",
+      duration: 60,
+      start: START,
+      pattern: { kind: "daily", every: 1 },
+      end: { kind: "count", count: 2 },
+      calendar_id: null,
+      resource_uids: [10],
+      resources: [],
+    };
+    const { user, onSubmit } = renderDialog({ initial });
+    expect(screen.getByLabelText("An")).toBeChecked();
+    expect(screen.getByLabelText("Đơn vị của An")).toHaveValue("1");
+    await user.click(screen.getByRole("button", { name: "Cập nhật chuỗi" }));
+    expect(lastSpec(onSubmit).resources).toEqual([{ uid: 10, units: 1 }]);
+    expect(lastSpec(onSubmit)).not.toHaveProperty("resource_uids");
   });
 
   it("shows a note when there are no resources", () => {
@@ -241,7 +302,7 @@ describe("recurringCommand", () => {
     pattern: { kind: "daily", every: 1 },
     end: { kind: "count", count: 2 },
     calendar_id: null,
-    resource_uids: [],
+    resources: [],
   };
 
   it("creates a new series after the selected task", () => {
