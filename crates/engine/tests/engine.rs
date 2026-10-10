@@ -1761,3 +1761,28 @@ fn burndown_without_status_date_samples_the_given_day() {
     assert_eq!(report.baseline_work, 0);
     assert_eq!(report.actual.len(), 1);
 }
+
+#[test]
+fn network_layout_follows_scheduled_dependencies_and_cycles_are_rejected() {
+    use projectdesk_engine::network::{layout, NetworkOptions};
+
+    let mut doc = Document::from_project(project_with(
+        vec![("A", 480), ("B", 960), ("C", 480), ("Mốc", 0)],
+        vec![(1, 2, DepKind::Fs, 0), (1, 3, DepKind::Ss, 240), (2, 4, DepKind::Fs, 0), (3, 4, DepKind::Fs, 0)],
+    ));
+    // CPM forbids cycles, so the diagram never has to break one.
+    let err = doc.apply(Command::AddDependency {
+        predecessor_uid: 4,
+        successor_uid: 1,
+        kind: DepKind::Fs,
+        lag: 0,
+    });
+    assert!(err.is_err());
+
+    let result = layout(&doc.project, &NetworkOptions::default());
+    let column = |uid: u32| result.nodes.iter().find(|node| node.uid == uid).unwrap().column;
+    assert_eq!((column(1), column(2), column(3), column(4)), (0, 1, 1, 2));
+    let ss = result.edges.iter().find(|edge| edge.from_uid == 1 && edge.to_uid == 3).unwrap();
+    assert_eq!((ss.kind, ss.lag), (DepKind::Ss, 240));
+    assert_eq!(result.crossings, 0);
+}

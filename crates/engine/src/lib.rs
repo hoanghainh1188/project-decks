@@ -12,6 +12,7 @@ pub mod evm;
 pub mod level;
 pub mod model;
 pub mod mspdi;
+pub mod network;
 pub mod recurrence;
 pub mod schedule;
 pub mod split;
