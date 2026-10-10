@@ -68,6 +68,8 @@ export default function App() {
   const exportPdfRef = useRef<() => void>(() => {});
   const syncing = useRef(false);
   const lastAction = useRef(0);
+  const fileDialogBusyRef = useRef(false);
+  const [fileDialogBusy, setFileDialogBusy] = useState(false);
 
   const run = useCallback(async (work: () => Promise<Snapshot | void>): Promise<Snapshot | void> => {
     if (!inTauri()) {
@@ -85,6 +87,26 @@ export default function App() {
   }, []);
 
   const send = useCallback((command: Command) => run(() => applyCommand(command)), [run]);
+
+  // One native file chooser at a time. A second click is ignored so it cannot
+  // open another dialog while the first still owns the macOS run loop.
+  const startFileDialog = useCallback((work: () => Promise<Snapshot | void>) => {
+    if (fileDialogBusyRef.current) return;
+    if (!inTauri()) {
+      setError("Mở ProjectDesk bằng pnpm tauri dev để dùng lịch và lưu tệp.");
+      return;
+    }
+    fileDialogBusyRef.current = true;
+    setFileDialogBusy(true);
+    void (async () => {
+      try {
+        await run(work);
+      } finally {
+        fileDialogBusyRef.current = false;
+        setFileDialogBusy(false);
+      }
+    })();
+  }, [run]);
 
   const createCalendar = useCallback(
     async (name: string, assign: (id: number) => Command | null, openEditor: boolean) => {
@@ -109,11 +131,11 @@ export default function App() {
   const handleMenu = useCallback(
     (id: string) => {
       if (id === "new") void run(newProject);
-      if (id === "open") void run(openProject);
-      if (id === "save") void run(saveProject);
-      if (id === "save-as") void run(saveProjectAs);
-      if (id === "import-xml") void run(importMspdi);
-      if (id === "export-xml") void run(async () => {
+      if (id === "open") startFileDialog(openProject);
+      if (id === "save") startFileDialog(saveProject);
+      if (id === "save-as") startFileDialog(saveProjectAs);
+      if (id === "import-xml") startFileDialog(importMspdi);
+      if (id === "export-xml") startFileDialog(async () => {
         await exportMspdi();
       });
       if (id === "export-pdf") exportPdfRef.current();
@@ -135,7 +157,7 @@ export default function App() {
       if (id === "outdent") void send({ type: "outdent", uid: task.uid });
       if (id === "delete") void send({ type: "delete_task", uid: task.uid });
     },
-    [run, send, task],
+    [run, send, startFileDialog, task],
   );
   menuRef.current = handleMenu;
 
@@ -218,7 +240,7 @@ export default function App() {
   );
   exportPdfRef.current = () => {
     if (!project) return;
-    void run(async () => {
+    startFileDialog(async () => {
       const bytes = buildGanttPdf({
         project,
         rows,
@@ -253,7 +275,7 @@ export default function App() {
         <button type="button" disabled={!task} onClick={() => task && send({ type: "delete_task", uid: task.uid })}>Xóa</button>
         <button type="button" disabled={!task} onClick={() => linkAbove(project, task, send)}>Nối FS</button>
         <button type="button" onClick={() => setInfoOpen(true)}>Lịch</button>
-        <button type="button" disabled={!project} onClick={() => exportPdfRef.current()}>Xuất PDF</button>
+        <button type="button" disabled={!project || fileDialogBusy} onClick={() => exportPdfRef.current()}>Xuất PDF</button>
         <span className="spacer" />
         <div className="segmented">
           <button type="button" className={view === "gantt" ? "on" : ""} onClick={() => setView("gantt")}>Gantt</button>

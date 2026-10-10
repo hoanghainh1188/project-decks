@@ -1,15 +1,55 @@
 use std::fs;
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 
 use projectdesk_engine::mspdi::{read_mspdi, write_mspdi};
 use projectdesk_engine::store;
 use projectdesk_engine::{Command, Document, Snapshot};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
-use tauri::{Emitter, State};
-use tauri_plugin_dialog::{DialogExt, FilePath};
+use tauri::{Emitter, Runtime, State};
+use tauri_plugin_dialog::{DialogExt, FileDialogBuilder, FilePath};
 
 struct AppState {
     doc: Mutex<Document>,
+    /// True while a native file dialog owns the screen.
+    dialog_open: Arc<AtomicBool>,
+}
+
+/// Released when the file dialog command finishes, including cancel and write.
+struct DialogPermit(Arc<AtomicBool>);
+
+impl Drop for DialogPermit {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::Release);
+    }
+}
+
+fn begin_dialog(state: &AppState) -> Option<DialogPermit> {
+    state
+        .dialog_open
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .ok()
+        .map(|_| DialogPermit(Arc::clone(&state.dialog_open)))
+}
+
+/// Await the plugin's non-blocking picker. Do not call `blocking_pick_file`:
+/// a sync command runs on the macOS main thread, and the blocking helper waits
+/// there, so the panel never gets the run loop back.
+async fn await_pick<R: Runtime>(dialog: FileDialogBuilder<R>) -> Option<FilePath> {
+    let (tx, mut rx) = tauri::async_runtime::channel(1);
+    dialog.pick_file(move |path| {
+        let _ = tx.try_send(path);
+    });
+    rx.recv().await.unwrap_or(None)
+}
+
+/// Await the plugin's non-blocking save panel. Same deadlock rule as `await_pick`.
+async fn await_save<R: Runtime>(dialog: FileDialogBuilder<R>) -> Option<FilePath> {
+    let (tx, mut rx) = tauri::async_runtime::channel(1);
+    dialog.save_file(move |path| {
+        let _ = tx.try_send(path);
+    });
+    rx.recv().await.unwrap_or(None)
 }
 
 fn lock(state: &AppState) -> std::sync::MutexGuard<'_, Document> {
@@ -64,13 +104,18 @@ fn new_project(state: State<'_, AppState>) -> Snapshot {
 }
 
 #[tauri::command]
-fn open_project(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<Snapshot, String> {
-    let picked = app
-        .dialog()
-        .file()
-        .add_filter("ProjectDesk", &["pdproj"])
-        .set_title("Mở dự án")
-        .blocking_pick_file();
+async fn open_project(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<Snapshot, String> {
+    // A second chooser while this one is visible would nest the macOS run loop.
+    let Some(_permit) = begin_dialog(&state) else {
+        return Ok(lock(&state).snapshot());
+    };
+    let picked = await_pick(
+        app.dialog()
+            .file()
+            .add_filter("ProjectDesk", &["pdproj"])
+            .set_title("Mở dự án"),
+    )
+    .await;
     let Some(path) = picked.and_then(path_from_dialog) else {
         return Ok(lock(&state).snapshot());
     };
@@ -81,7 +126,7 @@ fn open_project(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<Sna
 }
 
 #[tauri::command]
-fn save_project(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<Snapshot, String> {
+async fn save_project(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<Snapshot, String> {
     let path = lock(&state).path.clone();
     if let Some(path) = path {
         let mut doc = lock(&state);
@@ -90,24 +135,31 @@ fn save_project(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<Sna
         doc.dirty = false;
         return Ok(doc.snapshot());
     }
-    save_project_as(app, state)
+    save_project_as(app, state).await
 }
 
 #[tauri::command]
-fn save_project_as(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<Snapshot, String> {
+async fn save_project_as(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Snapshot, String> {
+    let Some(_permit) = begin_dialog(&state) else {
+        return Ok(lock(&state).snapshot());
+    };
     let suggested = lock(&state)
         .project
         .name
         .chars()
         .map(|ch| if ch.is_whitespace() { '-' } else { ch })
         .collect::<String>();
-    let picked = app
-        .dialog()
-        .file()
-        .add_filter("ProjectDesk", &["pdproj"])
-        .set_title("Lưu dự án")
-        .set_file_name(format!("{suggested}.pdproj"))
-        .blocking_save_file();
+    let picked = await_save(
+        app.dialog()
+            .file()
+            .add_filter("ProjectDesk", &["pdproj"])
+            .set_title("Lưu dự án")
+            .set_file_name(format!("{suggested}.pdproj")),
+    )
+    .await;
     let Some(path) = picked.and_then(path_from_dialog) else {
         return Ok(lock(&state).snapshot());
     };
@@ -120,13 +172,17 @@ fn save_project_as(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<
 }
 
 #[tauri::command]
-fn import_mspdi(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<Snapshot, String> {
-    let picked = app
-        .dialog()
-        .file()
-        .add_filter("MSPDI", &["xml"])
-        .set_title("Nhập MSPDI")
-        .blocking_pick_file();
+async fn import_mspdi(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<Snapshot, String> {
+    let Some(_permit) = begin_dialog(&state) else {
+        return Ok(lock(&state).snapshot());
+    };
+    let picked = await_pick(
+        app.dialog()
+            .file()
+            .add_filter("MSPDI", &["xml"])
+            .set_title("Nhập MSPDI"),
+    )
+    .await;
     let Some(path) = picked.and_then(path_from_dialog) else {
         return Ok(lock(&state).snapshot());
     };
@@ -140,14 +196,18 @@ fn import_mspdi(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<Sna
 }
 
 #[tauri::command]
-fn export_mspdi(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(), String> {
-    let picked = app
-        .dialog()
-        .file()
-        .add_filter("MSPDI", &["xml"])
-        .set_title("Xuất MSPDI")
-        .set_file_name("du-an.xml")
-        .blocking_save_file();
+async fn export_mspdi(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    let Some(_permit) = begin_dialog(&state) else {
+        return Ok(());
+    };
+    let picked = await_save(
+        app.dialog()
+            .file()
+            .add_filter("MSPDI", &["xml"])
+            .set_title("Xuất MSPDI")
+            .set_file_name("du-an.xml"),
+    )
+    .await;
     let Some(path) = picked.and_then(path_from_dialog) else {
         return Ok(());
     };
@@ -160,18 +220,27 @@ fn export_mspdi(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(),
 }
 
 #[tauri::command]
-fn save_pdf(app: tauri::AppHandle, bytes: Vec<u8>, file_name: String) -> Result<(), String> {
+async fn save_pdf(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    bytes: Vec<u8>,
+    file_name: String,
+) -> Result<(), String> {
     // The PDF is already rendered. This only shows the save dialog and writes bytes.
     if bytes.is_empty() {
         return Err("PDF trống".into());
     }
-    let picked = app
-        .dialog()
-        .file()
-        .add_filter("PDF", &["pdf"])
-        .set_title("Xuất PDF")
-        .set_file_name(file_name)
-        .blocking_save_file();
+    let Some(_permit) = begin_dialog(&state) else {
+        return Ok(());
+    };
+    let picked = await_save(
+        app.dialog()
+            .file()
+            .add_filter("PDF", &["pdf"])
+            .set_title("Xuất PDF")
+            .set_file_name(file_name),
+    )
+    .await;
     let Some(path) = picked.and_then(path_from_dialog) else {
         return Ok(());
     };
@@ -271,6 +340,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(AppState {
             doc: Mutex::new(Document::new_default()),
+            dialog_open: Arc::new(AtomicBool::new(false)),
         })
         .setup(|app| {
             let menu = build_menu(app.handle())?;
