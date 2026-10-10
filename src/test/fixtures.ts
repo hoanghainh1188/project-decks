@@ -6,6 +6,7 @@ import type {
   Project,
   ProjectMetrics,
   Resource,
+  SCurveReport,
   Snapshot,
   Task,
 } from "../types";
@@ -165,10 +166,12 @@ export function emptyBurndown(overrides: Partial<BurndownReport> = {}): Burndown
 export function makeMetrics(
   evm: Partial<ProjectMetrics["evm"]> = {},
   burndown: Partial<BurndownReport> = {},
+  sCurve: Partial<SCurveReport> = {},
 ): ProjectMetrics {
   return {
     evm: { status_date: at(2026, 1, 15), has_baseline: true, metrics: makeEvm(), ...evm },
     burndown: emptyBurndown(burndown),
+    s_curve: { status_date: null, baseline_finish: null, step: "day", points: [], ...sCurve },
   };
 }
 

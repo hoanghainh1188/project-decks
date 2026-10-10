@@ -211,7 +211,7 @@ function SCurveSection({ report }: { report: SCurveReport }) {
     <section className="burndown">
       <strong>Đường cong S</strong>
       {report.points.length < 2 ? (
-        <div className="evm-empty">Chưa có đường cơ sở 0, nên chưa vẽ được đường cong S.</div>
+        <div className="evm-empty">Cần đường cơ sở 0 để vẽ đường cong S.</div>
       ) : (
         <>
           <p className="evm-note">

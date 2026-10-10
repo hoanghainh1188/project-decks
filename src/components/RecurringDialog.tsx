@@ -271,7 +271,7 @@ export function RecurringDialog({ project, initial, defaultStart, onClose, onSub
             <div className="row recurring-inline">
               <label className="check">
                 <input type="radio" name="recurring-on" checked={!byNth} onChange={() => setByNth(false)} />
-                Ngày
+                Theo ngày
               </label>
               <input
                 aria-label="Ngày trong tháng"
@@ -284,7 +284,7 @@ export function RecurringDialog({ project, initial, defaultStart, onClose, onSub
             <div className="row recurring-inline">
               <label className="check">
                 <input type="radio" name="recurring-on" checked={byNth} onChange={() => setByNth(true)} />
-                Vào
+                Theo thứ
               </label>
               {nthFields}
               <span>của tháng</span>
