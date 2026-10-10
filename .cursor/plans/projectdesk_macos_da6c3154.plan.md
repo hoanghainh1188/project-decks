@@ -176,7 +176,8 @@ Giới hạn:
 
 - Chưa có mẫu "mỗi N ngày lịch", "thứ X thứ Y trong tháng" (ví dụ thứ Hai đầu tiên) hay lặp theo năm.
 - Nhập MSPDI không dựng lại chuỗi lặp; chuỗi thành summary thường với các task con.
-- Sinh lại xóa assignment rồi gán lại trên occurrence còn theo chuỗi; giờ làm thêm hoặc đơn vị chỉnh trên assignment của chúng sẽ đánh dấu tách nên không bị mất.
+- Nguồn lực của chuỗi luôn gán với đơn vị 1.0; hộp thoại chưa cho chọn đơn vị. Muốn khác thì sửa riêng từng lần (lần đó thành tách).
+- Chưa kiểm thử tự động phần giao diện; engine có test, giao diện cần kiểm tay trong cửa sổ Tauri.
 
 ## Pha 10 — chỉ số EVM và burn-down — chưa làm
 
