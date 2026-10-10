@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import { applyCommand, errorMessage, inTauri, loadMetrics, loadState, savePdf, undo } from "./api";
+import {
+  applyCommand,
+  errorMessage,
+  inTauri,
+  loadMetrics,
+  loadNetworkLayout,
+  loadState,
+  savePdf,
+  undo,
+} from "./api";
 import { fakeBackend } from "./test/fakeBackend";
 import { makeMetrics, makeProject, makeSnapshot, outlineProject } from "./test/fixtures";
 
@@ -31,6 +40,15 @@ describe("api over the fake backend", () => {
       cmd: "save_pdf",
       args: { bytes: [37, 80, 68, 70], fileName: "gantt.pdf" },
     });
+  });
+
+  it("asks the engine for the network layout with the view options", async () => {
+    const layout = await loadNetworkLayout({ include_summary: true, visible_uids: [2, 3] });
+    expect(fakeBackend.calls[0]).toEqual({
+      cmd: "network_layout",
+      args: { options: { include_summary: true, visible_uids: [2, 3] } },
+    });
+    expect(layout.nodes).toEqual([]);
   });
 
   it("surfaces backend errors as rejected promises", async () => {
