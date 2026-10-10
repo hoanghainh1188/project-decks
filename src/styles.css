@@ -313,3 +313,21 @@ tr.child td:first-child { padding-left: 22px; color: #3a3a3c; }
 .dialog ul { margin: 0; padding-left: 18px; }
 .dialog li { display: flex; justify-content: space-between; gap: 8px; margin: 4px 0; }
 .row { display: flex; gap: 8px; margin-top: 8px; }
+.recurring-dialog .row { flex-wrap: wrap; align-items: center; margin-top: 0; }
+.recurring-dialog .check { display: flex; margin: 0; color: #3a3a3c; }
+.recurring-dialog .recurring-inline input:not([type]) { width: 72px; }
+.recurring-dialog .recurring-inline .datetime-field { flex: 1; }
+.recurring-dialog .bad { color: #b42318; }
+.name-cell { display: flex; align-items: center; min-width: 0; }
+.name-cell input { flex: 1; }
+.series-icon {
+  border: 0;
+  background: transparent;
+  padding: 0 2px;
+  color: #0a84ff;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+}
+.series-icon.occurrence { color: #8e8e93; cursor: default; }
+.series-icon.detached { color: #c77c02; }

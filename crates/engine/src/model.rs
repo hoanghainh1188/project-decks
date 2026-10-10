@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::calendar::Calendar;
+use crate::recurrence::Recurrence;
 use crate::timeutil::MINUTES_PER_DAY;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -147,6 +148,18 @@ pub struct Task {
     /// Finish is past the status date (while incomplete), baseline 0, or the deadline.
     #[serde(default)]
     pub late: bool,
+    /// Series definition; set only on the summary task of a recurring series.
+    #[serde(default)]
+    pub recurrence: Option<Recurrence>,
+    /// Summary UID of the series this occurrence belongs to.
+    #[serde(default)]
+    pub series_uid: Option<u32>,
+    /// Local midnight of the date the pattern produced for this occurrence.
+    #[serde(default)]
+    pub occurrence_date: Option<i64>,
+    /// Edited on its own; regenerating the series leaves it unchanged.
+    #[serde(default)]
+    pub detached: bool,
 }
 
 impl Task {
@@ -197,6 +210,10 @@ impl Task {
             baselines: Vec::new(),
             deadline: None,
             late: false,
+            recurrence: None,
+            series_uid: None,
+            occurrence_date: None,
+            detached: false,
         }
     }
 

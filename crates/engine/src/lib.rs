@@ -11,6 +11,7 @@ pub mod error;
 pub mod level;
 pub mod model;
 pub mod mspdi;
+pub mod recurrence;
 pub mod schedule;
 pub mod store;
 pub mod timeutil;

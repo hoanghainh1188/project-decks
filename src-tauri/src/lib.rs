@@ -298,6 +298,8 @@ fn build_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
             &menu_item(app, "indent", "Thụt vào", Some("CmdOrCtrl+]"))?,
             &menu_item(app, "outdent", "Thụt ra", Some("CmdOrCtrl+["))?,
             &menu_item(app, "delete", "Xóa công việc", Some("CmdOrCtrl+Backspace"))?,
+            &PredefinedMenuItem::separator(app)?,
+            &menu_item(app, "recurring", "Công việc lặp…", None)?,
         ],
     )?;
     let view_menu = Submenu::with_items(
