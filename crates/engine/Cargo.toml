@@ -1,0 +1,18 @@
+[package]
+name = "projectdesk-engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "ProjectDesk scheduling engine: calendars, CPM, resources, tracking, leveling, MSPDI"
+publish = false
+
+[dependencies]
+chrono = { version = "0.4", default-features = false, features = ["std", "serde"] }
+quick-xml = "0.37"
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+
+[dev-dependencies]
+chrono = { version = "0.4", default-features = false, features = ["std"] }
