@@ -6,11 +6,14 @@ use projectdesk_engine::model::{
     Accrual, ConstraintType, DepKind, Dependency, ResourceKind, Task, TaskType,
 };
 use projectdesk_engine::mspdi::{read_mspdi, write_mspdi};
+use projectdesk_engine::recurrence::{
+    occurrence_dates, RecurrenceEnd, RecurrencePattern, RecurrenceSpec,
+};
 use projectdesk_engine::schedule::schedule;
 use projectdesk_engine::store::{load, save};
 use projectdesk_engine::timeutil::timestamp;
 use projectdesk_engine::work::{self, Changed};
-use projectdesk_engine::{Document, Project};
+use projectdesk_engine::{Calendar, Document, Project};
 
 fn monday() -> i64 {
     timestamp(2026, 1, 5, 8, 0)
@@ -1133,4 +1136,393 @@ fn summary_deadline_does_not_make_children_late() {
     assert!(project.tasks[1].deadline.is_none());
     assert!(!project.tasks[1].late);
     assert_eq!(project.tasks[0].constraint_type, ConstraintType::Asap);
+}
+
+// ---------------------------------------------------------------------------
+// Phase 9: recurring tasks
+
+fn day(year: i32, month: u32, date: u32) -> chrono::NaiveDate {
+    chrono::NaiveDate::from_ymd_opt(year, month, date).unwrap()
+}
+
+fn midnight(year: i32, month: u32, date: u32) -> i64 {
+    timestamp(year, month, date, 0, 0)
+}
+
+fn recurring_spec(pattern: RecurrencePattern, end: RecurrenceEnd) -> RecurrenceSpec {
+    RecurrenceSpec {
+        name: "Họp".into(),
+        duration: 120,
+        start: at(0, 8, 0),
+        pattern,
+        end,
+        calendar_id: None,
+        resource_uids: Vec::new(),
+    }
+}
+
+fn series_doc(project: Project, spec: RecurrenceSpec) -> (Document, u32) {
+    let mut doc = Document::from_project(project);
+    let before: Vec<u32> = doc.project.tasks.iter().map(|task| task.uid).collect();
+    doc.apply(Command::CreateRecurringTask {
+        after_uid: Some(before[0]),
+        spec,
+    })
+    .unwrap();
+    let summary = doc
+        .project
+        .tasks
+        .iter()
+        .find(|task| task.recurrence.is_some())
+        .unwrap()
+        .uid;
+    (doc, summary)
+}
+
+fn occurrences(project: &Project, summary: u32) -> Vec<Task> {
+    project
+        .tasks
+        .iter()
+        .filter(|task| task.series_uid == Some(summary))
+        .cloned()
+        .collect()
+}
+
+fn nominal_dates(project: &Project, summary: u32) -> Vec<i64> {
+    occurrences(project, summary)
+        .iter()
+        .map(|task| task.occurrence_date.unwrap())
+        .collect()
+}
+
+#[test]
+fn daily_series_counts_working_days_for_count_and_end_date() {
+    let spec = recurring_spec(
+        RecurrencePattern::Daily { every: 2 },
+        RecurrenceEnd::Count { count: 4 },
+    );
+    // Every 2 working days from Monday: Mon 5, Wed 7, Fri 9, Tue 13 (weekend not counted).
+    let dates = occurrence_dates(&spec, &Calendar::standard()).unwrap();
+    assert_eq!(dates, vec![day(2026, 1, 5), day(2026, 1, 7), day(2026, 1, 9), day(2026, 1, 13)]);
+
+    let spec = recurring_spec(
+        RecurrencePattern::Daily { every: 1 },
+        RecurrenceEnd::Until { date: at(7, 8, 0) },
+    );
+    let dates = occurrence_dates(&spec, &Calendar::standard()).unwrap();
+    assert_eq!(dates.len(), 6);
+    assert_eq!(dates.last(), Some(&day(2026, 1, 12)));
+}
+
+#[test]
+fn weekly_series_uses_every_n_weeks_on_chosen_days() {
+    let spec = recurring_spec(
+        RecurrencePattern::Weekly { every: 2, weekdays: vec![0, 3] },
+        RecurrenceEnd::Count { count: 4 },
+    );
+    let dates = occurrence_dates(&spec, &Calendar::standard()).unwrap();
+    assert_eq!(dates, vec![day(2026, 1, 5), day(2026, 1, 8), day(2026, 1, 19), day(2026, 1, 22)]);
+
+    let spec = recurring_spec(
+        RecurrencePattern::Weekly { every: 1, weekdays: vec![4] },
+        RecurrenceEnd::Until { date: midnight(2026, 1, 30) },
+    );
+    let dates = occurrence_dates(&spec, &Calendar::standard()).unwrap();
+    assert_eq!(dates, vec![day(2026, 1, 9), day(2026, 1, 16), day(2026, 1, 23), day(2026, 1, 30)]);
+}
+
+#[test]
+fn monthly_series_clamps_day_and_supports_both_end_conditions() {
+    let mut spec = recurring_spec(
+        RecurrencePattern::Monthly { every: 1, day: 31 },
+        RecurrenceEnd::Until { date: midnight(2026, 4, 15) },
+    );
+    spec.start = midnight(2026, 1, 1);
+    let dates = occurrence_dates(&spec, &Calendar::standard()).unwrap();
+    assert_eq!(dates, vec![day(2026, 1, 31), day(2026, 2, 28), day(2026, 3, 31)]);
+
+    spec.pattern = RecurrencePattern::Monthly { every: 2, day: 10 };
+    spec.end = RecurrenceEnd::Count { count: 3 };
+    let dates = occurrence_dates(&spec, &Calendar::standard()).unwrap();
+    assert_eq!(dates, vec![day(2026, 1, 10), day(2026, 3, 10), day(2026, 5, 10)]);
+}
+
+#[test]
+fn series_rejects_empty_or_oversized_patterns() {
+    let spec = recurring_spec(
+        RecurrencePattern::Weekly { every: 1, weekdays: vec![] },
+        RecurrenceEnd::Count { count: 2 },
+    );
+    assert!(occurrence_dates(&spec, &Calendar::standard()).is_err());
+    let spec = recurring_spec(
+        RecurrencePattern::Daily { every: 1 },
+        RecurrenceEnd::Count { count: 1000 },
+    );
+    assert!(occurrence_dates(&spec, &Calendar::standard()).is_err());
+    let spec = recurring_spec(
+        RecurrencePattern::Daily { every: 1 },
+        RecurrenceEnd::Until { date: at(0, 8, 0) - 86_400_000 },
+    );
+    assert!(occurrence_dates(&spec, &Calendar::standard()).is_err());
+}
+
+#[test]
+fn series_is_a_summary_of_real_occurrence_tasks() {
+    let mut spec = recurring_spec(
+        RecurrencePattern::Weekly { every: 1, weekdays: vec![0, 2] },
+        RecurrenceEnd::Count { count: 4 },
+    );
+    let mut project = Project::new("Lặp", monday());
+    project.resources.push(projectdesk_engine::Resource::new(1, "An", ResourceKind::Person));
+    project.next_resource_uid = 2;
+    spec.resource_uids = vec![1];
+    let (doc, summary_uid) = series_doc(project, spec);
+    let project = &doc.project;
+    let summary = project.task(summary_uid).unwrap();
+    assert!(summary.summary);
+    assert_eq!(summary.name, "Họp");
+    let occ = occurrences(project, summary_uid);
+    assert_eq!(occ.len(), 4);
+    let names: Vec<&str> = occ.iter().map(|task| task.name.as_str()).collect();
+    assert_eq!(names, vec!["Họp 1", "Họp 2", "Họp 3", "Họp 4"]);
+    for task in &occ {
+        assert_eq!(task.parent_uid, Some(summary_uid));
+        assert_eq!(task.outline_level, summary.outline_level + 1);
+        assert_eq!(task.duration, 120);
+        assert!(!task.summary && !task.detached);
+        assert_eq!(task.constraint_type, ConstraintType::Snet);
+        let assigned: Vec<_> = project
+            .assignments
+            .iter()
+            .filter(|assignment| assignment.task_uid == task.uid)
+            .collect();
+        assert_eq!(assigned.len(), 1);
+        assert_eq!(assigned[0].work, 120);
+    }
+    assert_eq!(occ[0].start, at(0, 8, 0));
+    assert_eq!(occ[0].finish, at(0, 10, 0));
+    assert_eq!(occ[1].start, at(2, 8, 0));
+    assert_eq!(occ[3].start, at(9, 8, 0));
+    assert_eq!(summary.start, occ[0].start);
+    assert_eq!(summary.finish, occ[3].finish);
+    // CPM runs on occurrences: only the last one drives the project finish.
+    assert!(occ[3].critical);
+    assert!(!occ[0].critical);
+}
+
+#[test]
+fn occurrences_on_non_working_days_move_to_next_working_time() {
+    let mut project = Project::new("Nghỉ", monday());
+    project.calendar_mut().set_day_off(day(2026, 1, 8));
+    let spec = recurring_spec(
+        RecurrencePattern::Weekly { every: 1, weekdays: vec![3] },
+        RecurrenceEnd::Count { count: 2 },
+    );
+    let (doc, summary) = series_doc(project, spec);
+    let occ = occurrences(&doc.project, summary);
+    // Thursday 8 is a holiday, so the first occurrence starts Friday 08:00.
+    assert_eq!(occ[0].occurrence_date, Some(midnight(2026, 1, 8)));
+    assert_eq!(occ[0].start, at(4, 8, 0));
+    assert_eq!(occ[1].start, at(10, 8, 0));
+
+    // Monthly day 31 on a Saturday moves to Monday.
+    let mut spec = recurring_spec(
+        RecurrencePattern::Monthly { every: 1, day: 31 },
+        RecurrenceEnd::Count { count: 1 },
+    );
+    spec.start = midnight(2026, 1, 1);
+    let (doc, summary) = series_doc(Project::new("Tháng", monday()), spec);
+    let occ = occurrences(&doc.project, summary);
+    assert_eq!(occ[0].start, timestamp(2026, 2, 2, 8, 0));
+
+    // Daily counting skips the holiday instead of landing on it.
+    let mut project = Project::new("Ngày", monday());
+    project.calendar_mut().set_day_off(day(2026, 1, 6));
+    let spec = recurring_spec(
+        RecurrencePattern::Daily { every: 1 },
+        RecurrenceEnd::Count { count: 3 },
+    );
+    let (doc, summary) = series_doc(project, spec);
+    assert_eq!(
+        nominal_dates(&doc.project, summary),
+        vec![midnight(2026, 1, 5), midnight(2026, 1, 7), midnight(2026, 1, 8)]
+    );
+}
+
+#[test]
+fn series_create_and_edit_undo_redo() {
+    let spec = recurring_spec(
+        RecurrencePattern::Daily { every: 1 },
+        RecurrenceEnd::Count { count: 3 },
+    );
+    let (mut doc, summary) = series_doc(Project::new("Undo", monday()), spec.clone());
+    let with_series = doc.project.tasks.len();
+    assert_eq!(with_series, 1 + 1 + 3);
+
+    let mut longer = spec.clone();
+    longer.end = RecurrenceEnd::Count { count: 5 };
+    longer.duration = 240;
+    doc.apply(Command::UpdateRecurringTask { uid: summary, spec: longer }).unwrap();
+    assert_eq!(occurrences(&doc.project, summary).len(), 5);
+    assert!(occurrences(&doc.project, summary).iter().all(|task| task.duration == 240));
+
+    doc.undo().unwrap();
+    assert_eq!(occurrences(&doc.project, summary).len(), 3);
+    assert!(occurrences(&doc.project, summary).iter().all(|task| task.duration == 120));
+    doc.undo().unwrap();
+    assert_eq!(doc.project.tasks.len(), 1);
+    assert!(doc.project.tasks.iter().all(|task| task.recurrence.is_none()));
+    doc.redo().unwrap();
+    assert_eq!(doc.project.tasks.len(), with_series);
+    doc.redo().unwrap();
+    assert_eq!(occurrences(&doc.project, summary).len(), 5);
+}
+
+#[test]
+fn series_survives_store_round_trip() {
+    let spec = recurring_spec(
+        RecurrencePattern::Weekly { every: 1, weekdays: vec![1, 3] },
+        RecurrenceEnd::Until { date: midnight(2026, 1, 31) },
+    );
+    let (mut doc, summary) = series_doc(Project::new("Lưu", monday()), spec);
+    let second = occurrences(&doc.project, summary)[1].uid;
+    doc.apply(Command::SetDuration { uid: second, minutes: 60 }).unwrap();
+
+    let path = std::env::temp_dir().join(format!("projectdesk-recurring-{}.pdproj", std::process::id()));
+    let path = path.to_string_lossy().to_string();
+    save(&doc, &path).unwrap();
+    let loaded = load(&path).unwrap();
+    let _ = std::fs::remove_file(&path);
+
+    assert_eq!(loaded.project.tasks, doc.project.tasks);
+    let restored = loaded.project.task(summary).unwrap();
+    assert_eq!(
+        restored.recurrence.as_ref().unwrap().spec.pattern,
+        RecurrencePattern::Weekly { every: 1, weekdays: vec![1, 3] }
+    );
+    assert!(loaded.project.task(second).unwrap().detached);
+    assert!(loaded
+        .commands
+        .iter()
+        .any(|command| matches!(command, Command::CreateRecurringTask { .. })));
+}
+
+#[test]
+fn detached_occurrence_survives_regeneration() {
+    let spec = recurring_spec(
+        RecurrencePattern::Daily { every: 1 },
+        RecurrenceEnd::Count { count: 4 },
+    );
+    let (mut doc, summary) = series_doc(Project::new("Tách", monday()), spec.clone());
+    let occ = occurrences(&doc.project, summary);
+    let edited = occ[1].uid;
+    let first = occ[0].uid;
+    doc.apply(Command::RenameTask { uid: edited, name: "Họp đặc biệt".into() }).unwrap();
+    doc.apply(Command::SetDuration { uid: edited, minutes: 300 }).unwrap();
+    doc.apply(Command::AddDependency {
+        predecessor_uid: 1,
+        successor_uid: first,
+        kind: DepKind::Fs,
+        lag: 0,
+    })
+    .unwrap();
+    assert!(doc.project.task(edited).unwrap().detached);
+    assert!(!doc.project.task(first).unwrap().detached);
+
+    let mut changed = spec;
+    changed.name = "Giao ban".into();
+    changed.duration = 60;
+    doc.apply(Command::UpdateRecurringTask { uid: summary, spec: changed }).unwrap();
+
+    let occ = occurrences(&doc.project, summary);
+    assert_eq!(occ.len(), 4);
+    let kept = doc.project.task(edited).unwrap();
+    assert_eq!(kept.name, "Họp đặc biệt");
+    assert_eq!(kept.duration, 300);
+    assert!(kept.detached);
+    let names: Vec<&str> = occ.iter().map(|task| task.name.as_str()).collect();
+    assert_eq!(names, vec!["Giao ban 1", "Họp đặc biệt", "Giao ban 3", "Giao ban 4"]);
+    assert!(occ.iter().filter(|task| !task.detached).all(|task| task.duration == 60));
+    // The attached first occurrence kept its UID, so its link survived.
+    assert_eq!(occ[0].uid, first);
+    assert!(doc
+        .project
+        .dependencies
+        .iter()
+        .any(|dep| dep.predecessor_uid == 1 && dep.successor_uid == first));
+    assert_eq!(doc.project.task(summary).unwrap().name, "Giao ban");
+}
+
+#[test]
+fn deleting_an_occurrence_keeps_it_out_after_regeneration() {
+    let spec = recurring_spec(
+        RecurrencePattern::Daily { every: 1 },
+        RecurrenceEnd::Count { count: 3 },
+    );
+    let (mut doc, summary) = series_doc(Project::new("Bỏ", monday()), spec.clone());
+    let middle = occurrences(&doc.project, summary)[1].uid;
+    doc.apply(Command::DeleteTask { uid: middle }).unwrap();
+    let mut changed = spec;
+    changed.duration = 90;
+    doc.apply(Command::UpdateRecurringTask { uid: summary, spec: changed }).unwrap();
+    assert_eq!(
+        nominal_dates(&doc.project, summary),
+        vec![midnight(2026, 1, 5), midnight(2026, 1, 7)]
+    );
+}
+
+#[test]
+fn deleting_series_removes_attached_and_keeps_detached() {
+    let spec = recurring_spec(
+        RecurrencePattern::Daily { every: 1 },
+        RecurrenceEnd::Count { count: 3 },
+    );
+    let (mut doc, summary) = series_doc(Project::new("Xóa", monday()), spec);
+    let occ = occurrences(&doc.project, summary);
+    let detached = occ[2].uid;
+    doc.apply(Command::MoveTask { uid: detached, start: at(10, 8, 0) }).unwrap();
+    doc.apply(Command::AddDependency {
+        predecessor_uid: occ[0].uid,
+        successor_uid: 1,
+        kind: DepKind::Fs,
+        lag: 0,
+    })
+    .unwrap();
+
+    doc.apply(Command::DeleteTask { uid: summary }).unwrap();
+    assert!(doc.project.task(summary).is_none());
+    assert!(doc.project.task(occ[0].uid).is_none());
+    assert!(doc.project.task(occ[1].uid).is_none());
+    assert!(doc.project.dependencies.is_empty());
+    let kept = doc.project.task(detached).unwrap();
+    assert_eq!(kept.outline_level, 1);
+    assert_eq!(kept.series_uid, None);
+    assert_eq!(kept.start, at(10, 8, 0));
+    assert_eq!(doc.project.tasks.len(), 2);
+
+    doc.undo().unwrap();
+    assert_eq!(occurrences(&doc.project, summary).len(), 3);
+}
+
+#[test]
+fn occurrences_cannot_change_level_and_mspdi_keeps_them() {
+    let spec = recurring_spec(
+        RecurrencePattern::Daily { every: 1 },
+        RecurrenceEnd::Count { count: 2 },
+    );
+    let (mut doc, summary) = series_doc(Project::new("XML", monday()), spec);
+    let occ = occurrences(&doc.project, summary);
+    assert!(doc.apply(Command::Indent { uid: occ[1].uid }).is_err());
+    assert!(doc.apply(Command::Outdent { uid: occ[0].uid }).is_err());
+
+    let xml = write_mspdi(&doc.project).unwrap();
+    assert!(xml.contains("<Recurring>1</Recurring>"));
+    let imported = read_mspdi(&xml).unwrap();
+    let names: Vec<&str> = imported.tasks.iter().map(|task| task.name.as_str()).collect();
+    assert!(names.contains(&"Họp 1") && names.contains(&"Họp 2"));
+    let summary_row = imported.tasks.iter().find(|task| task.name == "Họp").unwrap();
+    assert!(summary_row.summary);
+    let first = imported.tasks.iter().find(|task| task.name == "Họp 1").unwrap();
+    assert_eq!(first.parent_uid, Some(summary_row.uid));
+    assert_eq!(first.start, occ[0].start);
 }

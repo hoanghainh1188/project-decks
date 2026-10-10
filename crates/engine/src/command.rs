@@ -7,6 +7,7 @@ use crate::model::{
     Accrual, Baseline, ConstraintType, DepKind, Dependency, Project, Resource, ResourceKind, Task,
     TaskType,
 };
+use crate::recurrence::{self, Recurrence, RecurrenceSpec};
 use crate::schedule::normalize_outline;
 use crate::timeutil::{parse_date_key, MINUTES_PER_DAY, MINUTES_PER_HOUR};
 use crate::work::{self, Changed};
@@ -205,9 +206,61 @@ pub enum Command {
         uid: u32,
         date: Option<i64>,
     },
+    CreateRecurringTask {
+        after_uid: Option<u32>,
+        spec: RecurrenceSpec,
+    },
+    UpdateRecurringTask {
+        uid: u32,
+        spec: RecurrenceSpec,
+    },
 }
 
 pub fn apply_one(project: &mut Project, command: &Command) -> Result<(), EngineError> {
+    let edited = edited_task(project, command);
+    apply_inner(project, command)?;
+    if let Some(task) = edited.and_then(|uid| project.task_mut(uid)) {
+        if task.series_uid.is_some() {
+            task.detached = true;
+        }
+    }
+    Ok(())
+}
+
+/// The single task a command edits, so an edited occurrence can leave its series.
+fn edited_task(project: &Project, command: &Command) -> Option<u32> {
+    match command {
+        Command::RenameTask { uid, .. }
+        | Command::SetDuration { uid, .. }
+        | Command::SetManual { uid, .. }
+        | Command::SetConstraint { uid, .. }
+        | Command::SetNotes { uid, .. }
+        | Command::SetPriority { uid, .. }
+        | Command::SetTaskCalendar { uid, .. }
+        | Command::MoveTask { uid, .. }
+        | Command::ResizeTask { uid, .. }
+        | Command::SetTaskType { uid, .. }
+        | Command::SetWork { uid, .. }
+        | Command::SetPercentComplete { uid, .. }
+        | Command::SetActualStart { uid, .. }
+        | Command::SetActualFinish { uid, .. }
+        | Command::SetRemainingDuration { uid, .. }
+        | Command::SetRemainingWork { uid, .. }
+        | Command::SetOvertimeWork { uid, .. }
+        | Command::SetFixedCost { uid, .. }
+        | Command::SetLevelingDelay { uid, .. }
+        | Command::SetDeadline { uid, .. } => Some(*uid),
+        Command::AssignResource { task_uid, .. } => Some(*task_uid),
+        Command::UpdateAssignment { uid, .. } | Command::RemoveAssignment { uid } => project
+            .assignments
+            .iter()
+            .find(|assignment| assignment.uid == *uid)
+            .map(|assignment| assignment.task_uid),
+        _ => None,
+    }
+}
+
+fn apply_inner(project: &mut Project, command: &Command) -> Result<(), EngineError> {
     match command {
         Command::RenameProject { name } => project.name = name.clone(),
         Command::SetProjectStart { start } => {
@@ -240,7 +293,13 @@ pub fn apply_one(project: &mut Project, command: &Command) -> Result<(), EngineE
         }
         Command::DeleteTask { uid } => delete_task(project, *uid)?,
         Command::RenameTask { uid, name } => {
-            project.task_mut(*uid).ok_or(EngineError::TaskNotFound)?.name = name.clone();
+            let task = project.task_mut(*uid).ok_or(EngineError::TaskNotFound)?;
+            if let Some(series) = task.recurrence.as_mut() {
+                series.spec.name = name.clone();
+                recurrence::regenerate(project, *uid)?;
+            } else {
+                task.name = name.clone();
+            }
         }
         Command::SetDuration { uid, minutes } => {
             let task = project.task_mut(*uid).ok_or(EngineError::TaskNotFound)?;
@@ -659,6 +718,36 @@ pub fn apply_one(project: &mut Project, command: &Command) -> Result<(), EngineE
             let task = project.task_mut(*uid).ok_or(EngineError::TaskNotFound)?;
             task.deadline = *date;
         }
+        Command::CreateRecurringTask { after_uid, spec } => {
+            let spec = recurrence::clean_spec(spec);
+            recurrence::validate_spec(project, &spec)?;
+            // A new series inside another series goes after that whole series.
+            let after_uid = after_uid.map(|uid| {
+                project
+                    .task(uid)
+                    .and_then(|task| task.series_uid)
+                    .unwrap_or(uid)
+            });
+            let uid = project.alloc_task_uid();
+            let mut summary = Task::new(uid, spec.name.clone());
+            summary.recurrence = Some(Recurrence {
+                spec,
+                skipped: Vec::new(),
+            });
+            insert_task(project, after_uid, summary)?;
+            recurrence::regenerate(project, uid)?;
+        }
+        Command::UpdateRecurringTask { uid, spec } => {
+            let spec = recurrence::clean_spec(spec);
+            recurrence::validate_spec(project, &spec)?;
+            let task = project.task_mut(*uid).ok_or(EngineError::TaskNotFound)?;
+            let current = task
+                .recurrence
+                .as_mut()
+                .ok_or_else(|| EngineError::Store("Công việc này không phải chuỗi lặp".into()))?;
+            current.spec = spec;
+            recurrence::regenerate(project, *uid)?;
+        }
     }
     Ok(())
 }
@@ -684,6 +773,10 @@ fn insert_task(project: &mut Project, after_uid: Option<u32>, mut task: Task) ->
 fn delete_task(project: &mut Project, uid: u32) -> Result<(), EngineError> {
     normalize_outline(project);
     let index = project.index_of(uid).ok_or(EngineError::TaskNotFound)?;
+    if project.tasks[index].recurrence.is_some() {
+        return recurrence::delete_series(project, uid);
+    }
+    recurrence::skip_occurrence(project, uid);
     let end = subtree_end(&project.tasks, index);
     let uids: Vec<u32> = project.tasks[index..end].iter().map(|task| task.uid).collect();
     project.tasks.drain(index..end);
@@ -702,6 +795,13 @@ fn indent(project: &mut Project, uid: u32) -> Result<(), EngineError> {
     if index == 0 {
         return Ok(());
     }
+    let previous = &project.tasks[index - 1];
+    if project.tasks[index].series_uid.is_some()
+        || (previous.series_uid.is_some()
+            && project.tasks[index].outline_level >= previous.outline_level)
+    {
+        return Err(occurrence_level_error());
+    }
     let max_level = project.tasks[index - 1].outline_level + 1;
     if project.tasks[index].outline_level >= max_level {
         return Ok(());
@@ -716,6 +816,9 @@ fn indent(project: &mut Project, uid: u32) -> Result<(), EngineError> {
 fn outdent(project: &mut Project, uid: u32) -> Result<(), EngineError> {
     normalize_outline(project);
     let index = project.index_of(uid).ok_or(EngineError::TaskNotFound)?;
+    if project.tasks[index].series_uid.is_some() {
+        return Err(occurrence_level_error());
+    }
     if project.tasks[index].outline_level <= 1 {
         return Ok(());
     }
@@ -724,6 +827,10 @@ fn outdent(project: &mut Project, uid: u32) -> Result<(), EngineError> {
         task.outline_level = task.outline_level.saturating_sub(1).max(1);
     }
     Ok(())
+}
+
+fn occurrence_level_error() -> EngineError {
+    EngineError::Store("Không đổi cấp một lần lặp; hãy sửa cả chuỗi".into())
 }
 
 fn subtree_end(tasks: &[Task], index: usize) -> usize {

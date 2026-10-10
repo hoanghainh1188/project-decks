@@ -668,6 +668,9 @@ fn write_task(xml: &mut String, project: &Project, task: &Task) {
     el(xml, "Summary", if task.summary { "1" } else { "0" });
     el(xml, "Critical", if task.critical { "1" } else { "0" });
     el(xml, "EffortDriven", if task.effort_driven { "1" } else { "0" });
+    if task.recurrence.is_some() {
+        el(xml, "Recurring", "1");
+    }
     el(xml, "Priority", &task.priority.to_string());
     el(xml, "Notes", &escape(&task.notes));
     el(
