@@ -588,6 +588,171 @@ fn mspdi_roundtrip_covers_phase_fields() {
 }
 
 #[test]
+fn effort_driven_assignment_keeps_work() {
+    let mut project = project_with(vec![("A", 480)], vec![]);
+    let task = project.tasks[0].uid;
+    let first = project.alloc_resource_uid();
+    let second = project.alloc_resource_uid();
+    project.resources.push(projectdesk_engine::Resource::new(
+        first,
+        "An",
+        ResourceKind::Person,
+    ));
+    project.resources.push(projectdesk_engine::Resource::new(
+        second,
+        "Bình",
+        ResourceKind::Person,
+    ));
+    project.tasks[0].task_type = TaskType::FixedUnits;
+    project.tasks[0].effort_driven = true;
+    work::add_assignment(&mut project, task, first, 1.0);
+    work::add_assignment(&mut project, task, second, 1.0);
+    schedule(&mut project).unwrap();
+    assert_eq!(project.tasks[0].duration, 240);
+    assert_eq!(project.tasks[0].work, 480);
+    let extra = project
+        .assignments
+        .iter()
+        .find(|assignment| assignment.resource_uid == second)
+        .unwrap()
+        .uid;
+    assert!(work::remove_assignment(&mut project, extra));
+    schedule(&mut project).unwrap();
+    assert_eq!(project.assignments.len(), 1);
+    assert_eq!(project.tasks[0].duration, 480);
+    assert_eq!(project.tasks[0].work, 480);
+    assert_eq!(project.assignments[0].work, 480);
+
+    let mut fixed = project_with(vec![("B", 480)], vec![]);
+    let task = fixed.tasks[0].uid;
+    fixed.tasks[0].task_type = TaskType::FixedDuration;
+    fixed.tasks[0].effort_driven = true;
+    let first = fixed.alloc_resource_uid();
+    let second = fixed.alloc_resource_uid();
+    fixed.resources.push(projectdesk_engine::Resource::new(
+        first,
+        "Máy",
+        ResourceKind::Machine,
+    ));
+    fixed.resources.push(projectdesk_engine::Resource::new(
+        second,
+        "Máy 2",
+        ResourceKind::Machine,
+    ));
+    work::add_assignment(&mut fixed, task, first, 1.0);
+    work::add_assignment(&mut fixed, task, second, 1.0);
+    schedule(&mut fixed).unwrap();
+    assert_eq!(fixed.tasks[0].duration, 480);
+    assert_eq!(fixed.tasks[0].work, 480);
+    assert!(fixed
+        .assignments
+        .iter()
+        .all(|assignment| (assignment.units - 0.5).abs() < 0.001));
+
+    fixed.tasks[0].effort_driven = false;
+    let third = fixed.alloc_resource_uid();
+    fixed.resources.push(projectdesk_engine::Resource::new(
+        third,
+        "Máy 3",
+        ResourceKind::Machine,
+    ));
+    work::add_assignment(&mut fixed, task, third, 1.0);
+    schedule(&mut fixed).unwrap();
+    assert_eq!(fixed.tasks[0].duration, 480);
+    assert_eq!(fixed.tasks[0].work, 960);
+}
+
+#[test]
+fn summary_fixed_cost_includes_children_after_one_pass() {
+    let mut project = Project::new("Chi phí", monday());
+    let mut summary = Task::new(1, "Tóm tắt");
+    summary.outline_level = 1;
+    summary.fixed_cost = 20.0;
+    summary.fixed_cost_accrual = Accrual::Prorated;
+    let mut child = Task::new(2, "Việc");
+    child.outline_level = 2;
+    child.duration = 480;
+    child.work = 480;
+    project.tasks = vec![summary, child];
+    project.next_task_uid = 3;
+    let resource = project.alloc_resource_uid();
+    let mut person = projectdesk_engine::Resource::new(resource, "An", ResourceKind::Person);
+    person.standard_rate = 10.0;
+    project.resources.push(person);
+    work::add_assignment(&mut project, 2, resource, 1.0);
+    schedule(&mut project).unwrap();
+    assert!((project.tasks[1].cost - 80.0).abs() < 0.01);
+    assert!((project.tasks[0].cost - 100.0).abs() < 0.01);
+}
+
+#[test]
+fn mspdi_roundtrip_keeps_exception_hours_and_ranges() {
+    let mut project = project_with(vec![("A", 480)], vec![]);
+    let tuesday = chrono::NaiveDate::from_ymd_opt(2026, 1, 6).unwrap();
+    project.calendar_mut().exceptions.insert(
+        projectdesk_engine::timeutil::date_key(tuesday),
+        vec![projectdesk_engine::calendar::TimeRange::new(
+            8 * 60,
+            12 * 60,
+        )],
+    );
+    let xml = write_mspdi(&project).unwrap();
+    let imported = read_mspdi(&xml).unwrap();
+    let ranges = imported
+        .calendar()
+        .exceptions
+        .get("2026-01-06")
+        .expect("morning exception");
+    assert_eq!(ranges.len(), 1);
+    assert_eq!(ranges[0].start_minute, 8 * 60);
+    assert_eq!(ranges[0].end_minute, 12 * 60);
+
+    let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<Project xmlns="http://schemas.microsoft.com/project">
+  <Name>Ngoại lệ</Name>
+  <StartDate>2026-01-05T08:00:00</StartDate>
+  <CalendarUID>1</CalendarUID>
+  <Calendars>
+    <Calendar>
+      <UID>1</UID>
+      <Name>Chuẩn</Name>
+      <WeekDays>
+        <WeekDay>
+          <DayType>2</DayType>
+          <DayWorking>1</DayWorking>
+          <WorkingTimes>
+            <WorkingTime><FromTime>08:00:00</FromTime><ToTime>12:00:00</ToTime></WorkingTime>
+            <WorkingTime><FromTime>13:00:00</FromTime><ToTime>17:00:00</ToTime></WorkingTime>
+          </WorkingTimes>
+        </WeekDay>
+      </WeekDays>
+      <Exceptions>
+        <Exception>
+          <TimePeriod>
+            <FromDate>2026-01-07T00:00:00</FromDate>
+            <ToDate>2026-01-09T00:00:00</ToDate>
+          </TimePeriod>
+          <DayWorking>0</DayWorking>
+        </Exception>
+      </Exceptions>
+    </Calendar>
+  </Calendars>
+  <Tasks></Tasks>
+</Project>"#;
+    let imported = read_mspdi(xml).unwrap();
+    for day in ["2026-01-07", "2026-01-08", "2026-01-09"] {
+        assert!(
+            imported
+                .calendar()
+                .exceptions
+                .get(day)
+                .is_some_and(|ranges| ranges.is_empty()),
+            "{day}"
+        );
+    }
+}
+
+#[test]
 fn predecessor_text_parses_lag_units() {
     let links = parse_predecessor_text("1FS+1d, 2SS-4h, 3").unwrap();
     assert_eq!(links[0], (1, DepKind::Fs, 480));

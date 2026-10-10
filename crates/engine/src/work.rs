@@ -215,10 +215,16 @@ pub fn add_assignment(project: &mut Project, task_uid: u32, resource_uid: u32, u
     }
     let had = project.assignments.iter().any(|a| a.task_uid == task_uid);
     let uid = project.alloc_assignment_uid();
+    let existing_work: i64 = project
+        .assignments
+        .iter()
+        .filter(|assignment| assignment.task_uid == task_uid)
+        .map(|assignment| assignment.work)
+        .sum();
     let carried_work = if had {
-        0
+        existing_work
     } else {
-        project.task(task_uid).map(|t| t.work).unwrap_or(0)
+        project.task(task_uid).map(|task| task.work).unwrap_or(0)
     };
     project.assignments.push(Assignment {
         uid,
@@ -232,14 +238,180 @@ pub fn add_assignment(project: &mut Project, task_uid: u32, resource_uid: u32, u
         cost: 0.0,
         actual_cost: 0.0,
     });
+    // Adding another resource to an effort-driven fixed-duration task keeps
+    // duration and total work, and shares that work across the new unit weights.
+    // Editing units on an existing assignment still follows the task-type table.
+    let keep_work = project.task(task_uid).is_some_and(|task| {
+        let effort = task.effort_driven || task.task_type == TaskType::FixedWork;
+        had && effort
+            && task.task_type == TaskType::FixedDuration
+            && task.duration > 0
+            && carried_work > 0
+    });
+    if keep_work {
+        let duration = project
+            .task(task_uid)
+            .map(|task| task.duration)
+            .unwrap_or(0);
+        if scale_units_to_work(project, task_uid, duration, carried_work) {
+            return uid;
+        }
+    }
     apply_change(project, task_uid, Changed::Units);
     uid
 }
 
+/// Drop one assignment. Effort-driven tasks keep total work: fixed duration
+/// rescales units, and the other task types recompute duration.
+pub fn remove_assignment(project: &mut Project, assignment_uid: u32) -> bool {
+    let Some(task_uid) = project
+        .assignments
+        .iter()
+        .find(|assignment| assignment.uid == assignment_uid)
+        .map(|assignment| assignment.task_uid)
+    else {
+        return false;
+    };
+    let preserved_work: i64 = project
+        .assignments
+        .iter()
+        .filter(|assignment| assignment.task_uid == task_uid)
+        .map(|assignment| assignment.work)
+        .sum();
+    let snapshot = project.task(task_uid).map(|task| {
+        (
+            task.task_type,
+            task.effort_driven || task.task_type == TaskType::FixedWork,
+            task.duration,
+        )
+    });
+    project
+        .assignments
+        .retain(|assignment| assignment.uid != assignment_uid);
+    let Some((task_type, effort, duration)) = snapshot else {
+        return true;
+    };
+    let remaining = project
+        .assignments
+        .iter()
+        .any(|assignment| assignment.task_uid == task_uid);
+    if !remaining {
+        if effort {
+            if let Some(task) = project.task_mut(task_uid) {
+                task.work = preserved_work;
+                if task.units <= 0.0 {
+                    task.units = 1.0;
+                }
+            }
+        } else {
+            apply_change(project, task_uid, Changed::Units);
+        }
+        return true;
+    }
+    if effort
+        && preserved_work > 0
+        && task_type == TaskType::FixedDuration
+        && duration > 0
+        && scale_units_to_work(project, task_uid, duration, preserved_work)
+    {
+        return true;
+    }
+    if effort && preserved_work > 0 {
+        spread_work(project, task_uid, preserved_work);
+        apply_change(project, task_uid, Changed::Work);
+        return true;
+    }
+    apply_change(project, task_uid, Changed::Units);
+    true
+}
+
+fn assignment_indexes(project: &Project, task_uid: u32) -> Vec<usize> {
+    project
+        .assignments
+        .iter()
+        .enumerate()
+        .filter(|(_, assignment)| assignment.task_uid == task_uid)
+        .map(|(index, _)| index)
+        .collect()
+}
+
+/// Keep `duration` and `preserved_work`, scaling assignment units by their current weights.
+fn scale_units_to_work(
+    project: &mut Project,
+    task_uid: u32,
+    duration: i64,
+    preserved_work: i64,
+) -> bool {
+    let indexes = assignment_indexes(project, task_uid);
+    if indexes.is_empty() || duration <= 0 {
+        return false;
+    }
+    let weight: f64 = indexes
+        .iter()
+        .map(|index| project.assignments[*index].units.max(0.0))
+        .sum();
+    if weight <= 0.0 {
+        return false;
+    }
+    let target = preserved_work as f64 / duration as f64;
+    for index in &indexes {
+        let share = project.assignments[*index].units.max(0.0) / weight;
+        project.assignments[*index].units = (target * share).max(0.0);
+        project.assignments[*index].work = scale(duration, project.assignments[*index].units);
+    }
+    let units: f64 = indexes
+        .iter()
+        .map(|index| project.assignments[*index].units)
+        .sum();
+    let work: i64 = indexes
+        .iter()
+        .map(|index| project.assignments[*index].work)
+        .sum();
+    if let Some(task) = project.task_mut(task_uid) {
+        task.duration = duration.max(0);
+        task.milestone = task.duration == 0;
+        task.units = units;
+        task.work = work;
+    }
+    true
+}
+
+fn spread_work(project: &mut Project, task_uid: u32, preserved_work: i64) {
+    let indexes = assignment_indexes(project, task_uid);
+    if indexes.is_empty() {
+        return;
+    }
+    let weight: f64 = indexes
+        .iter()
+        .map(|index| project.assignments[*index].units.max(0.0))
+        .sum();
+    if weight <= 0.0 {
+        project.assignments[indexes[0]].work = preserved_work.max(0);
+        for index in indexes.iter().skip(1) {
+            project.assignments[*index].work = 0;
+        }
+        return;
+    }
+    let mut assigned = 0i64;
+    for (offset, index) in indexes.iter().enumerate() {
+        let piece = if offset + 1 == indexes.len() {
+            preserved_work - assigned
+        } else {
+            let share = (project.assignments[*index].units.max(0.0) / weight
+                * preserved_work as f64)
+                .round() as i64;
+            assigned += share;
+            share
+        };
+        project.assignments[*index].work = piece.max(0);
+    }
+}
+
 pub fn publish_costs_and_usage(project: &mut Project) {
-    rollup_summary_work(project);
+    // Leaf actuals and costs have to exist before summary rollup reads them.
     refresh_tracking(project);
     compute_costs(project);
+    rollup_summary_work(project);
     project.usage = build_usage(project);
 }
 
@@ -266,15 +438,39 @@ fn rollup_summary_work(project: &mut Project) {
                 actual_cost += project.tasks[j].actual_cost;
             }
         }
+        let fixed = project.tasks[index].fixed_cost;
+        let accrual = project.tasks[index].fixed_cost_accrual;
+        let fraction = if work > 0 {
+            (actual as f64 / work as f64).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        let fixed_actual = match accrual {
+            Accrual::Prorated => fixed * fraction,
+            Accrual::Start => {
+                if fraction > 0.0 {
+                    fixed
+                } else {
+                    0.0
+                }
+            }
+            Accrual::End => {
+                if fraction >= 1.0 {
+                    fixed
+                } else {
+                    0.0
+                }
+            }
+        };
         let task = &mut project.tasks[index];
         task.work = work;
         task.actual_work = actual;
         task.remaining_work = remaining;
-        task.cost = cost;
-        task.actual_cost = actual_cost;
-        task.remaining_cost = (cost - actual_cost).max(0.0);
+        task.cost = cost + fixed;
+        task.actual_cost = actual_cost + fixed_actual;
+        task.remaining_cost = (task.cost - task.actual_cost).max(0.0);
         if work > 0 {
-            task.percent_complete = (actual as f64 / work as f64 * 100.0).clamp(0.0, 100.0);
+            task.percent_complete = (fraction * 100.0).clamp(0.0, 100.0);
         }
     }
 }

@@ -123,9 +123,13 @@ pub fn read_mspdi(xml: &str) -> Result<Project, EngineError> {
                 );
                 match name.as_str() {
                     "WorkingTime" => {
-                        if let (Some(day), Some(range)) = (weekday.as_mut(), working.take()) {
+                        if let Some(range) = working.take() {
                             if range.end_minute > range.start_minute {
-                                day.ranges.push(range);
+                                if let Some(day) = weekday.as_mut() {
+                                    day.ranges.push(range);
+                                } else if let Some(item) = exception.as_mut() {
+                                    item.ranges.push(range);
+                                }
                             }
                         }
                     }
@@ -138,11 +142,33 @@ pub fn read_mspdi(xml: &str) -> Result<Project, EngineError> {
                     }
                     "Exception" => {
                         if let (Some(cal), Some(item)) = (calendar.as_mut(), exception.take()) {
-                            if let Some(date) = item.from.as_deref().and_then(parse_iso).map(|ms| {
-                                crate::timeutil::date_key(crate::timeutil::civil(ms).0)
-                            }) {
-                                let ranges = if item.working { item.ranges.clone() } else { Vec::new() };
-                                cal.exceptions.insert(date, ranges);
+                            // A working exception with no hours is not a day off.
+                            let start_ms = item.from.as_deref().and_then(parse_iso);
+                            if !(item.working && item.ranges.is_empty()) {
+                                if let Some(start_ms) = start_ms {
+                                    let end_ms =
+                                        item.to.as_deref().and_then(parse_iso).unwrap_or(start_ms);
+                                    let ranges = if item.working {
+                                        item.ranges.clone()
+                                    } else {
+                                        Vec::new()
+                                    };
+                                    let mut date = crate::timeutil::civil(start_ms).0;
+                                    let end = crate::timeutil::civil(end_ms).0;
+                                    for _ in 0..3660 {
+                                        cal.exceptions.insert(
+                                            crate::timeutil::date_key(date),
+                                            ranges.clone(),
+                                        );
+                                        if date >= end {
+                                            break;
+                                        }
+                                        date = match date.succ_opt() {
+                                            Some(next) => next,
+                                            None => break,
+                                        };
+                                    }
+                                }
                             }
                         }
                     }
@@ -326,6 +352,11 @@ fn apply_text(
         (Some("TimePeriod"), "FromDate") => {
             if let Some(item) = exception {
                 item.from = Some(value.to_string());
+            }
+        }
+        (Some("TimePeriod"), "ToDate") => {
+            if let Some(item) = exception {
+                item.to = Some(value.to_string());
             }
         }
         (Some("Task"), "UID") => {
@@ -604,6 +635,16 @@ fn write_calendar(xml: &mut String, calendar: &Calendar) {
         xml.push_str("</TimePeriod>\n");
         el(xml, "Name", "Ngoại lệ");
         el(xml, "DayWorking", if ranges.is_empty() { "0" } else { "1" });
+        if !ranges.is_empty() {
+            xml.push_str("<WorkingTimes>\n");
+            for range in ranges {
+                xml.push_str("<WorkingTime>\n");
+                el(xml, "FromTime", &format_clock(range.start_minute));
+                el(xml, "ToTime", &format_clock(range.end_minute));
+                xml.push_str("</WorkingTime>\n");
+            }
+            xml.push_str("</WorkingTimes>\n");
+        }
         xml.push_str("</Exception>\n");
     }
     xml.push_str("</Exceptions>\n</Calendar>\n");
@@ -872,6 +913,7 @@ struct WeekdayBuilder {
 struct ExceptionBuilder {
     working: bool,
     from: Option<String>,
+    to: Option<String>,
     ranges: Vec<TimeRange>,
 }
 
