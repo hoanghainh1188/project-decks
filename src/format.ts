@@ -43,6 +43,43 @@ export function parseInstant(text: string): number | null {
   return Number.isNaN(ms) ? null : ms;
 }
 
+function pad2(value: number): string {
+  return String(value).padStart(2, "0");
+}
+
+// Project wall-clock is Unix milliseconds shown with UTC fields, matching the engine.
+export function instantToDatetimeLocal(ms: number): string {
+  const date = new Date(ms);
+  return `${date.getUTCFullYear()}-${pad2(date.getUTCMonth() + 1)}-${pad2(date.getUTCDate())}T${pad2(date.getUTCHours())}:${pad2(date.getUTCMinutes())}`;
+}
+
+export function datetimeLocalToInstant(value: string): number | null {
+  const match = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+  if (!match) return null;
+  const ms = Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]), Number(match[4]), Number(match[5]));
+  return Number.isNaN(ms) ? null : ms;
+}
+
+export function minuteToTime(minute: number): string {
+  const clamped = Math.max(0, Math.min(24 * 60, Math.round(minute)));
+  return `${pad2(Math.floor(clamped / 60))}:${pad2(clamped % 60)}`;
+}
+
+export function timeToMinute(value: string): number | null {
+  const match = value.trim().match(/^(\d{2}):(\d{2})/);
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (hour > 23 || minute > 59) return null;
+  return hour * 60 + minute;
+}
+
+export function formatDateKeyDisplay(key: string): string {
+  const match = key.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return key;
+  return `${match[3]}/${match[2]}/${match[1]}`;
+}
+
 export function formatDateKey(text: string): string | null {
   const match = text.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (!match) return null;

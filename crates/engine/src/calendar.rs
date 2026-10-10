@@ -66,6 +66,35 @@ impl Calendar {
         self.exceptions.remove(&date_key(date));
     }
 
+    /// Write the same exception onto every civil day in the inclusive span.
+    /// Returns false when the span is longer than the scheduling horizon.
+    pub fn set_exception_span(
+        &mut self,
+        from: NaiveDate,
+        to: NaiveDate,
+        ranges: Vec<TimeRange>,
+    ) -> bool {
+        each_civil_day(from, to, |date| {
+            self.exceptions.insert(date_key(date), ranges.clone());
+        })
+    }
+
+    /// Drop exceptions on every civil day in the inclusive span.
+    pub fn clear_exception_span(&mut self, from: NaiveDate, to: NaiveDate) -> bool {
+        each_civil_day(from, to, |date| {
+            self.exceptions.remove(&date_key(date));
+        })
+    }
+
+    pub fn has_working_time(&self) -> bool {
+        let day_works = |ranges: &Vec<TimeRange>| {
+            ranges
+                .iter()
+                .any(|range| range.start_minute < range.end_minute)
+        };
+        self.week.iter().any(day_works) || self.exceptions.values().any(day_works)
+    }
+
     pub fn is_working_instant(&self, ms: i64) -> bool {
         let (date, minute) = civil(ms);
         self.ranges_on(date)
@@ -293,6 +322,21 @@ impl Calendar {
     pub fn exception_date(key: &str) -> Option<NaiveDate> {
         parse_date_key(key)
     }
+}
+
+fn each_civil_day(from: NaiveDate, to: NaiveDate, mut visit: impl FnMut(NaiveDate)) -> bool {
+    let (mut date, end) = if to < from { (to, from) } else { (from, to) };
+    for _ in 0..3660 {
+        visit(date);
+        if date >= end {
+            return true;
+        }
+        date = match date.succ_opt() {
+            Some(next) => next,
+            None => return false,
+        };
+    }
+    false
 }
 
 #[cfg(test)]

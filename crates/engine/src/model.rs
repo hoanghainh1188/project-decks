@@ -331,6 +331,10 @@ impl Project {
         self.calendars.iter().find(|c| c.id == id)
     }
 
+    pub fn calendar_mut_by_id(&mut self, id: u32) -> Option<&mut Calendar> {
+        self.calendars.iter_mut().find(|calendar| calendar.id == id)
+    }
+
     pub fn task_calendar(&self, task: &Task) -> &Calendar {
         task.calendar_id
             .and_then(|id| self.calendar_by_id(id))

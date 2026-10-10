@@ -15,11 +15,13 @@ import {
   saveProjectAs,
   undo,
 } from "./api";
+import { CalendarEditor } from "./components/CalendarEditor";
+import { DateTimeField } from "./components/DateTimeField";
 import { GanttChart } from "./components/GanttChart";
 import { ResourceSheet } from "./components/ResourceSheet";
 import { TaskSheet } from "./components/TaskSheet";
 import { TaskUsage } from "./components/TaskUsage";
-import { formatDateKey, formatDuration, formatInstant, formatMoney, parseDuration, parseInstant } from "./format";
+import { formatDuration, formatInstant, formatMoney, parseDuration } from "./format";
 import type {
   Accrual,
   Command,
@@ -53,12 +55,13 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [infoOpen, setInfoOpen] = useState(false);
   const [baselineOpen, setBaselineOpen] = useState(false);
+  const [calendarEditId, setCalendarEditId] = useState<number | null>(null);
   const sheetRef = useRef<HTMLDivElement>(null);
   const ganttRef = useRef<HTMLDivElement>(null);
   const syncing = useRef(false);
   const lastAction = useRef(0);
 
-  const run = useCallback(async (work: () => Promise<Snapshot | void>) => {
+  const run = useCallback(async (work: () => Promise<Snapshot | void>): Promise<Snapshot | void> => {
     if (!inTauri()) {
       setError("Mở ProjectDesk bằng pnpm tauri dev để dùng lịch và lưu tệp.");
       return;
@@ -67,12 +70,28 @@ export default function App() {
       const next = await work();
       if (next) setSnap(next);
       setError(null);
+      return next;
     } catch (err) {
       setError(errorMessage(err));
     }
   }, []);
 
   const send = useCallback((command: Command) => run(() => applyCommand(command)), [run]);
+
+  const createCalendar = useCallback(
+    async (name: string, assign: (id: number) => Command | null, openEditor: boolean) => {
+      const before = snap?.project.calendars.map((calendar) => calendar.id) ?? [];
+      const result = await send({ type: "create_calendar", name });
+      if (!result) return null;
+      const created = result.project.calendars.find((calendar) => !before.includes(calendar.id));
+      if (!created) return null;
+      const command = assign(created.id);
+      if (command) await send(command);
+      if (openEditor) setCalendarEditId(created.id);
+      return created.id;
+    },
+    [send, snap],
+  );
 
   const menuRef = useRef<(id: string) => void>(() => {});
 
@@ -179,6 +198,7 @@ export default function App() {
     [project],
   );
   const finish = project?.tasks.reduce((max, item) => Math.max(max, item.finish), 0) ?? 0;
+  const editingCalendar = project?.calendars.find((calendar) => calendar.id === calendarEditId) ?? null;
 
   function syncScroll(source: "sheet" | "gantt") {
     if (syncing.current) return;
@@ -200,6 +220,7 @@ export default function App() {
         <button type="button" disabled={!task} onClick={() => task && send({ type: "outdent", uid: task.uid })}>Thụt ra</button>
         <button type="button" disabled={!task} onClick={() => task && send({ type: "delete_task", uid: task.uid })}>Xóa</button>
         <button type="button" disabled={!task} onClick={() => linkAbove(project, task, send)}>Nối FS</button>
+        <button type="button" onClick={() => setInfoOpen(true)}>Lịch</button>
         <span className="spacer" />
         <div className="segmented">
           <button type="button" className={view === "gantt" ? "on" : ""} onClick={() => setView("gantt")}>Gantt</button>
@@ -262,11 +283,27 @@ export default function App() {
             onAdd={(kind) => send({ type: "add_resource", name: "", kind })}
             onChange={(resource) => send(resourceCommand(resource))}
             onDelete={(uid) => send({ type: "delete_resource", uid })}
+            onEditCalendar={setCalendarEditId}
+            onCreateCalendar={(resource) => {
+              const name = resource.name.trim() ? `Lịch ${resource.name.trim()}` : "Lịch nguồn lực";
+              void createCalendar(name, (id) => resourceCommand({ ...resource, calendar_id: id }), true);
+            }}
           />
         )}
         {project && view === "usage" && <TaskUsage project={project} />}
       </main>
-      {project && task && <Inspector project={project} task={task} send={send} />}
+      {project && task && (
+        <Inspector
+          project={project}
+          task={task}
+          send={send}
+          onEditCalendar={setCalendarEditId}
+          onCreateCalendar={() => {
+            const name = task.name.trim() ? `Lịch ${task.name.trim()}` : "Lịch công việc";
+            void createCalendar(name, (id) => ({ type: "set_task_calendar", uid: task.uid, calendar_id: id }), true);
+          }}
+        />
+      )}
       <footer className="status">
         <span>{snap?.dirty ? "Chưa lưu" : "Đã lưu"}</span>
         <span>{snap?.path ?? "Chưa có tệp"}</span>
@@ -280,7 +317,17 @@ export default function App() {
           project={project}
           onClose={() => setInfoOpen(false)}
           send={send}
+          onCreateCalendar={() => createCalendar("Lịch mới", () => null, false)}
         />
+      )}
+      {editingCalendar && (
+        <div className="modal">
+          <div className="dialog wide">
+            <h2>Sửa lịch</h2>
+            <CalendarEditor calendar={editingCalendar} send={send} />
+            <button type="button" onClick={() => setCalendarEditId(null)}>Đóng</button>
+          </div>
+        </div>
       )}
       {baselineOpen && (
         <BaselineDialog
@@ -291,20 +338,6 @@ export default function App() {
       )}
     </div>
   );
-}
-
-function commitOptionalDate(
-  text: string,
-  current: number | null,
-  send: (value: number | null) => void,
-) {
-  const trimmed = text.trim();
-  if (!trimmed) {
-    if (current != null) send(null);
-    return;
-  }
-  const parsed = parseInstant(trimmed);
-  if (parsed !== null && parsed !== current) send(parsed);
 }
 
 function linkAbove(
@@ -342,10 +375,14 @@ function Inspector({
   project,
   task,
   send,
+  onEditCalendar,
+  onCreateCalendar,
 }: {
   project: Project;
   task: Task;
   send: (command: Command) => void;
+  onEditCalendar: (calendarId: number) => void;
+  onCreateCalendar: () => void;
 }) {
   const needsDate = task.constraint_type !== "asap" && task.constraint_type !== "alap";
   const overtime = project.assignments
@@ -355,30 +392,22 @@ function Inspector({
     <section className="inspector">
       <div>
         <label>Bắt đầu thực</label>
-        <input
+        <DateTimeField
+          optional
           disabled={task.summary}
-          placeholder="dd/mm/yyyy hh:mm"
-          defaultValue={task.actual_start ? formatInstant(task.actual_start) : ""}
-          key={`as-${task.uid}-${task.actual_start ?? "none"}`}
-          onBlur={(event) =>
-            commitOptionalDate(event.target.value, task.actual_start, (start) =>
-              send({ type: "set_actual_start", uid: task.uid, start }),
-            )
-          }
+          ariaLabel="Bắt đầu thực"
+          value={task.actual_start}
+          onCommit={(start) => send({ type: "set_actual_start", uid: task.uid, start })}
         />
       </div>
       <div>
         <label>Kết thúc thực</label>
-        <input
+        <DateTimeField
+          optional
           disabled={task.summary}
-          placeholder="dd/mm/yyyy hh:mm"
-          defaultValue={task.actual_finish ? formatInstant(task.actual_finish) : ""}
-          key={`af-${task.uid}-${task.actual_finish ?? "none"}`}
-          onBlur={(event) =>
-            commitOptionalDate(event.target.value, task.actual_finish, (finish) =>
-              send({ type: "set_actual_finish", uid: task.uid, finish }),
-            )
-          }
+          ariaLabel="Kết thúc thực"
+          value={task.actual_finish}
+          onCommit={(finish) => send({ type: "set_actual_finish", uid: task.uid, finish })}
         />
       </div>
       <div>
@@ -426,6 +455,18 @@ function Inspector({
             <option key={calendar.id} value={calendar.id}>{calendar.name}</option>
           ))}
         </select>
+        <div className="row">
+          <button
+            type="button"
+            disabled={task.summary || task.calendar_id == null}
+            onClick={() => task.calendar_id != null && onEditCalendar(task.calendar_id)}
+          >
+            Sửa lịch
+          </button>
+          <button type="button" disabled={task.summary} onClick={onCreateCalendar}>
+            Tạo lịch riêng
+          </button>
+        </div>
       </div>
       <div>
         <label>Ràng buộc</label>
@@ -448,18 +489,18 @@ function Inspector({
       {needsDate && (
         <div>
           <label>Ngày ràng buộc</label>
-          <input
-            defaultValue={task.constraint_date ? formatInstant(task.constraint_date) : ""}
-            key={`${task.uid}-${task.constraint_date ?? 0}`}
-            onBlur={(event) => {
-              const date = parseInstant(event.target.value);
+          <DateTimeField
+            optional
+            ariaLabel="Ngày ràng buộc"
+            value={task.constraint_date}
+            onCommit={(date) =>
               send({
                 type: "set_constraint",
                 uid: task.uid,
                 constraint_type: task.constraint_type,
                 date,
-              });
-            }}
+              })
+            }
           />
         </div>
       )}
@@ -685,23 +726,21 @@ function ProjectDialog({
   project,
   onClose,
   send,
+  onCreateCalendar,
 }: {
   project: Project;
   onClose: () => void;
-  send: (command: Command) => void;
+  send: (command: Command) => Promise<Snapshot | void>;
+  onCreateCalendar: () => Promise<number | null>;
 }) {
-  const holidays = Object.entries(project.calendars.find((item) => item.id === project.calendar_id)?.exceptions ?? {})
-    .filter(([, ranges]) => ranges.length === 0)
-    .map(([date]) => date);
+  const [editingId, setEditingId] = useState(project.calendar_id);
+  const calendar =
+    project.calendars.find((item) => item.id === editingId) ??
+    project.calendars.find((item) => item.id === project.calendar_id) ??
+    project.calendars[0];
   return (
     <div className="modal">
-      <form
-        className="dialog"
-        onSubmit={(event) => {
-          event.preventDefault();
-          onClose();
-        }}
-      >
+      <div className="dialog wide">
         <h2>Thông tin dự án</h2>
         <label>Tên</label>
         <input
@@ -709,41 +748,48 @@ function ProjectDialog({
           onBlur={(event) => send({ type: "rename_project", name: event.target.value })}
         />
         <label>Ngày bắt đầu</label>
-        <input
-          defaultValue={formatInstant(project.start)}
-          onBlur={(event) => {
-            const start = parseInstant(event.target.value);
-            if (start !== null) send({ type: "set_project_start", start });
+        <DateTimeField
+          ariaLabel="Ngày bắt đầu dự án"
+          value={project.start}
+          onCommit={(start) => {
+            if (start != null) void send({ type: "set_project_start", start });
           }}
         />
         <label>Ngày trạng thái</label>
-        <input
-          defaultValue={project.status_date ? formatInstant(project.status_date) : ""}
-          onBlur={(event) => send({ type: "set_status_date", date: parseInstant(event.target.value) })}
+        <DateTimeField
+          optional
+          ariaLabel="Ngày trạng thái"
+          value={project.status_date}
+          onCommit={(date) => void send({ type: "set_status_date", date })}
         />
-        <label>Ngày nghỉ (dd/mm/yyyy)</label>
-        <input
-          placeholder="02/09/2026"
-          onKeyDown={(event) => {
-            if (event.key !== "Enter") return;
-            event.preventDefault();
-            const date = formatDateKey(event.currentTarget.value);
-            if (date) {
-              send({ type: "add_holiday", date });
-              event.currentTarget.value = "";
-            }
-          }}
-        />
-        <ul>
-          {holidays.map((date) => (
-            <li key={date}>
-              {date}
-              <button type="button" onClick={() => send({ type: "remove_holiday", date })}>Bỏ</button>
-            </li>
-          ))}
-        </ul>
-        <button type="submit">Đóng</button>
-      </form>
+        {calendar && (
+          <>
+            <label>Lịch đang sửa</label>
+            <div className="row">
+              <select value={calendar.id} onChange={(event) => setEditingId(Number(event.target.value))}>
+                {project.calendars.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                    {item.id === project.calendar_id ? " (dự án)" : ""}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => {
+                  void onCreateCalendar().then((id) => {
+                    if (id != null) setEditingId(id);
+                  });
+                }}
+              >
+                Tạo lịch
+              </button>
+            </div>
+            <CalendarEditor calendar={calendar} send={send} />
+          </>
+        )}
+        <button type="button" onClick={onClose}>Đóng</button>
+      </div>
     </div>
   );
 }

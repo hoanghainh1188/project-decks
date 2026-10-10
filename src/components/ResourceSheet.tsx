@@ -7,9 +7,20 @@ interface Props {
   onAdd: (kind: ResourceKind) => void;
   onChange: (resource: Resource) => void;
   onDelete: (uid: number) => void;
+  onEditCalendar: (calendarId: number) => void;
+  onCreateCalendar: (resource: Resource) => void;
 }
 
-export function ResourceSheet({ resources, calendars, overallocations, onAdd, onChange, onDelete }: Props) {
+export function ResourceSheet({
+  resources,
+  calendars,
+  overallocations,
+  onAdd,
+  onChange,
+  onDelete,
+  onEditCalendar,
+  onCreateCalendar,
+}: Props) {
   const overloaded = new Set(overallocations.map((item) => item.resource_uid));
   return (
     <div className="resource-sheet">
@@ -60,20 +71,31 @@ export function ResourceSheet({ resources, calendars, overallocations, onAdd, on
                 />
               </td>
               <td>
-                <select
-                  value={resource.calendar_id ?? ""}
-                  onChange={(event) =>
-                    onChange({
-                      ...resource,
-                      calendar_id: event.target.value ? Number(event.target.value) : null,
-                    })
-                  }
-                >
-                  <option value="">Lịch dự án</option>
-                  {calendars.map((calendar) => (
-                    <option key={calendar.id} value={calendar.id}>{calendar.name}</option>
-                  ))}
-                </select>
+                <div className="calendar-cell">
+                  <select
+                    aria-label={`Lịch ${resource.name}`}
+                    value={resource.calendar_id ?? ""}
+                    onChange={(event) =>
+                      onChange({
+                        ...resource,
+                        calendar_id: event.target.value ? Number(event.target.value) : null,
+                      })
+                    }
+                  >
+                    <option value="">Lịch dự án</option>
+                    {calendars.map((calendar) => (
+                      <option key={calendar.id} value={calendar.id}>{calendar.name}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    disabled={resource.calendar_id == null}
+                    onClick={() => resource.calendar_id != null && onEditCalendar(resource.calendar_id)}
+                  >
+                    Sửa
+                  </button>
+                  <button type="button" onClick={() => onCreateCalendar(resource)}>Tạo lịch</button>
+                </div>
               </td>
               <td>
                 <input

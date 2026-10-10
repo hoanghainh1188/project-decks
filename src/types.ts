@@ -174,6 +174,17 @@ export type Command =
   | { type: "set_task_calendar"; uid: number; calendar_id: number | null }
   | { type: "add_holiday"; date: string }
   | { type: "remove_holiday"; date: string }
+  | { type: "create_calendar"; name: string }
+  | { type: "rename_calendar"; calendar_id: number; name: string }
+  | { type: "set_calendar_week"; calendar_id: number; week: TimeRange[][] }
+  | {
+      type: "set_calendar_exceptions";
+      calendar_id: number;
+      from: string;
+      to: string;
+      ranges: TimeRange[];
+    }
+  | { type: "clear_calendar_exceptions"; calendar_id: number; from: string; to: string }
   | { type: "move_task"; uid: number; start: number }
   | { type: "resize_task"; uid: number; finish: number }
   | { type: "add_resource"; name: string; kind: ResourceKind }

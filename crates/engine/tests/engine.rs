@@ -752,6 +752,217 @@ fn mspdi_roundtrip_keeps_exception_hours_and_ranges() {
     }
 }
 
+fn standard_week() -> Vec<Vec<projectdesk_engine::calendar::TimeRange>> {
+    use projectdesk_engine::calendar::TimeRange;
+    let work = vec![
+        TimeRange::new(8 * 60, 12 * 60),
+        TimeRange::new(13 * 60, 17 * 60),
+    ];
+    let mut week = vec![Vec::new(); 7];
+    for day in week.iter_mut().take(5) {
+        *day = work.clone();
+    }
+    week
+}
+
+#[test]
+fn changed_working_week_skips_morning_before_0800() {
+    use projectdesk_engine::calendar::TimeRange;
+    let mut doc = Document::from_project(Project::new("Tuần", monday()));
+    let calendar_id = doc.project.calendar_id;
+    let mut early = standard_week();
+    early[0] = vec![
+        TimeRange::new(6 * 60, 12 * 60),
+        TimeRange::new(13 * 60, 17 * 60),
+    ];
+    doc.apply(Command::SetCalendarWeek {
+        calendar_id,
+        week: early,
+    })
+    .unwrap();
+    doc.apply(Command::SetProjectStart {
+        start: timestamp(2026, 1, 5, 6, 30),
+    })
+    .unwrap();
+    assert_eq!(doc.project.start, timestamp(2026, 1, 5, 6, 30));
+
+    doc.apply(Command::SetCalendarWeek {
+        calendar_id,
+        week: standard_week(),
+    })
+    .unwrap();
+    assert!(!doc
+        .project
+        .calendar()
+        .is_working_instant(timestamp(2026, 1, 5, 7, 30)));
+    assert_eq!(
+        doc.project
+            .calendar()
+            .next_work_start(timestamp(2026, 1, 5, 7, 30)),
+        timestamp(2026, 1, 5, 8, 0)
+    );
+    assert_eq!(doc.project.start, timestamp(2026, 1, 5, 8, 0));
+    assert_eq!(doc.project.tasks[0].start, timestamp(2026, 1, 5, 8, 0));
+
+    doc.undo().unwrap();
+    assert!(doc
+        .project
+        .calendar()
+        .is_working_instant(timestamp(2026, 1, 5, 7, 30)));
+    doc.redo().unwrap();
+    assert_eq!(doc.project.start, timestamp(2026, 1, 5, 8, 0));
+}
+
+#[test]
+fn full_day_holiday_skips_that_day() {
+    let mut doc = Document::from_project(Project::new("Nghỉ", monday()));
+    let calendar_id = doc.project.calendar_id;
+    let first = doc.project.tasks[0].uid;
+    doc.apply(Command::AddTask {
+        name: "Sau".into(),
+        after_uid: Some(first),
+    })
+    .unwrap();
+    let second = doc.project.tasks[1].uid;
+    doc.apply(Command::AddDependency {
+        predecessor_uid: first,
+        successor_uid: second,
+        kind: DepKind::Fs,
+        lag: 0,
+    })
+    .unwrap();
+    assert_eq!(doc.project.tasks[1].start, at(1, 8, 0));
+
+    doc.apply(Command::SetCalendarExceptions {
+        calendar_id,
+        from: "2026-01-06".into(),
+        to: "2026-01-06".into(),
+        ranges: Vec::new(),
+    })
+    .unwrap();
+    assert!(doc
+        .project
+        .calendar()
+        .exceptions
+        .get("2026-01-06")
+        .is_some_and(|ranges| ranges.is_empty()));
+    assert_eq!(doc.project.tasks[0].finish, at(0, 17, 0));
+    assert_eq!(doc.project.tasks[1].start, at(2, 8, 0));
+
+    doc.undo().unwrap();
+    assert_eq!(doc.project.tasks[1].start, at(1, 8, 0));
+}
+
+#[test]
+fn ranged_exception_applies_to_each_day() {
+    let mut doc = Document::from_project(Project::new("Khoảng nghỉ", monday()));
+    let calendar_id = doc.project.calendar_id;
+    let first = doc.project.tasks[0].uid;
+    doc.apply(Command::AddTask {
+        name: "Sau".into(),
+        after_uid: Some(first),
+    })
+    .unwrap();
+    let second = doc.project.tasks[1].uid;
+    doc.apply(Command::AddDependency {
+        predecessor_uid: first,
+        successor_uid: second,
+        kind: DepKind::Fs,
+        lag: 0,
+    })
+    .unwrap();
+    doc.apply(Command::SetCalendarExceptions {
+        calendar_id,
+        from: "2026-01-06".into(),
+        to: "2026-01-08".into(),
+        ranges: Vec::new(),
+    })
+    .unwrap();
+    for day in ["2026-01-06", "2026-01-07", "2026-01-08"] {
+        assert!(
+            doc.project
+                .calendar()
+                .exceptions
+                .get(day)
+                .is_some_and(|ranges| ranges.is_empty()),
+            "{day}"
+        );
+    }
+    assert_eq!(doc.project.tasks[0].finish, at(0, 17, 0));
+    assert_eq!(doc.project.tasks[1].start, at(4, 8, 0));
+
+    doc.apply(Command::ClearCalendarExceptions {
+        calendar_id,
+        from: "2026-01-06".into(),
+        to: "2026-01-08".into(),
+    })
+    .unwrap();
+    assert!(doc.project.calendar().exceptions.is_empty());
+    assert_eq!(doc.project.tasks[1].start, at(1, 8, 0));
+
+    doc.apply(Command::SetCalendarExceptions {
+        calendar_id,
+        from: "2026-01-06".into(),
+        to: "2026-01-08".into(),
+        ranges: vec![projectdesk_engine::calendar::TimeRange::new(9 * 60, 12 * 60)],
+    })
+    .unwrap();
+    for day in ["2026-01-06", "2026-01-07", "2026-01-08"] {
+        let ranges = doc
+            .project
+            .calendar()
+            .exceptions
+            .get(day)
+            .expect(day);
+        assert_eq!(ranges.len(), 1);
+        assert_eq!(ranges[0].start_minute, 9 * 60);
+        assert_eq!(ranges[0].end_minute, 12 * 60);
+    }
+    assert_eq!(doc.project.tasks[1].start, at(1, 9, 0));
+}
+
+#[test]
+fn task_calendar_overrides_project_calendar() {
+    let mut doc = Document::from_project(Project::new("Lịch riêng", monday()));
+    let task = doc.project.tasks[0].uid;
+    doc.apply(Command::CreateCalendar {
+        name: "Nghỉ thứ Hai".into(),
+    })
+    .unwrap();
+    let calendar_id = doc.project.calendars.last().unwrap().id;
+    assert_ne!(calendar_id, doc.project.calendar_id);
+    doc.apply(Command::SetCalendarExceptions {
+        calendar_id,
+        from: "2026-01-05".into(),
+        to: "2026-01-05".into(),
+        ranges: Vec::new(),
+    })
+    .unwrap();
+    doc.apply(Command::SetTaskCalendar {
+        uid: task,
+        calendar_id: Some(calendar_id),
+    })
+    .unwrap();
+    assert!(doc.project.calendar().exceptions.get("2026-01-05").is_none());
+    assert_eq!(doc.project.tasks[0].start, at(1, 8, 0));
+    assert_eq!(doc.project.tasks[0].finish, at(1, 17, 0));
+
+    doc.apply(Command::AddTask {
+        name: "Theo dự án".into(),
+        after_uid: Some(task),
+    })
+    .unwrap();
+    assert_eq!(doc.project.tasks[0].start, at(1, 8, 0));
+    assert_eq!(doc.project.tasks[1].start, at(0, 8, 0));
+
+    doc.undo().unwrap();
+    doc.undo().unwrap();
+    assert_eq!(doc.project.tasks[0].calendar_id, None);
+    assert_eq!(doc.project.tasks[0].start, at(0, 8, 0));
+    doc.redo().unwrap();
+    assert_eq!(doc.project.tasks[0].start, at(1, 8, 0));
+}
+
 #[test]
 fn predecessor_text_parses_lag_units() {
     let links = parse_predecessor_text("1FS+1d, 2SS-4h, 3").unwrap();

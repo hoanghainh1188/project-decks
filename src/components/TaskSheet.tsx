@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 
-import { formatDuration, formatInstant, parseDuration, parseInstant } from "../format";
+import { DateTimeField } from "./DateTimeField";
+import { formatDuration, formatInstant, parseDuration } from "../format";
 import type { Assignment, Calendar, Task } from "../types";
 
 const ROW = 28;
@@ -34,9 +35,9 @@ export function TaskSheet(props: Props) {
     ? ["ID", "WBS", "Tên", "Thời lượng", "%", "Còn lại", "Bắt đầu", "Kết thúc", "Bắt đầu thực", "Kết thúc thực", "Việc còn lại", "Làm thêm", "Lịch", "Tiền nhiệm", "Trễ"]
     : ["ID", "WBS", "Tên", "Thời lượng", "Bắt đầu", "Kết thúc", "Tiền nhiệm", "Trễ"];
   const template = props.tracking
-    ? "42px 72px minmax(140px, 1.4fr) 92px 52px 84px 138px 138px 130px 130px 96px 84px 120px 110px 72px"
-    : "42px 72px minmax(160px, 1.6fr) 100px 146px 146px 120px 80px";
-  const minWidth = props.tracking ? 1612 : undefined;
+    ? "42px 72px minmax(140px, 1.4fr) 92px 52px 84px 176px 146px 210px 210px 96px 84px 120px 110px 72px"
+    : "42px 72px minmax(160px, 1.6fr) 100px 176px 146px 120px 80px";
+  const minWidth = props.tracking ? 1860 : undefined;
 
   function measure() {
     const body = props.bodyRef.current;
@@ -233,31 +234,7 @@ function OptionalDateCell({
   disabled?: boolean;
   onCommit: (ms: number | null) => void;
 }) {
-  const shown = value == null ? "" : formatInstant(value);
-  const [text, setText] = useState(shown);
-  const [editing, setEditing] = useState(false);
-  return (
-    <input
-      disabled={disabled}
-      placeholder="dd/mm/yyyy hh:mm"
-      value={editing ? text : shown}
-      onChange={(event) => setText(event.target.value)}
-      onFocus={() => {
-        setEditing(true);
-        setText(shown);
-      }}
-      onBlur={() => {
-        setEditing(false);
-        const trimmed = text.trim();
-        if (!trimmed) {
-          if (value != null) onCommit(null);
-          return;
-        }
-        const parsed = parseInstant(trimmed);
-        if (parsed !== null && parsed !== value) onCommit(parsed);
-      }}
-    />
-  );
+  return <DateTimeField optional value={value} disabled={disabled} ariaLabel="Ngày thực" onCommit={onCommit} />;
 }
 
 function DateCell({
@@ -269,21 +246,13 @@ function DateCell({
   disabled?: boolean;
   onCommit: (ms: number) => void;
 }) {
-  const [text, setText] = useState(formatInstant(value));
-  const [editing, setEditing] = useState(false);
   return (
-    <input
+    <DateTimeField
+      value={value}
       disabled={disabled}
-      value={editing ? text : formatInstant(value)}
-      onChange={(event) => setText(event.target.value)}
-      onFocus={() => {
-        setEditing(true);
-        setText(formatInstant(value));
-      }}
-      onBlur={() => {
-        setEditing(false);
-        const parsed = parseInstant(text);
-        if (parsed !== null && parsed !== value) onCommit(parsed);
+      ariaLabel="Bắt đầu"
+      onCommit={(ms) => {
+        if (ms != null) onCommit(ms);
       }}
     />
   );

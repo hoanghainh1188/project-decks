@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use crate::calendar::{Calendar, TimeRange};
 use crate::error::EngineError;
 use crate::level::level_project;
 use crate::model::{
@@ -88,6 +89,28 @@ pub enum Command {
     },
     RemoveHoliday {
         date: String,
+    },
+    CreateCalendar {
+        name: String,
+    },
+    RenameCalendar {
+        calendar_id: u32,
+        name: String,
+    },
+    SetCalendarWeek {
+        calendar_id: u32,
+        week: Vec<Vec<TimeRange>>,
+    },
+    SetCalendarExceptions {
+        calendar_id: u32,
+        from: String,
+        to: String,
+        ranges: Vec<TimeRange>,
+    },
+    ClearCalendarExceptions {
+        calendar_id: u32,
+        from: String,
+        to: String,
     },
     MoveTask {
         uid: u32,
@@ -313,6 +336,84 @@ pub fn apply_one(project: &mut Project, command: &Command) -> Result<(), EngineE
             let naive = parse_date_key(date).ok_or_else(|| EngineError::Store(date.clone()))?;
             project.calendar_mut().clear_exception(naive);
         }
+        Command::CreateCalendar { name } => {
+            let uid = project.alloc_calendar_uid();
+            let mut calendar = Calendar::standard();
+            calendar.id = uid;
+            let label = name.trim();
+            calendar.name = if label.is_empty() {
+                format!("Lịch {uid}")
+            } else {
+                label.to_string()
+            };
+            project.calendars.push(calendar);
+        }
+        Command::RenameCalendar { calendar_id, name } => {
+            let label = name.trim();
+            if label.is_empty() {
+                return Err(EngineError::Store("Tên lịch trống".into()));
+            }
+            project
+                .calendar_mut_by_id(*calendar_id)
+                .ok_or_else(|| EngineError::Store("Không có lịch này".into()))?
+                .name = label.to_string();
+        }
+        Command::SetCalendarWeek { calendar_id, week } => {
+            if week.len() != 7 {
+                return Err(EngineError::Store("Tuần làm việc phải có 7 ngày".into()));
+            }
+            let mut days: [Vec<TimeRange>; 7] = Default::default();
+            for (index, day) in week.iter().enumerate() {
+                days[index] = normalize_ranges(day)?;
+            }
+            let calendar = project
+                .calendar_mut_by_id(*calendar_id)
+                .ok_or_else(|| EngineError::Store("Không có lịch này".into()))?;
+            calendar.week = days;
+            if !calendar.has_working_time() {
+                return Err(EngineError::NoWorkingTime);
+            }
+        }
+        Command::SetCalendarExceptions {
+            calendar_id,
+            from,
+            to,
+            ranges,
+        } => {
+            let from_date = parse_date_key(from)
+                .ok_or_else(|| EngineError::Store("Ngày không hợp lệ".into()))?;
+            let to_date =
+                parse_date_key(to).ok_or_else(|| EngineError::Store("Ngày không hợp lệ".into()))?;
+            let ranges = normalize_ranges(ranges)?;
+            let calendar = project
+                .calendar_mut_by_id(*calendar_id)
+                .ok_or_else(|| EngineError::Store("Không có lịch này".into()))?;
+            if !calendar.set_exception_span(from_date, to_date, ranges) {
+                return Err(EngineError::Store("Khoảng ngày quá dài".into()));
+            }
+            if !calendar.has_working_time() {
+                return Err(EngineError::NoWorkingTime);
+            }
+        }
+        Command::ClearCalendarExceptions {
+            calendar_id,
+            from,
+            to,
+        } => {
+            let from_date = parse_date_key(from)
+                .ok_or_else(|| EngineError::Store("Ngày không hợp lệ".into()))?;
+            let to_date =
+                parse_date_key(to).ok_or_else(|| EngineError::Store("Ngày không hợp lệ".into()))?;
+            let calendar = project
+                .calendar_mut_by_id(*calendar_id)
+                .ok_or_else(|| EngineError::Store("Không có lịch này".into()))?;
+            if !calendar.clear_exception_span(from_date, to_date) {
+                return Err(EngineError::Store("Khoảng ngày quá dài".into()));
+            }
+            if !calendar.has_working_time() {
+                return Err(EngineError::NoWorkingTime);
+            }
+        }
         Command::MoveTask { uid, start } => move_task(project, *uid, *start)?,
         Command::ResizeTask { uid, finish } => resize_task(project, *uid, *finish)?,
         Command::AddResource { name, kind } => {
@@ -334,6 +435,11 @@ pub fn apply_one(project: &mut Project, command: &Command) -> Result<(), EngineE
             overtime_rate,
             cost_per_use,
         } => {
+            if let Some(id) = calendar_id {
+                if project.calendar_by_id(*id).is_none() {
+                    return Err(EngineError::Store("Không có lịch này".into()));
+                }
+            }
             let resource = project
                 .resources
                 .iter_mut()
@@ -877,4 +983,20 @@ fn set_predecessors(project: &mut Project, uid: u32, text: &str) -> Result<(), E
         });
     }
     Ok(())
+}
+
+fn normalize_ranges(ranges: &[TimeRange]) -> Result<Vec<TimeRange>, EngineError> {
+    let mut ordered = ranges.to_vec();
+    ordered.sort_by_key(|range| (range.start_minute, range.end_minute));
+    let mut last_end = 0u16;
+    for range in &ordered {
+        if range.end_minute > 24 * 60 || range.start_minute >= range.end_minute {
+            return Err(EngineError::Store("Khoảng giờ không hợp lệ".into()));
+        }
+        if range.start_minute < last_end {
+            return Err(EngineError::Store("Các khoảng giờ bị chồng nhau".into()));
+        }
+        last_end = range.end_minute;
+    }
+    Ok(ordered)
 }

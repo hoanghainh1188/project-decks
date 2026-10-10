@@ -129,6 +129,30 @@ tr.child td:first-child { padding-left: 22px; color: #3a3a3c; }
   display: grid;
   gap: 6px;
 }
+.dialog.wide {
+  width: min(720px, calc(100% - 32px));
+  max-height: min(860px, calc(100% - 32px));
+  overflow: auto;
+}
+.datetime-field { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.datetime-field input { flex: 1; min-width: 0; }
+.sheet .datetime-field button { padding: 0 4px; }
+.sheet input[type="datetime-local"] { height: 22px; padding: 0 2px; }
+.calendar-cell { display: flex; gap: 4px; align-items: center; }
+.calendar-cell select { flex: 1; min-width: 88px; }
+.calendar-editor { display: grid; gap: 8px; }
+.calendar-editor h3 { margin: 8px 0 0; font-size: 13px; }
+.calendar-editor .check,
+.calendar-editor .range-row label,
+.calendar-editor .exception-form label {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  margin: 0;
+}
+.week-day { display: grid; gap: 4px; padding-top: 6px; border-top: 1px solid #ececf0; }
+.range-rows, .exception-form { display: grid; gap: 6px; }
+.range-row, .exception-form, .calendar-editor .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .dialog h2 { margin: 0 0 6px; font-size: 16px; }
 .dialog ul { margin: 0; padding-left: 18px; }
 .dialog li { display: flex; justify-content: space-between; gap: 8px; margin: 4px 0; }
