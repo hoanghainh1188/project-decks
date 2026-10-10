@@ -251,4 +251,52 @@ export type Command =
   | { type: "update_recurring_task"; uid: number; spec: RecurrenceSpec };
 
 export type ViewId = "gantt" | "tracking" | "resources" | "usage";
+
+// EVM values come from the engine; null means undefined because a denominator was not above zero.
+export interface EvmMetrics {
+  bac: number;
+  pv: number;
+  ev: number;
+  ac: number;
+  sv: number;
+  cv: number;
+  spi: number | null;
+  cpi: number | null;
+  eac: number | null;
+  etc: number | null;
+  vac: number | null;
+}
+
+export interface EvmReport {
+  status_date: number | null;
+  has_baseline: boolean;
+  metrics: EvmMetrics | null;
+}
+
+export interface BurndownPoint {
+  date: number;
+  remaining_work: number;
+}
+
+export interface BurndownSnapshot {
+  date: number;
+  remaining_work: number;
+  ev: number;
+  ac: number;
+}
+
+export interface BurndownReport {
+  status_date: number | null;
+  baseline_start: number | null;
+  baseline_finish: number | null;
+  baseline_work: number;
+  ideal: BurndownPoint[];
+  actual: BurndownSnapshot[];
+  current_remaining_work: number;
+}
+
+export interface ProjectMetrics {
+  evm: EvmReport;
+  burndown: BurndownReport;
+}
 export type Scale = "day" | "week" | "month";
