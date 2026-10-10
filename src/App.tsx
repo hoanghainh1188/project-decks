@@ -513,6 +513,10 @@ function Inspector({
         Lên lịch tay
       </label>
       <div>
+        <label>WBS</label>
+        <input readOnly value={task.wbs} />
+      </div>
+      <div>
         <label>Ưu tiên</label>
         <input
           defaultValue={task.priority}

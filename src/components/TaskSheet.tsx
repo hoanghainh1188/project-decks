@@ -31,12 +31,12 @@ export function TaskSheet(props: Props) {
   const headRef = useRef<HTMLDivElement>(null);
   const [windowRange, setWindowRange] = useState({ start: 0, end: 40 });
   const columns = props.tracking
-    ? ["ID", "Tên", "Thời lượng", "%", "Còn lại", "Bắt đầu", "Kết thúc", "Bắt đầu thực", "Kết thúc thực", "Việc còn lại", "Làm thêm", "Lịch", "Tiền nhiệm", "Trễ"]
-    : ["ID", "Tên", "Thời lượng", "Bắt đầu", "Kết thúc", "Tiền nhiệm", "Trễ"];
+    ? ["ID", "WBS", "Tên", "Thời lượng", "%", "Còn lại", "Bắt đầu", "Kết thúc", "Bắt đầu thực", "Kết thúc thực", "Việc còn lại", "Làm thêm", "Lịch", "Tiền nhiệm", "Trễ"]
+    : ["ID", "WBS", "Tên", "Thời lượng", "Bắt đầu", "Kết thúc", "Tiền nhiệm", "Trễ"];
   const template = props.tracking
-    ? "42px minmax(140px, 1.4fr) 92px 52px 84px 138px 138px 130px 130px 96px 84px 120px 110px 72px"
-    : "42px minmax(160px, 1.6fr) 100px 146px 146px 120px 80px";
-  const minWidth = props.tracking ? 1540 : undefined;
+    ? "42px 72px minmax(140px, 1.4fr) 92px 52px 84px 138px 138px 130px 130px 96px 84px 120px 110px 72px"
+    : "42px 72px minmax(160px, 1.6fr) 100px 146px 146px 120px 80px";
+  const minWidth = props.tracking ? 1612 : undefined;
 
   function measure() {
     const body = props.bodyRef.current;
@@ -94,6 +94,7 @@ export function TaskSheet(props: Props) {
               onClick={() => props.onSelect(task.uid)}
             >
               <span className="id">{task.id}</span>
+              <span className="ro">{task.wbs}</span>
               <NameCell task={task} onRename={props.onRename} />
               <DurationCell task={task} onCommit={props.onDuration} />
               {props.tracking && (
