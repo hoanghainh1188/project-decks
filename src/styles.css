@@ -74,6 +74,13 @@ button.on { background: #0a84ff; color: white; border-color: #0a84ff; }
   background: #fafafa;
 }
 .inspector label, .dialog label { display: block; color: #6e6e73; margin-bottom: 2px; }
+.inspector .assign-list label, .inspector .assign-add label {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  margin: 0;
+  color: #3a3a3c;
+}
 .inspector input, .inspector select, .dialog input, .dialog select {
   border: 1px solid #d0d0d5;
   border-radius: 6px;
@@ -81,6 +88,12 @@ button.on { background: #0a84ff; color: white; border-color: #0a84ff; }
   background: white;
 }
 .check { display: flex; gap: 6px; align-items: center; padding-bottom: 4px; }
+.assign { flex: 1 1 220px; }
+.assign-add { display: flex; gap: 6px; align-items: center; }
+.assign-add input, .assign-list input { width: 72px; }
+.assign-list { list-style: none; margin: 0 0 6px; padding: 0; display: grid; gap: 4px; }
+.assign-list li { display: flex; gap: 6px; align-items: center; }
+.assign-list li span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .meta { flex: 1 1 100%; margin: 0; color: #3a3a3c; }
 .status {
   display: flex;

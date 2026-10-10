@@ -349,15 +349,14 @@ pub fn apply_one(project: &mut Project, command: &Command) -> Result<(), EngineE
         }
         Command::DeleteResource { uid } => {
             project.resources.retain(|resource| resource.uid != *uid);
-            let touched: Vec<u32> = project
+            let assignment_uids: Vec<u32> = project
                 .assignments
                 .iter()
                 .filter(|assignment| assignment.resource_uid == *uid)
-                .map(|assignment| assignment.task_uid)
+                .map(|assignment| assignment.uid)
                 .collect();
-            project.assignments.retain(|assignment| assignment.resource_uid != *uid);
-            for task_uid in touched {
-                work::apply_change(project, task_uid, Changed::Units);
+            for assignment_uid in assignment_uids {
+                work::remove_assignment(project, assignment_uid);
             }
         }
         Command::AssignResource {
@@ -420,14 +419,9 @@ pub fn apply_one(project: &mut Project, command: &Command) -> Result<(), EngineE
             }
         }
         Command::RemoveAssignment { uid } => {
-            let task_uid = project
-                .assignments
-                .iter()
-                .find(|assignment| assignment.uid == *uid)
-                .map(|assignment| assignment.task_uid)
-                .ok_or(EngineError::AssignmentNotFound)?;
-            project.assignments.retain(|assignment| assignment.uid != *uid);
-            work::apply_change(project, task_uid, Changed::Units);
+            if !work::remove_assignment(project, *uid) {
+                return Err(EngineError::AssignmentNotFound);
+            }
         }
         Command::SetTaskType {
             uid,
