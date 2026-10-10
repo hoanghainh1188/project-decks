@@ -85,11 +85,21 @@ export interface Task {
   detached: boolean;
 }
 
-/** Weekdays use 0 = Monday … 6 = Sunday, like calendar weeks. */
+/** Weekdays use 0 = Monday … 6 = Sunday, like calendar weeks. Ordinals are 1–4, or 5 for the last one. */
 export type RecurrencePattern =
   | { kind: "daily"; every: number }
+  | { kind: "calendar_daily"; every: number }
   | { kind: "weekly"; every: number; weekdays: number[] }
-  | { kind: "monthly"; every: number; day: number };
+  | { kind: "monthly"; every: number; day: number }
+  | { kind: "monthly_nth"; every: number; ordinal: number; weekday: number }
+  | { kind: "yearly"; every: number; month: number; day: number }
+  | { kind: "yearly_nth"; every: number; month: number; ordinal: number; weekday: number };
+
+/** Units are 1 for 100 %. */
+export interface SeriesResource {
+  uid: number;
+  units: number;
+}
 
 export type RecurrenceEnd = { kind: "count"; count: number } | { kind: "until"; date: number };
 
@@ -100,7 +110,9 @@ export interface RecurrenceSpec {
   pattern: RecurrencePattern;
   end: RecurrenceEnd;
   calendar_id: number | null;
-  resource_uids: number[];
+  /** Only in series saved before per-resource units; read as units 1. */
+  resource_uids?: number[];
+  resources: SeriesResource[];
 }
 
 export interface Recurrence {
@@ -295,8 +307,24 @@ export interface BurndownReport {
   current_remaining_work: number;
 }
 
+/** Cumulative values at one instant; EV and AC are null after the status date. */
+export interface SCurvePoint {
+  date: number;
+  pv: number;
+  ev: number | null;
+  ac: number | null;
+}
+
+export interface SCurveReport {
+  status_date: number | null;
+  baseline_finish: number | null;
+  step: "day" | "week";
+  points: SCurvePoint[];
+}
+
 export interface ProjectMetrics {
   evm: EvmReport;
   burndown: BurndownReport;
+  s_curve: SCurveReport;
 }
 export type Scale = "day" | "week" | "month";

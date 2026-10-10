@@ -1,5 +1,5 @@
 import { formatDateOnly, formatMoney } from "../format";
-import type { BurndownReport, EvmMetrics, ProjectMetrics } from "../types";
+import type { BurndownReport, EvmMetrics, ProjectMetrics, SCurveReport } from "../types";
 
 interface EvmPanelProps {
   metrics: ProjectMetrics | null;
@@ -65,6 +65,7 @@ export function EvmPanel({ metrics, onOpenProjectInfo, onOpenBaseline, onClose }
         </>
       )}
       {metrics && <BurndownSection report={metrics.burndown} />}
+      {metrics && <SCurveSection report={metrics.s_curve} />}
     </aside>
   );
 }
@@ -195,6 +196,137 @@ function BurndownChart({ report }: { report: BurndownReport }) {
       <figcaption className="burndown-legend">
         <span><i className="swatch ideal" /> Lý tưởng (baseline 0)</span>
         <span><i className="swatch actual" /> Thực tế</span>
+        {report.status_date != null && <span><i className="swatch status" /> Ngày trạng thái</span>}
+      </figcaption>
+    </figure>
+  );
+}
+
+function formatCompactMoney(value: number): string {
+  return new Intl.NumberFormat("vi-VN", { notation: "compact", maximumFractionDigits: 1 }).format(value);
+}
+
+function SCurveSection({ report }: { report: SCurveReport }) {
+  return (
+    <section className="burndown">
+      <strong>Đường cong S</strong>
+      {report.points.length < 2 ? (
+        <div className="evm-empty">Chưa có đường cơ sở 0, nên chưa vẽ được đường cong S.</div>
+      ) : (
+        <>
+          <p className="evm-note">
+            Giá trị cộng dồn theo {report.step === "day" ? "ngày" : "tuần"}. EV và AC tính đến ngày trạng thái.
+          </p>
+          <SCurveChart report={report} />
+        </>
+      )}
+    </section>
+  );
+}
+
+type CurveKey = "pv" | "ev" | "ac";
+
+const CURVES: { key: CurveKey; label: string; color: string; dash?: string }[] = [
+  { key: "pv", label: "PV (kế hoạch)", color: "#8e8e93", dash: "5 4" },
+  { key: "ev", label: "EV (đạt được)", color: "#34a853" },
+  { key: "ac", label: "AC (thực tế)", color: "#e8890c" },
+];
+
+function SCurveChart({ report }: { report: SCurveReport }) {
+  const points = report.points;
+  const minX = points[0].date;
+  const maxX = Math.max(points[points.length - 1].date, minX + 24 * 60 * 60 * 1000);
+  const maxY = Math.max(1, ...points.flatMap((point) => [point.pv, point.ev ?? 0, point.ac ?? 0]));
+  const plotW = CHART.width - CHART.left - CHART.right;
+  const plotH = CHART.height - CHART.top - CHART.bottom;
+  const x = (date: number) => CHART.left + ((date - minX) / (maxX - minX)) * plotW;
+  const y = (value: number) => CHART.top + plotH - (value / maxY) * plotH;
+  const path = (key: CurveKey) =>
+    points
+      .flatMap((point) => {
+        const value = point[key];
+        return value == null ? [] : [`${x(point.date).toFixed(1)},${y(value).toFixed(1)}`];
+      })
+      .map((xy, index) => `${index === 0 ? "M" : "L"}${xy}`)
+      .join(" ");
+  const xTicks = [minX, minX + (maxX - minX) / 2, maxX];
+  const yTicks = [0, maxY / 2, maxY];
+  return (
+    <figure className="burndown-figure">
+      <svg
+        width={CHART.width}
+        height={CHART.height}
+        viewBox={`0 0 ${CHART.width} ${CHART.height}`}
+        role="img"
+        aria-label="Đường cong S: PV, EV và AC cộng dồn theo thời gian"
+      >
+        <rect x={CHART.left} y={CHART.top} width={plotW} height={plotH} fill="#fafafa" stroke="#e4e4e8" />
+        {yTicks.map((tick) => (
+          <g key={`y-${tick}`}>
+            <line x1={CHART.left} x2={CHART.left + plotW} y1={y(tick)} y2={y(tick)} stroke="#ececf0" />
+            <text x={CHART.left - 4} y={y(tick) + 3} textAnchor="end" fontSize="10" fill="#6e6e73">
+              {formatCompactMoney(tick)}
+            </text>
+          </g>
+        ))}
+        {xTicks.map((tick, index) => (
+          <text
+            key={`x-${tick}`}
+            x={x(tick)}
+            y={CHART.height - CHART.bottom + 14}
+            textAnchor={index === 0 ? "start" : index === xTicks.length - 1 ? "end" : "middle"}
+            fontSize="10"
+            fill="#6e6e73"
+          >
+            {formatDateOnly(tick).slice(0, 5)}
+          </text>
+        ))}
+        {report.status_date != null && (
+          <line
+            x1={x(report.status_date)}
+            x2={x(report.status_date)}
+            y1={CHART.top}
+            y2={CHART.top + plotH}
+            stroke="#c23b3b"
+            strokeDasharray="3 3"
+          />
+        )}
+        {CURVES.map((curve) => (
+          <path
+            key={curve.key}
+            d={path(curve.key)}
+            fill="none"
+            stroke={curve.color}
+            strokeWidth={curve.dash ? 1.5 : 2}
+            strokeDasharray={curve.dash}
+          />
+        ))}
+        {points.map((point) => (
+          <rect
+            key={`hit-${point.date}`}
+            x={x(point.date) - 3}
+            y={CHART.top}
+            width={6}
+            height={plotH}
+            fill="transparent"
+          >
+            <title>
+              {[
+                formatDateOnly(point.date),
+                `PV ${formatMoney(point.pv)}`,
+                point.ev != null ? `EV ${formatMoney(point.ev)}` : null,
+                point.ac != null ? `AC ${formatMoney(point.ac)}` : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            </title>
+          </rect>
+        ))}
+      </svg>
+      <figcaption className="burndown-legend">
+        {CURVES.map((curve) => (
+          <span key={curve.key}><i className={`swatch ${curve.key}`} /> {curve.label}</span>
+        ))}
         {report.status_date != null && <span><i className="swatch status" /> Ngày trạng thái</span>}
       </figcaption>
     </figure>
