@@ -1,6 +1,6 @@
 ---
 name: ProjectDesk macOS
-overview: "ProjectDesk là ứng dụng desktop Tauri (Rust + React) quản lý dự án theo hướng Microsoft Project. Pha 1–10 đã xong; pha 10 (chỉ số EVM và burn-down) qua PR của nhánh phase-10-evm."
+overview: "ProjectDesk là ứng dụng desktop Tauri (Rust + React) quản lý dự án theo hướng Microsoft Project. Pha 1–10 đã xong; pha 9 (công việc lặp) qua PR #15 đã merge, pha 10 (chỉ số EVM và burn-down) qua PR #16. Các sửa bổ sung trên main: PR #10, #12, #13, #14."
 todos:
   - id: scaffold
     content: Tauri 2 + React + crate engine
@@ -46,7 +46,9 @@ isProject: false
 
 # ProjectDesk — quản lý dự án kiểu Microsoft Project
 
-Pha 1–9 đã xong trên `main`. Pha 1 gồm bảng task, Gantt, menu và cột WBS (PR #3). Pha 2–5 (nguồn lực, theo dõi và chi phí, leveling, MSPDI) đã merge qua PR #5. Pha 6 (lịch trên giao diện) qua PR #6. Pha 7 (lọc, nhóm, highlight) qua PR #7. Pha 8 (PDF Gantt) qua PR #8; hộp thoại file được sửa trong PR #9 đã merge. Pha 9 (công việc lặp) qua PR của nhánh `phase-9-recurring`. Pha 10 (chỉ số EVM và burn-down) qua PR của nhánh `phase-10-evm`.
+Pha 1–10 đã xong. Pha 1 gồm bảng task, Gantt, menu và cột WBS (PR #3). Pha 2–5 (nguồn lực, theo dõi và chi phí, leveling, MSPDI) đã merge qua PR #5. Pha 6 (lịch trên giao diện) qua PR #6. Pha 7 (lọc, nhóm, highlight) qua PR #7. Pha 8 (PDF Gantt) qua PR #8; hộp thoại file được sửa trong PR #9 đã merge. Pha 9 (công việc lặp) qua PR #15 đã merge. Pha 10 (chỉ số EVM và burn-down) qua PR #16.
+
+Các sửa bổ sung đã merge vào `main`: PR #10 (căn header với độ rộng ngày của Gantt), PR #12 (bộ chọn ngày giờ trong app), PR #13 (đồng bộ kế hoạch), PR #14 (nhóm theo summary ở pha 7).
 
 Giao diện tiếng Việt. Các pha mở rộng cùng một mô hình lịch trong engine Rust.
 
@@ -133,9 +135,9 @@ Pha 6–9 đã xong trên `main`.
 
 ### Pha 6 — sửa lịch trên giao diện
 
-Đã xong qua PR #6.
+Đã xong qua PR #6. Bộ chọn ngày giờ được thay bằng popover trong app ở PR #12.
 
-- Các ô ngày giờ đang sửa được (ngày công việc, ngày thực, ngày ràng buộc, ngày bắt đầu dự án, ngày trạng thái, ngày nghỉ) dùng bộ chọn ngày giờ dạng popover viết trong app (lưới tháng bắt đầu từ thứ Hai, nút hôm nay, chọn giờ và phút, nút xóa cho ngày không bắt buộc). Lý do: cửa sổ Tauri trên macOS (WKWebView) không mở bộ chọn gốc cho ô nhập ngày/giờ. Vẫn gõ ngày trực tiếp được. Xem PR #12. Mốc thời gian trong engine vẫn là millisecond.
+- Các ô ngày giờ đang sửa được (ngày công việc, ngày thực, ngày ràng buộc, ngày bắt đầu dự án, ngày trạng thái, ngày nghỉ) dùng bộ chọn ngày giờ dạng popover viết trong app (lưới tháng bắt đầu từ thứ Hai, nút hôm nay, chọn giờ và phút, nút xóa cho ngày không bắt buộc). Lý do: cửa sổ Tauri trên macOS (WKWebView) không mở bộ chọn gốc cho ô nhập ngày/giờ. Vẫn gõ ngày trực tiếp được. Mốc thời gian trong engine vẫn là millisecond.
 - Sửa tuần làm việc: ngày trong tuần và các khoảng giờ. Mặc định giữ thứ Hai–thứ Sáu, 08:00–12:00 và 13:00–17:00.
 - Thêm, sửa, xóa ngày nghỉ và ngoại lệ (một ngày hoặc một khoảng Từ–Đến), nghỉ cả ngày hoặc có giờ làm riêng. Ngày của ngoại lệ chọn bằng bộ chọn ngày, không gõ tự do.
 - Sửa lịch dự án, lịch task và lịch nguồn lực trên cùng kiểu lịch của engine. Chọn "lịch dự án" vẫn là kế thừa. Tạo hoặc sửa lịch có tên đi qua command nên undo/redo gồm các lần sửa đó.
@@ -143,7 +145,7 @@ Pha 6–9 đã xong trên `main`.
 
 ### Pha 7 — lọc, nhóm, highlight
 
-Đã xong qua PR #7.
+Đã xong qua PR #7. Nhóm theo summary được thêm ở PR #14.
 
 - Lọc bảng và Gantt theo ba tiêu chí: đường găng (total slack nhỏ hơn hoặc bằng 0), theo người được gán, task trễ hạn.
 - Trễ hạn: task bị coi là trễ nếu thỏa một trong các điều kiện: chưa xong và finish sau ngày trạng thái; finish sau finish của baseline 0; hoặc có đặt deadline và finish sau deadline. Deadline là một ngày tùy chọn của task, sửa bằng bộ chọn ngày, undo được, và không phải một kiểu ràng buộc.
@@ -159,9 +161,9 @@ Pha 6–9 đã xong trên `main`.
 - Cắt trang theo chiều thời gian và theo danh sách task.
 - Hộp thoại in/lưu của macOS. Ngày trên trang in là ngày engine đã tính. Không có server.
 
-### Pha 9 — công việc lặp — đã xong
+### Pha 9 — công việc lặp — đã xong (PR #15)
 
-Đã làm (module `recurrence.rs` trong engine, hộp thoại `RecurringDialog`):
+Đã xong qua PR #15 đã merge. Đã làm (module `recurrence.rs` trong engine, hộp thoại `RecurringDialog`):
 
 - Mẫu lặp theo kiểu MS Project: ngày (mỗi N ngày làm việc trên lịch của chuỗi), tuần (mỗi N tuần vào các thứ đã chọn, tuần bắt đầu thứ Hai), tháng (ngày X của mỗi N tháng; X lớn hơn số ngày của tháng thì rơi vào ngày cuối tháng). Kết thúc sau N lần hoặc tại một ngày (tính cả ngày đó). Tối đa 999 lần như Project.
 - Chuỗi là một summary task giữ định nghĩa (`Task.recurrence`). Con của nó là các occurrence thật (`series_uid`, `occurrence_date`), mỗi cái có ràng buộc SNET tại giờ làm việc đầu tiên của ngày mẫu sinh ra, theo lịch của chuỗi hoặc lịch dự án. Ngày nghỉ nên occurrence dời sang giờ làm việc kế tiếp. Summary rollup như summary thường, CPM chạy trên occurrence. Occurrence là fixed units, không effort-driven, nên gán nhiều nguồn lực không rút ngắn thời lượng.
@@ -179,9 +181,9 @@ Giới hạn:
 - Nguồn lực của chuỗi luôn gán với đơn vị 1.0; hộp thoại chưa cho chọn đơn vị. Muốn khác thì sửa riêng từng lần (lần đó thành tách).
 - Chưa kiểm thử tự động phần giao diện; engine có test, giao diện cần kiểm tay trong cửa sổ Tauri.
 
-## Pha 10 — chỉ số EVM và burn-down — đã xong
+## Pha 10 — chỉ số EVM và burn-down — đã xong (PR #16)
 
-Đã làm (module `evm.rs` trong engine, lệnh Tauri `project_metrics`, panel `EvmPanel`). Cả panel EVM và burn-down chỉ đọc số do engine trả về. JavaScript không tính lại EVM.
+Đã xong qua PR #16. Đã làm (module `evm.rs` trong engine, lệnh Tauri `project_metrics`, panel `EvmPanel`). Cả panel EVM và burn-down chỉ đọc số do engine trả về. JavaScript không tính lại EVM.
 
 - Engine tính BAC, PV, EV, AC, SV, CV, SPI, CPI, EAC, ETC, VAC đúng công thức dưới đây, cộng trên task lá. Cách cộng dồn của PV lấy từ trường cộng dồn của task (Đầu / Phân bổ / Cuối), cùng trường pha 3 dùng cho chi phí thực tế. Với `prorated`, thời lượng baseline là số phút làm việc giữa baseline start và baseline finish trên lịch của task. Baseline thời lượng 0 (mốc) coi như đã lên kế hoạch hết khi tới baseline finish.
 - Mẫu số không lớn hơn 0 thì SPI, CPI, EAC, ETC, VAC là `null`; giao diện hiện "—" kèm chú thích. Thiếu ngày trạng thái hoặc không task lá nào có baseline 0 thì engine không trả chỉ số; panel báo rõ thiếu gì và có nút mở hộp thoại tương ứng.
@@ -234,4 +236,8 @@ Panel nhỏ cạnh Gantt, nhãn tiếng Việt và viết tắt trong ngoặc:
 
 ## Vẫn chưa làm
 
-Tách task, đọc file `.mpp`, sơ đồ mạng, nhiều người dùng, server, công thức trường tùy chỉnh, CI bản cài Windows/Linux.
+- Giới hạn của pha 9 (chi tiết ở mục Pha 9): chưa có mẫu "thứ X thứ Y trong tháng", lặp theo năm, mỗi N ngày lịch; nhập MSPDI không dựng lại chuỗi; đơn vị nguồn lực của chuỗi cố định 1.0.
+- Giới hạn của pha 10 (chi tiết ở mục Pha 10): AC chưa cắt theo thời gian tại ngày trạng thái; đường burn-down thực tế chỉ có snapshot từ bản này trở đi; chưa có đường cong S.
+- Chưa có kiểm thử tự động cho giao diện; engine có test, giao diện kiểm tay trong cửa sổ Tauri.
+- Ngoài phạm vi: reader file nhị phân `.mpp` (xem pha 5).
+- Chưa làm: tách task, sơ đồ mạng, nhiều người dùng, server, công thức trường tùy chỉnh, CI bản cài Windows/Linux.
