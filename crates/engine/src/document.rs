@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::command::{self, Command};
 use crate::error::EngineError;
 use crate::model::{Project, Task};
-use crate::schedule::schedule;
+use crate::schedule::{mark_late, schedule};
 use crate::timeutil::{civil, compose};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -110,6 +110,10 @@ pub fn replay(base: &Project, commands: &[Command]) -> Result<Project, EngineErr
     for command in commands {
         command::apply_one(&mut project, command)?;
         schedule(&mut project)?;
+    }
+    // A saved base with no replayed commands still needs the derived late flag.
+    if commands.is_empty() {
+        mark_late(&mut project);
     }
     Ok(project)
 }

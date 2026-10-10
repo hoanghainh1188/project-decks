@@ -34,6 +34,7 @@ import type {
   TaskType,
   ViewId,
 } from "./types";
+import { buildViewRows, type FilterMode, type GroupMode, type HighlightMode } from "./viewRows";
 import "./styles.css";
 
 const CONSTRAINTS: { id: ConstraintType; label: string }[] = [
@@ -56,6 +57,10 @@ export default function App() {
   const [infoOpen, setInfoOpen] = useState(false);
   const [baselineOpen, setBaselineOpen] = useState(false);
   const [calendarEditId, setCalendarEditId] = useState<number | null>(null);
+  const [rowFilter, setRowFilter] = useState<FilterMode>("none");
+  const [filterResource, setFilterResource] = useState<number | null>(null);
+  const [rowGroup, setRowGroup] = useState<GroupMode>("none");
+  const [rowHighlight, setRowHighlight] = useState<HighlightMode>("none");
   const sheetRef = useRef<HTMLDivElement>(null);
   const ganttRef = useRef<HTMLDivElement>(null);
   const syncing = useRef(false);
@@ -160,6 +165,12 @@ export default function App() {
   }, [project, selected]);
 
   useEffect(() => {
+    if (!project || filterResource == null) return;
+    if (project.resources.some((resource) => resource.uid === filterResource)) return;
+    setFilterResource(project.resources[0]?.uid ?? null);
+  }, [project, filterResource]);
+
+  useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const key = event.key.toLowerCase();
       const meta = event.metaKey || event.ctrlKey;
@@ -196,6 +207,10 @@ export default function App() {
   const criticalCount = useMemo(
     () => project?.tasks.filter((item) => item.critical && !item.summary).length ?? 0,
     [project],
+  );
+  const rows = useMemo(
+    () => (project ? buildViewRows(project, rowFilter, filterResource, rowGroup, rowHighlight) : []),
+    [project, rowFilter, filterResource, rowGroup, rowHighlight],
   );
   const finish = project?.tasks.reduce((max, item) => Math.max(max, item.finish), 0) ?? 0;
   const editingCalendar = project?.calendars.find((calendar) => calendar.id === calendarEditId) ?? null;
@@ -237,11 +252,71 @@ export default function App() {
         )}
       </header>
       {error && <div className="banner">{error}</div>}
+      {project && (view === "gantt" || view === "tracking") && (
+        <div className="viewbar">
+          <label className="view-control">
+            Lọc
+            <select
+              aria-label="Lọc"
+              value={rowFilter}
+              onChange={(event) => {
+                const next = event.target.value as FilterMode;
+                setRowFilter(next);
+                if (next === "resource" && filterResource == null) {
+                  setFilterResource(project.resources[0]?.uid ?? null);
+                }
+              }}
+            >
+              <option value="none">Không lọc</option>
+              <option value="critical">Đường găng</option>
+              <option value="resource">Theo người</option>
+              <option value="late">Trễ hạn</option>
+            </select>
+          </label>
+          {rowFilter === "resource" && (
+            <select
+              aria-label="Người"
+              value={filterResource ?? ""}
+              onChange={(event) => setFilterResource(event.target.value ? Number(event.target.value) : null)}
+            >
+              {project.resources.length === 0 && <option value="">Chưa có nguồn lực</option>}
+              {project.resources.map((resource) => (
+                <option key={resource.uid} value={resource.uid}>
+                  {resource.name.trim() || `NL ${resource.uid}`}
+                </option>
+              ))}
+            </select>
+          )}
+          <label className="view-control">
+            Nhóm
+            <select
+              aria-label="Nhóm"
+              value={rowGroup}
+              onChange={(event) => setRowGroup(event.target.value as GroupMode)}
+            >
+              <option value="none">Không nhóm</option>
+              <option value="resource">Theo người</option>
+            </select>
+          </label>
+          <label className="view-control">
+            Tô sáng
+            <select
+              aria-label="Tô sáng"
+              value={rowHighlight}
+              onChange={(event) => setRowHighlight(event.target.value as HighlightMode)}
+            >
+              <option value="none">Không</option>
+              <option value="critical">Đường găng</option>
+              <option value="late">Trễ hạn</option>
+            </select>
+          </label>
+        </div>
+      )}
       <main className="workspace">
         {project && (view === "gantt" || view === "tracking") && (
           <>
             <TaskSheet
-              tasks={project.tasks}
+              rows={rows}
               calendars={project.calendars}
               assignments={project.assignments}
               selected={selected}
@@ -263,6 +338,7 @@ export default function App() {
             />
             <GanttChart
               project={project}
+              rows={rows}
               scale={scale}
               selected={selected}
               tracking={view === "tracking"}
@@ -505,6 +581,15 @@ function Inspector({
         </div>
       )}
       <div>
+        <label>Hạn chót</label>
+        <DateTimeField
+          optional
+          ariaLabel="Hạn chót"
+          value={task.deadline}
+          onCommit={(date) => send({ type: "set_deadline", uid: task.uid, date })}
+        />
+      </div>
+      <div>
         <label>Kiểu công việc</label>
         <select
           value={task.task_type}
@@ -623,6 +708,7 @@ function Inspector({
       <AssignmentEditor project={project} task={task} send={send} />
       <p className="meta">
         Chi phí {formatMoney(task.cost)} · Thực tế {formatMoney(task.actual_cost)} · Trễ cân bằng {formatDuration(task.leveling_delay)}
+        {task.late ? " · Trễ hạn" : ""}
         {task.conflict ? " · Vi phạm ràng buộc" : ""}
       </p>
     </section>

@@ -970,3 +970,167 @@ fn predecessor_text_parses_lag_units() {
     assert_eq!(links[1], (2, DepKind::Ss, -240));
     assert_eq!(links[2], (3, DepKind::Fs, 0));
 }
+
+#[test]
+fn late_when_any_of_status_baseline_or_deadline_is_missed() {
+    let project = project_with(vec![("A", 480)], vec![]);
+    let mut task = project.tasks[0].clone();
+    let finish = task.finish;
+    let start = task.start;
+
+    assert!(!task.is_late(None));
+    assert!(
+        !task.is_late(Some(finish)),
+        "finish equal to the status date is not late"
+    );
+    assert!(task.is_late(Some(finish - 1)));
+
+    task.percent_complete = 100.0;
+    assert!(
+        !task.is_late(Some(finish - 1)),
+        "a complete task is not late from the status date alone"
+    );
+
+    task.baselines.push(projectdesk_engine::model::Baseline {
+        number: 1,
+        start,
+        finish: finish - 1,
+        work: 0,
+        cost: 0.0,
+    });
+    assert!(!task.is_late(None), "only baseline 0 counts");
+    task.baselines.push(projectdesk_engine::model::Baseline {
+        number: 0,
+        start,
+        finish,
+        work: 0,
+        cost: 0.0,
+    });
+    assert!(
+        !task.is_late(None),
+        "finish equal to baseline 0 is not late"
+    );
+    task.baselines.retain(|baseline| baseline.number != 0);
+    task.baselines.push(projectdesk_engine::model::Baseline {
+        number: 0,
+        start,
+        finish: finish - 1,
+        work: 0,
+        cost: 0.0,
+    });
+    assert!(task.is_late(None));
+
+    task.baselines.clear();
+    task.deadline = Some(finish);
+    assert!(
+        !task.is_late(None),
+        "finish equal to the deadline is not late"
+    );
+    task.deadline = Some(finish - 1);
+    assert!(
+        task.is_late(None),
+        "a deadline still counts after the task is complete"
+    );
+}
+
+#[test]
+fn schedule_publishes_late_from_status_date_and_baseline() {
+    let mut project = project_with(vec![("A", 480)], vec![]);
+    let finish = project.tasks[0].finish;
+    let start = project.tasks[0].start;
+
+    project.status_date = Some(finish);
+    schedule(&mut project).unwrap();
+    assert!(!project.tasks[0].late);
+
+    project.status_date = Some(finish - 1);
+    schedule(&mut project).unwrap();
+    assert!(project.tasks[0].late);
+
+    project.tasks[0].percent_complete = 100.0;
+    schedule(&mut project).unwrap();
+    assert!(!project.tasks[0].late);
+
+    project.status_date = None;
+    project.tasks[0].percent_complete = 0.0;
+    project.tasks[0]
+        .baselines
+        .push(projectdesk_engine::model::Baseline {
+            number: 0,
+            start,
+            finish,
+            work: 0,
+            cost: 0.0,
+        });
+    schedule(&mut project).unwrap();
+    assert!(!project.tasks[0].late);
+    project.tasks[0].baselines[0].finish = finish - 1;
+    schedule(&mut project).unwrap();
+    assert!(project.tasks[0].late);
+
+    project.tasks[0].baselines[0].number = 1;
+    schedule(&mut project).unwrap();
+    assert!(!project.tasks[0].late);
+}
+
+#[test]
+fn deadline_command_is_undoable_and_is_not_a_constraint() {
+    let mut doc = Document::from_project(project_with(vec![("A", 480)], vec![]));
+    let start = doc.project.tasks[0].start;
+    let finish = doc.project.tasks[0].finish;
+    let uid = doc.project.tasks[0].uid;
+    doc.apply(Command::SetDeadline {
+        uid,
+        date: Some(finish - 1),
+    })
+    .unwrap();
+    assert_eq!(doc.project.tasks[0].start, start);
+    assert_eq!(doc.project.tasks[0].finish, finish);
+    assert_eq!(doc.project.tasks[0].constraint_type, ConstraintType::Asap);
+    assert_eq!(doc.project.tasks[0].deadline, Some(finish - 1));
+    assert!(doc.project.tasks[0].late);
+
+    doc.undo().unwrap();
+    assert_eq!(doc.project.tasks[0].deadline, None);
+    assert!(!doc.project.tasks[0].late);
+    doc.redo().unwrap();
+    assert_eq!(doc.project.tasks[0].deadline, Some(finish - 1));
+
+    let path = std::env::temp_dir().join(format!(
+        "projectdesk-deadline-{}-{}.pdproj",
+        std::process::id(),
+        uid
+    ));
+    let path = path.to_string_lossy().to_string();
+    save(&doc, &path).unwrap();
+    let loaded = load(&path).unwrap();
+    assert_eq!(loaded.project.tasks[0].deadline, Some(finish - 1));
+    assert!(loaded.project.tasks[0].late);
+    assert!(loaded
+        .commands
+        .iter()
+        .any(|command| matches!(command, Command::SetDeadline { .. })));
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn summary_deadline_does_not_make_children_late() {
+    let mut project = Project::new("WBS", monday());
+    let mut summary = Task::new(1, "Tóm tắt");
+    summary.outline_level = 1;
+    let mut child = Task::new(2, "Việc");
+    child.outline_level = 2;
+    child.duration = 480;
+    child.work = 480;
+    project.tasks = vec![summary, child];
+    project.next_task_uid = 3;
+    schedule(&mut project).unwrap();
+    let finish = project.tasks[0].finish;
+    project.tasks[0].deadline = Some(finish - 1);
+    schedule(&mut project).unwrap();
+    assert!(project.tasks[0].summary);
+    assert!(project.tasks[0].late);
+    assert!(project.tasks[1].deadline.is_none());
+    assert!(!project.tasks[1].late);
+    assert_eq!(project.tasks[0].constraint_type, ConstraintType::Asap);
+}

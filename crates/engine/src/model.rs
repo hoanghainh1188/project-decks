@@ -141,6 +141,12 @@ pub struct Task {
     pub conflict: bool,
     pub predecessors: String,
     pub baselines: Vec<Baseline>,
+    /// Optional deadline instant. Not a constraint: scheduling never moves the task to meet it.
+    #[serde(default)]
+    pub deadline: Option<i64>,
+    /// Finish is past the status date (while incomplete), baseline 0, or the deadline.
+    #[serde(default)]
+    pub late: bool,
 }
 
 impl Task {
@@ -189,7 +195,40 @@ impl Task {
             conflict: false,
             predecessors: String::new(),
             baselines: Vec::new(),
+            deadline: None,
+            late: false,
         }
+    }
+
+    /// A task is late when any one of these is true:
+    /// the unfinished finish is after the status date, the finish is after baseline 0,
+    /// or the finish is after a deadline. Equality is on time, not late.
+    pub fn is_late(&self, status_date: Option<i64>) -> bool {
+        let after_status =
+            status_date.is_some_and(|status| self.percent_complete < 100.0 && self.finish > status);
+        let after_baseline = self
+            .baselines
+            .iter()
+            .any(|baseline| baseline.number == 0 && self.finish > baseline.finish);
+        let after_deadline = self.deadline.is_some_and(|deadline| self.finish > deadline);
+        after_status || after_baseline || after_deadline
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn task_json_without_deadline_or_late_still_loads() {
+        let task = Task::new(1, "A");
+        let mut value = serde_json::to_value(&task).expect("task json");
+        let object = value.as_object_mut().expect("object");
+        object.remove("deadline");
+        object.remove("late");
+        let restored: Task = serde_json::from_value(value).expect("decode");
+        assert_eq!(restored.deadline, None);
+        assert!(!restored.late);
     }
 }
 

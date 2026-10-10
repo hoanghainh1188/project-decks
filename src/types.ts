@@ -77,6 +77,8 @@ export interface Task {
   conflict: boolean;
   predecessors: string;
   baselines: Baseline[];
+  deadline: number | null;
+  late: boolean;
 }
 
 export interface Dependency {
@@ -216,7 +218,8 @@ export type Command =
   | { type: "clear_baseline"; number: number }
   | { type: "level_resources" }
   | { type: "clear_leveling" }
-  | { type: "set_leveling_delay"; uid: number; minutes: number };
+  | { type: "set_leveling_delay"; uid: number; minutes: number }
+  | { type: "set_deadline"; uid: number; date: number | null };
 
 export type ViewId = "gantt" | "tracking" | "resources" | "usage";
 export type Scale = "day" | "week" | "month";

@@ -5,7 +5,7 @@ use crate::level::publish_overallocations;
 use crate::model::{ConstraintType, DepKind, Project, Task};
 use crate::work::publish_costs_and_usage;
 
-/// Recompute WBS, early/late dates, slack, critical path, costs, and usage.
+/// Recompute WBS, early/late dates, slack, critical path, costs, usage, and the late flag.
 pub fn schedule(project: &mut Project) -> Result<(), EngineError> {
     normalize_outline(project);
     if project.calendar().week.iter().all(|d| d.is_empty())
@@ -38,7 +38,16 @@ pub fn schedule(project: &mut Project) -> Result<(), EngineError> {
     publish_costs_and_usage(project);
     publish_overallocations(project);
     publish_predecessor_text(project);
+    mark_late(project);
     Ok(())
+}
+
+/// Recompute the derived late flag from the status date, baseline 0, and deadline.
+pub fn mark_late(project: &mut Project) {
+    let status_date = project.status_date;
+    for task in &mut project.tasks {
+        task.late = task.is_late(status_date);
+    }
 }
 
 fn publish_predecessor_text(project: &mut Project) {
