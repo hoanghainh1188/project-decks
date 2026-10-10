@@ -135,7 +135,7 @@ Pha 6–8 đã xong trên `main`. Pha 9 chưa làm.
 
 Đã xong qua PR #6.
 
-- Các ô ngày giờ đang sửa được (ngày công việc, ngày thực, ngày ràng buộc, ngày bắt đầu dự án, ngày trạng thái, ngày nghỉ) dùng bộ chọn ngày giờ (`datetime-local` hoặc `date`) thay vì gõ chữ. Mốc thời gian trong engine vẫn là millisecond.
+- Các ô ngày giờ đang sửa được (ngày công việc, ngày thực, ngày ràng buộc, ngày bắt đầu dự án, ngày trạng thái, ngày nghỉ) dùng bộ chọn ngày giờ dạng popover viết trong app (lưới tháng bắt đầu từ thứ Hai, nút hôm nay, chọn giờ và phút, nút xóa cho ngày không bắt buộc). Lý do: cửa sổ Tauri trên macOS (WKWebView) không mở bộ chọn gốc cho ô nhập ngày/giờ. Vẫn gõ ngày trực tiếp được. Xem PR #12. Mốc thời gian trong engine vẫn là millisecond.
 - Sửa tuần làm việc: ngày trong tuần và các khoảng giờ. Mặc định giữ thứ Hai–thứ Sáu, 08:00–12:00 và 13:00–17:00.
 - Thêm, sửa, xóa ngày nghỉ và ngoại lệ (một ngày hoặc một khoảng Từ–Đến), nghỉ cả ngày hoặc có giờ làm riêng. Ngày của ngoại lệ chọn bằng bộ chọn ngày, không gõ tự do.
 - Sửa lịch dự án, lịch task và lịch nguồn lực trên cùng kiểu lịch của engine. Chọn "lịch dự án" vẫn là kế thừa. Tạo hoặc sửa lịch có tên đi qua command nên undo/redo gồm các lần sửa đó.
@@ -146,8 +146,8 @@ Pha 6–8 đã xong trên `main`. Pha 9 chưa làm.
 Đã xong qua PR #7.
 
 - Lọc bảng và Gantt theo ba tiêu chí: đường găng (total slack nhỏ hơn hoặc bằng 0), theo người được gán, task trễ hạn.
-- Trễ hạn: finish hiện tại sau finish của baseline 0, hoặc task chưa xong mà finish đã qua ngày trạng thái.
-- Nhóm theo nguồn lực hoặc theo summary (WBS). Nhóm chỉ đổi cách xếp hàng trên view, không ghi đè outline đã lưu.
+- Trễ hạn: task bị coi là trễ nếu thỏa một trong các điều kiện: chưa xong và finish sau ngày trạng thái; finish sau finish của baseline 0; hoặc có đặt deadline và finish sau deadline. Deadline là một ngày tùy chọn của task, sửa bằng bộ chọn ngày, undo được, và không phải một kiểu ràng buộc.
+- Nhóm theo người đã xong: task có nhiều người hiện dưới từng người, task chưa gán ai nằm trong nhóm "Chưa gán". Nhóm theo summary (WBS) chưa làm, cần quyết định thêm vào hay bỏ. Nhóm chỉ đổi cách xếp hàng trên view, không ghi đè outline đã lưu.
 - Highlight tô đúng ba nhóm trên. Cờ đường găng và trễ hạn lấy từ engine. Bộ lọc và nhóm là trạng thái cửa sổ.
 
 ### Pha 8 — in hoặc xuất PDF trang Gantt
