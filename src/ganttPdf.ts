@@ -13,9 +13,12 @@ import {
   holidayKeys,
   isWeekend,
   isoDate,
+  pieceSpan,
   pixelsPerDay,
+  progressWidths,
+  splitPieces,
 } from "./ganttLayout";
-import type { Project, Scale, Task } from "./types";
+import type { Project, Scale, Segment, Task } from "./types";
 import type { ViewRow } from "./viewRows";
 
 const PAGE_W = 297;
@@ -320,10 +323,12 @@ function paintGanttBody(doc: jsPDF, input: GanttPdfInput, geom: PageGeom, clip: 
       if (input.tracking) {
         const baseline = row.task.baselines.find((item) => item.number === 0);
         if (baseline) {
-          drawBar(doc, row.task, index, geom, xOf, yOf, yScale, clip, "#c5c5cb", true, baseline.start, baseline.finish);
+          const pieces = splitPieces(row.task, baseline.segments);
+          drawBar(doc, row.task, index, geom, xOf, yOf, yScale, clip, "#c5c5cb", true, baseline.start, baseline.finish, pieces);
         }
       }
-      drawBar(doc, row.task, index, geom, xOf, yOf, yScale, clip, barColor(row.task), false, row.task.start, row.task.finish);
+      const pieces = splitPieces(row.task, row.task.segments);
+      drawBar(doc, row.task, index, geom, xOf, yOf, yScale, clip, barColor(row.task), false, row.task.start, row.task.finish, pieces);
       if (!row.task.summary && row.task.percent_complete > 0) {
         drawProgress(doc, row.task, index, geom, xOf, yOf, yScale, clip);
       }
@@ -370,10 +375,33 @@ function drawBar(
   baseline: boolean,
   start: number,
   finish: number,
+  pieces: Segment[] | null,
 ) {
   const shaped = { ...task, start, finish };
   const rect = barBox(shaped, row, geom.timescale.origin, geom.px);
   setFill(doc, color);
+  if (pieces) {
+    // Split task: one block per segment, joined by a dotted line across each gap.
+    const mm = geom.dayMm / geom.px;
+    const y = baseline ? yOf(row * ROW + 20) : yOf(rect.y);
+    const h = (baseline ? 5 : rect.h) * yScale;
+    const spans = pieces.map((piece) => pieceSpan(piece, geom.timescale.origin, geom.px));
+    for (const span of spans) {
+      const clipped = clipRect(xOf(span.x), y, span.w * mm, h, clip);
+      if (clipped) doc.rect(clipped.x, clipped.y, clipped.w, clipped.h, "F");
+    }
+    setDraw(doc, color);
+    doc.setLineWidth(0.25);
+    doc.setLineDashPattern([0.6, 0.8], 0);
+    const mid = y + h / 2;
+    for (let index = 0; index + 1 < spans.length; index += 1) {
+      const from = Math.max(xOf(spans[index].x + spans[index].w), clip.left);
+      const to = Math.min(xOf(spans[index + 1].x), clip.right);
+      if (to > from && mid >= clip.top && mid <= clip.bottom) doc.line(from, mid, to, mid);
+    }
+    doc.setLineDashPattern([], 0);
+    return;
+  }
   if (task.milestone && !baseline) {
     const cx = xOf(rect.x);
     const cy = yOf(row * ROW + ROW / 2);
@@ -411,18 +439,23 @@ function drawProgress(
   clip: Clip,
 ) {
   const rect = barBox(task, row, geom.timescale.origin, geom.px);
-  const portion = rect.w * Math.min(task.percent_complete, 100) / 100;
-  const clipped = clipRect(
-    xOf(rect.x),
-    yOf(rect.y),
-    portion * (geom.dayMm / geom.px),
-    rect.h * yScale,
-    clip,
-  );
-  if (!clipped) return;
+  const pieces = splitPieces(task, task.segments);
+  const spans = pieces
+    ? pieces.map((piece) => pieceSpan(piece, geom.timescale.origin, geom.px))
+    : [{ x: rect.x, w: rect.w }];
   const overlay = blend(rgb("#000000"), rgb(barColor(task)), 0.28);
   doc.setFillColor(overlay.r, overlay.g, overlay.b);
-  doc.rect(clipped.x, clipped.y, clipped.w, clipped.h, "F");
+  progressWidths(spans, task.percent_complete).forEach((done, index) => {
+    if (done <= 0) return;
+    const clipped = clipRect(
+      xOf(spans[index].x),
+      yOf(rect.y),
+      done * (geom.dayMm / geom.px),
+      rect.h * yScale,
+      clip,
+    );
+    if (clipped) doc.rect(clipped.x, clipped.y, clipped.w, clipped.h, "F");
+  });
 }
 
 function paintLinks(

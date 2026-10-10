@@ -23,6 +23,7 @@ import { EvmPanel } from "./components/EvmPanel";
 import { GanttChart } from "./components/GanttChart";
 import { RecurringDialog, recurringCommand } from "./components/RecurringDialog";
 import { ResourceSheet } from "./components/ResourceSheet";
+import { SplitDialog } from "./components/SplitDialog";
 import { TaskSheet } from "./components/TaskSheet";
 import { TaskUsage } from "./components/TaskUsage";
 import { formatDuration, formatInstant, formatMoney, parseDuration } from "./format";
@@ -69,6 +70,8 @@ export default function App() {
   const [rowHighlight, setRowHighlight] = useState<HighlightMode>("none");
   // null: closed; 0: create a new series; otherwise the summary UID being edited.
   const [seriesDialog, setSeriesDialog] = useState<number | null>(null);
+  // UID of the task the split dialog is open for.
+  const [splitDialog, setSplitDialog] = useState<number | null>(null);
   const [evmOpen, setEvmOpen] = useState(false);
   const [metrics, setMetrics] = useState<ProjectMetrics | null>(null);
   const sheetRef = useRef<HTMLDivElement>(null);
@@ -166,6 +169,7 @@ export default function App() {
       if (id === "clear-level") void send({ type: "clear_leveling" });
       if (id === "recurring") setSeriesDialog(0);
       if (!task) return;
+      if (id === "split-task" && canSplit(task)) setSplitDialog(task.uid);
       if (id === "indent") void send({ type: "indent", uid: task.uid });
       if (id === "outdent") void send({ type: "outdent", uid: task.uid });
       if (id === "delete") void send({ type: "delete_task", uid: task.uid });
@@ -281,6 +285,7 @@ export default function App() {
     });
   };
   const finish = project?.tasks.reduce((max, item) => Math.max(max, item.finish), 0) ?? 0;
+  const splitTask = project?.tasks.find((item) => item.uid === splitDialog) ?? null;
   const editingCalendar = project?.calendars.find((calendar) => calendar.id === calendarEditId) ?? null;
 
   function syncScroll(source: "sheet" | "gantt") {
@@ -300,6 +305,14 @@ export default function App() {
         <button type="button" onClick={() => send({ type: "add_task", name: "", after_uid: selected })}>Thêm việc</button>
         <button type="button" onClick={() => send({ type: "add_milestone", name: "Mốc", after_uid: selected })}>Mốc</button>
         <button type="button" disabled={!project} onClick={() => setSeriesDialog(0)}>Công việc lặp</button>
+        <button
+          type="button"
+          disabled={!canSplit(task)}
+          title="Ngắt công việc đang chọn thành nhiều đoạn"
+          onClick={() => task && setSplitDialog(task.uid)}
+        >
+          Tách công việc
+        </button>
         <button type="button" disabled={!task} onClick={() => task && send({ type: "indent", uid: task.uid })}>Thụt vào</button>
         <button type="button" disabled={!task} onClick={() => task && send({ type: "outdent", uid: task.uid })}>Thụt ra</button>
         <button type="button" disabled={!task} onClick={() => task && send({ type: "delete_task", uid: task.uid })}>Xóa</button>
@@ -469,6 +482,7 @@ export default function App() {
           task={task}
           send={send}
           onEditSeries={setSeriesDialog}
+          onSplit={setSplitDialog}
           onEditCalendar={setCalendarEditId}
           onCreateCalendar={() => {
             const name = task.name.trim() ? `Lịch ${task.name.trim()}` : "Lịch công việc";
@@ -511,6 +525,14 @@ export default function App() {
           onSubmit={(spec) => send(recurringCommand(project.tasks, seriesDialog, selected, spec))}
         />
       )}
+      {splitTask && (
+        <SplitDialog
+          key={splitTask.uid}
+          task={splitTask}
+          onClose={() => setSplitDialog(null)}
+          onSubmit={(at, gap) => send({ type: "split_task", uid: splitTask.uid, at, gap })}
+        />
+      )}
       {baselineOpen && (
         <BaselineDialog
           onClose={() => setBaselineOpen(false)}
@@ -520,6 +542,11 @@ export default function App() {
       )}
     </div>
   );
+}
+
+/** Only leaf tasks with work can be split; summaries and milestones cannot. */
+function canSplit(task: Task | null): task is Task {
+  return task != null && !task.summary && !task.milestone && task.duration > 0;
 }
 
 function linkAbove(
@@ -558,6 +585,7 @@ function Inspector({
   task,
   send,
   onEditSeries,
+  onSplit,
   onEditCalendar,
   onCreateCalendar,
 }: {
@@ -565,6 +593,7 @@ function Inspector({
   task: Task;
   send: (command: Command) => void;
   onEditSeries: (uid: number) => void;
+  onSplit: (uid: number) => void;
   onEditCalendar: (calendarId: number) => void;
   onCreateCalendar: () => void;
 }) {
@@ -588,6 +617,7 @@ function Inspector({
           )}
         </div>
       )}
+      {canSplit(task) && <SplitSection task={task} send={send} onSplit={onSplit} />}
       <div>
         <label>Bắt đầu thực</label>
         <DateTimeField
@@ -833,6 +863,50 @@ function Inspector({
         {task.conflict ? " · Vi phạm ràng buộc" : ""}
       </p>
     </section>
+  );
+}
+
+function SplitSection({
+  task,
+  send,
+  onSplit,
+}: {
+  task: Task;
+  send: (command: Command) => void;
+  onSplit: (uid: number) => void;
+}) {
+  return (
+    <div className="split-section">
+      <label>Tách công việc</label>
+      {task.segments.length > 1 && (
+        <ol className="split-list">
+          {task.segments.map((segment, index) => (
+            <li key={`${segment.start}-${index}`}>
+              <span>
+                Đoạn {index + 1}: {formatInstant(segment.start)} – {formatInstant(segment.finish)}
+              </span>
+              {index + 1 < task.segments.length && (
+                <button
+                  type="button"
+                  title={`Ngắt ${formatDuration(task.splits[index]?.gap ?? 0)} làm việc`}
+                  onClick={() => send({ type: "remove_split", uid: task.uid, index })}
+                >
+                  Nối với đoạn {index + 2}
+                </button>
+              )}
+            </li>
+          ))}
+        </ol>
+      )}
+      <div className="row">
+        <button type="button" onClick={() => onSplit(task.uid)}>Tách…</button>
+        {task.splits.length > 0 && (
+          <button type="button" onClick={() => send({ type: "remove_split", uid: task.uid, index: null })}>
+            Nối tất cả các đoạn
+          </button>
+        )}
+      </div>
+    </div>
   );
 }
 

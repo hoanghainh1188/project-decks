@@ -1,5 +1,5 @@
 import { utcMidnight } from "./format";
-import type { Project, Scale, Task } from "./types";
+import type { Project, Scale, Segment, Task } from "./types";
 
 export const ROW = 28;
 export const HEAD = 48;
@@ -47,6 +47,42 @@ export function barBox(task: Task, row: number, origin: number, px: number) {
   const y = task.summary ? row * ROW + 12 : row * ROW + 6;
   const h = task.summary ? 6 : 16;
   return { x, y, w, h };
+}
+
+/** Split pieces of a leaf bar, or null when the bar is drawn whole. */
+export function splitPieces(task: Task, segments: Segment[] | undefined): Segment[] | null {
+  if (task.summary || task.milestone || !segments || segments.length < 2) return null;
+  return segments;
+}
+
+/** Same pieces moved by a drag preview; a resize preview moves only the last finish. */
+export function previewPieces(task: Task, start: number, finish: number): Segment[] | null {
+  const pieces = splitPieces(task, task.segments);
+  if (!pieces) return null;
+  const shift = start - task.start;
+  return pieces.map((piece, index) => {
+    const moved = { start: piece.start + shift, finish: piece.finish + shift };
+    if (index === pieces.length - 1 && finish !== task.finish) moved.finish = Math.max(finish, moved.start);
+    return moved;
+  });
+}
+
+/** Horizontal extent of one piece, in content pixels. */
+export function pieceSpan(piece: Segment, origin: number, px: number): { x: number; w: number } {
+  const x = ((piece.start - origin) / 86400000) * px;
+  const w = Math.max(((piece.finish - piece.start) / 86400000) * px, 2);
+  return { x, w };
+}
+
+/** Width of the done part of each piece, filling pieces in order by `percent` of their total width. */
+export function progressWidths(spans: { w: number }[], percent: number): number[] {
+  const total = spans.reduce((sum, span) => sum + span.w, 0);
+  let left = (total * Math.min(Math.max(percent, 0), 100)) / 100;
+  return spans.map((span) => {
+    const done = Math.min(span.w, left);
+    left -= done;
+    return done;
+  });
 }
 
 export function barColor(task: Task): string {

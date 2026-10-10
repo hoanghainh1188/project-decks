@@ -182,6 +182,9 @@ function BurndownChart({ report }: { report: BurndownReport }) {
         {report.ideal.length >= 2 && (
           <path d={path(report.ideal)} fill="none" stroke="#8e8e93" strokeWidth={1.5} strokeDasharray="5 4" />
         )}
+        {report.planned.length >= 2 && (
+          <path d={path(report.planned)} fill="none" stroke="#2a9d8f" strokeWidth={1.2} />
+        )}
         {report.actual.length > 0 && (
           <>
             <path d={path(report.actual)} fill="none" stroke="#0a84ff" strokeWidth={2} />
@@ -195,6 +198,11 @@ function BurndownChart({ report }: { report: BurndownReport }) {
       </svg>
       <figcaption className="burndown-legend">
         <span><i className="swatch ideal" /> Lý tưởng (baseline 0)</span>
+        {report.planned.length >= 2 && (
+          <span title="Việc baseline 0 còn lại theo giờ làm việc; đi ngang ở ngày nghỉ và khoảng ngắt của công việc tách">
+            <i className="swatch planned" /> Kế hoạch theo lịch
+          </span>
+        )}
         <span><i className="swatch actual" /> Thực tế</span>
         {report.status_date != null && <span><i className="swatch status" /> Ngày trạng thái</span>}
       </figcaption>

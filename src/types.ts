@@ -31,6 +31,20 @@ export interface Baseline {
   finish: number;
   work: number;
   cost: number;
+  /** Segments of a split task when the baseline was set; empty otherwise. */
+  segments: Segment[];
+}
+
+/** Interruption of a task's work; both values are working minutes. */
+export interface Split {
+  offset: number;
+  gap: number;
+}
+
+/** One scheduled piece of a split task, as instants. */
+export interface Segment {
+  start: number;
+  finish: number;
 }
 
 export interface Task {
@@ -83,6 +97,9 @@ export interface Task {
   series_uid: number | null;
   occurrence_date: number | null;
   detached: boolean;
+  splits: Split[];
+  /** Computed by the engine; empty when the task is not split. */
+  segments: Segment[];
 }
 
 /** Weekdays use 0 = Monday … 6 = Sunday, like calendar weeks. Ordinals are 1–4, or 5 for the last one. */
@@ -260,7 +277,9 @@ export type Command =
   | { type: "set_leveling_delay"; uid: number; minutes: number }
   | { type: "set_deadline"; uid: number; date: number | null }
   | { type: "create_recurring_task"; after_uid: number | null; spec: RecurrenceSpec }
-  | { type: "update_recurring_task"; uid: number; spec: RecurrenceSpec };
+  | { type: "update_recurring_task"; uid: number; spec: RecurrenceSpec }
+  | { type: "split_task"; uid: number; at: number; gap: number }
+  | { type: "remove_split"; uid: number; index: number | null };
 
 export type ViewId = "gantt" | "tracking" | "resources" | "usage";
 
@@ -303,6 +322,8 @@ export interface BurndownReport {
   baseline_finish: number | null;
   baseline_work: number;
   ideal: BurndownPoint[];
+  /** Baseline 0 work still planned over time; flat across split gaps. */
+  planned: BurndownPoint[];
   actual: BurndownSnapshot[];
   current_remaining_work: number;
 }

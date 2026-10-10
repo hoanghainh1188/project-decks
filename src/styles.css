@@ -208,6 +208,7 @@ button.on { background: #0a84ff; color: white; border-color: #0a84ff; }
 .swatch { display: inline-block; width: 14px; height: 0; vertical-align: middle; border-top: 2px solid; }
 .swatch.ideal { border-top: 2px dashed #8e8e93; }
 .swatch.actual { border-color: #0a84ff; }
+.swatch.planned { border-color: #2a9d8f; }
 .swatch.status { border-top: 2px dashed #c23b3b; }
 .swatch.pv { border-top: 2px dashed #8e8e93; }
 .swatch.ev { border-color: #34a853; }
@@ -242,6 +243,10 @@ button.on { background: #0a84ff; color: white; border-color: #0a84ff; }
 .assign-list { list-style: none; margin: 0 0 6px; padding: 0; display: grid; gap: 4px; }
 .assign-list li { display: flex; gap: 6px; align-items: center; }
 .assign-list li span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.split-list { margin: 0 0 6px; padding-left: 0; list-style: none; display: grid; gap: 4px; }
+.split-list li { display: flex; flex-direction: column; gap: 2px; }
+.split-list button { align-self: flex-start; }
+.split-dialog .bad { color: #b42318; }
 .meta { flex: 1 1 100%; margin: 0; color: #3a3a3c; }
 .status {
   display: flex;
