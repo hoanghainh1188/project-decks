@@ -53,6 +53,10 @@ export function exportMspdi(): Promise<void> {
   return invoke<void>("export_mspdi");
 }
 
+export function savePdf(bytes: Uint8Array, fileName: string): Promise<void> {
+  return invoke<void>("save_pdf", { bytes: Array.from(bytes), fileName });
+}
+
 export function onMenu(handler: (id: string) => void): Promise<UnlistenFn> {
   return listen<string>("menu-action", (event) => handler(event.payload));
 }
