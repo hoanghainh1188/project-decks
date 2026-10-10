@@ -23,8 +23,8 @@ describe("buildTimescale", () => {
           start: at(2026, 1, 5, 8),
           finish: at(2026, 1, 9, 17),
           baselines: [
-            { number: 0, start: at(2026, 1, 2, 8), finish: at(2026, 1, 12, 17), work: 0, cost: 0 },
-            { number: 1, start: at(2025, 12, 1, 8), finish: at(2026, 3, 1, 17), work: 0, cost: 0 },
+            { number: 0, start: at(2026, 1, 2, 8), finish: at(2026, 1, 12, 17), work: 0, cost: 0, segments: [] },
+            { number: 1, start: at(2025, 12, 1, 8), finish: at(2026, 3, 1, 17), work: 0, cost: 0, segments: [] },
           ],
         }),
       ],

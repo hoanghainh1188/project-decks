@@ -72,6 +72,8 @@ export function makeTask(overrides: Partial<Task> & { uid: number }): Task {
     series_uid: null,
     occurrence_date: null,
     detached: false,
+    splits: [],
+    segments: [],
     ...overrides,
   };
 }
@@ -157,6 +159,7 @@ export function emptyBurndown(overrides: Partial<BurndownReport> = {}): Burndown
     baseline_finish: null,
     baseline_work: 0,
     ideal: [],
+    planned: [],
     actual: [],
     current_remaining_work: 0,
     ...overrides,
