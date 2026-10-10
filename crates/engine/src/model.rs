@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::calendar::Calendar;
 use crate::recurrence::Recurrence;
+use crate::split::{Segment, Split};
 use crate::timeutil::MINUTES_PER_DAY;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -95,6 +96,9 @@ pub struct Baseline {
     pub finish: i64,
     pub work: i64,
     pub cost: f64,
+    /// Segments of a split task when the baseline was set; empty when it was not split.
+    #[serde(default)]
+    pub segments: Vec<Segment>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -160,6 +164,12 @@ pub struct Task {
     /// Edited on its own; regenerating the series leaves it unchanged.
     #[serde(default)]
     pub detached: bool,
+    /// Interruptions of the work, ordered by offset. Empty when the task is not split.
+    #[serde(default)]
+    pub splits: Vec<Split>,
+    /// Scheduled pieces of work when split; derived by the scheduler, empty otherwise.
+    #[serde(default)]
+    pub segments: Vec<Segment>,
 }
 
 impl Task {
@@ -214,6 +224,8 @@ impl Task {
             series_uid: None,
             occurrence_date: None,
             detached: false,
+            splits: Vec::new(),
+            segments: Vec::new(),
         }
     }
 

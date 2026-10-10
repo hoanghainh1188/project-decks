@@ -3,11 +3,15 @@ use std::collections::{HashMap, VecDeque};
 use crate::error::EngineError;
 use crate::level::publish_overallocations;
 use crate::model::{ConstraintType, DepKind, Project, Task};
+use crate::split;
 use crate::work::publish_costs_and_usage;
 
 /// Recompute WBS, early/late dates, slack, critical path, costs, usage, and the late flag.
 pub fn schedule(project: &mut Project) -> Result<(), EngineError> {
     normalize_outline(project);
+    for task in &mut project.tasks {
+        split::normalize_task(task);
+    }
     if project.calendar().week.iter().all(|d| d.is_empty())
         && project
             .calendar()
@@ -35,6 +39,7 @@ pub fn schedule(project: &mut Project) -> Result<(), EngineError> {
     backward(project);
     rollup(project);
     free_slack(project);
+    split::publish_segments(project);
     publish_costs_and_usage(project);
     publish_overallocations(project);
     publish_predecessor_text(project);
@@ -320,11 +325,8 @@ fn schedule_leaf(
         }
     }
 
-    let duration = if task.milestone {
-        0
-    } else {
-        task.duration.max(0)
-    };
+    // A split task occupies its work plus its gaps.
+    let duration = split::span(task);
     let (mut es, mut ef) = span_from_start(cal, es, duration);
 
     if task.constraint_type != ConstraintType::Mso {
@@ -589,11 +591,7 @@ fn late_leaf(
 ) -> (i64, i64) {
     let task = &project.tasks[index];
     let cal = project.task_calendar(task);
-    let duration = if task.milestone {
-        0
-    } else {
-        task.duration.max(0)
-    };
+    let duration = split::span(task);
     if task.manual {
         return (task.early_start, task.early_finish);
     }
@@ -707,7 +705,7 @@ fn schedule_alap(project: &mut Project) {
             let task = &project.tasks[index];
             (
                 task.summary || task.manual || task.constraint_type != ConstraintType::Alap,
-                if task.milestone { 0 } else { task.duration.max(0) },
+                split::span(task),
                 task.early_start,
                 task.early_finish,
                 task.calendar_id,

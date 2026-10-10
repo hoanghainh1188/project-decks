@@ -10,6 +10,7 @@ use crate::model::{
     ResourceKind, Task, TaskType,
 };
 use crate::schedule::schedule;
+use crate::split::Split;
 use crate::timeutil::{
     format_duration_iso, format_iso, parse_duration_iso, parse_iso,
 };
@@ -42,10 +43,112 @@ pub fn write_mspdi(project: &Project) -> Result<String, EngineError> {
     }
     xml.push_str("</Resources>\n<Assignments>\n");
     for assignment in &project.assignments {
-        write_assignment(&mut xml, assignment);
+        write_assignment(&mut xml, project, assignment);
     }
+    write_unassigned_splits(&mut xml, project);
     xml.push_str("</Assignments>\n</Project>\n");
     Ok(xml)
+}
+
+/// Microsoft Project keeps split segments as assignment timephased work. A split task
+/// with no resource gets an assignment to the "unassigned" resource (UID -65535).
+fn write_unassigned_splits(xml: &mut String, project: &Project) {
+    let mut next_uid = project
+        .assignments
+        .iter()
+        .map(|assignment| assignment.uid)
+        .max()
+        .unwrap_or(0)
+        + 1;
+    for task in &project.tasks {
+        if task.summary
+            || task.segments.len() < 2
+            || project
+                .assignments
+                .iter()
+                .any(|assignment| assignment.task_uid == task.uid)
+        {
+            continue;
+        }
+        xml.push_str("<Assignment>\n");
+        el(xml, "UID", &next_uid.to_string());
+        el(xml, "TaskUID", &task.uid.to_string());
+        el(xml, "ResourceUID", "-65535");
+        el(xml, "Units", "1");
+        el(xml, "Work", &format_duration_iso(task.work));
+        write_timephased(xml, project, task, next_uid, task.work);
+        xml.push_str("</Assignment>\n");
+        next_uid += 1;
+    }
+}
+
+/// Planned work per segment (type 1), with a zero-work period for each gap.
+fn write_timephased(xml: &mut String, project: &Project, task: &Task, assignment_uid: u32, work: i64) {
+    if task.segments.len() < 2 {
+        return;
+    }
+    let cal = project.task_calendar(task);
+    let minutes: Vec<i64> = task
+        .segments
+        .iter()
+        .map(|segment| cal.working_between(segment.start, segment.finish).max(0))
+        .collect();
+    let total: i64 = minutes.iter().sum::<i64>().max(1);
+    let mut assigned = 0i64;
+    for (index, segment) in task.segments.iter().enumerate() {
+        let last = index + 1 == task.segments.len();
+        let value = if last {
+            (work - assigned).max(0)
+        } else {
+            (work as f64 * minutes[index] as f64 / total as f64).round() as i64
+        };
+        assigned += value;
+        write_period(xml, assignment_uid, segment.start, segment.finish, value);
+        if let Some(next) = task.segments.get(index + 1) {
+            write_period(xml, assignment_uid, segment.finish, next.start, 0);
+        }
+    }
+}
+
+fn write_period(xml: &mut String, assignment_uid: u32, start: i64, finish: i64, minutes: i64) {
+    xml.push_str("<TimephasedData>\n");
+    el(xml, "Type", "1");
+    el(xml, "UID", &assignment_uid.to_string());
+    el(xml, "Start", &format_iso(start));
+    el(xml, "Finish", &format_iso(finish));
+    el(xml, "Unit", "2");
+    el(xml, "Value", &format_duration_iso(minutes));
+    xml.push_str("</TimephasedData>\n");
+}
+
+/// Rebuild splits from timephased work: gaps are working time with no work between pieces.
+fn splits_from_periods(cal: &Calendar, periods: &[Period]) -> Vec<Split> {
+    let mut work: Vec<(i64, i64)> = periods
+        .iter()
+        .filter(|period| period.minutes > 0 && period.finish > period.start)
+        .map(|period| (period.start, period.finish))
+        .collect();
+    work.sort_unstable();
+    let mut merged: Vec<(i64, i64)> = Vec::new();
+    for (start, finish) in work {
+        if let Some(last) = merged.last_mut() {
+            if start <= last.1 || cal.working_between(last.1, start) <= 0 {
+                last.1 = last.1.max(finish);
+                continue;
+            }
+        }
+        merged.push((start, finish));
+    }
+    let mut splits = Vec::new();
+    let mut done = 0i64;
+    for pair in merged.windows(2) {
+        done += cal.working_between(pair[0].0, pair[0].1).max(0);
+        splits.push(Split {
+            offset: done,
+            gap: cal.working_between(pair[0].1, pair[1].0).max(0),
+        });
+    }
+    splits
 }
 
 pub fn read_mspdi(xml: &str) -> Result<Project, EngineError> {
@@ -65,6 +168,8 @@ pub fn read_mspdi(xml: &str) -> Result<Project, EngineError> {
     let mut baseline: Option<Baseline> = None;
     let mut resource: Option<ResourceBuilder> = None;
     let mut assignment: Option<AssignmentBuilder> = None;
+    let mut period: Option<Period> = None;
+    let mut timephased: BTreeMap<u32, Vec<Period>> = BTreeMap::new();
 
     loop {
         match reader.read_event() {
@@ -90,10 +195,12 @@ pub fn read_mspdi(xml: &str) -> Result<Project, EngineError> {
                             finish: 0,
                             work: 0,
                             cost: 0.0,
+                            segments: Vec::new(),
                         })
                     }
                     Some("Resource") => resource = Some(ResourceBuilder::default()),
                     Some("Assignment") => assignment = Some(AssignmentBuilder::default()),
+                    Some("TimephasedData") => period = Some(Period::default()),
                     _ => {}
                 }
             }
@@ -106,6 +213,18 @@ pub fn read_mspdi(xml: &str) -> Result<Project, EngineError> {
             Ok(Event::End(event)) => {
                 let name = local_name(event.name().as_ref());
                 let parent = stack.iter().rev().nth(1).map(String::as_str);
+                if parent == Some("TimephasedData") {
+                    if let Some(item) = period.as_mut() {
+                        let value = text.trim();
+                        match name.as_str() {
+                            "Type" => item.kind = value.parse().unwrap_or(0),
+                            "Start" => item.start = parse_iso(value).unwrap_or(0),
+                            "Finish" => item.finish = parse_iso(value).unwrap_or(0),
+                            "Value" => item.minutes = parse_duration_iso(value).unwrap_or(0),
+                            _ => {}
+                        }
+                    }
+                }
                 apply_text(
                     &name,
                     parent,
@@ -205,8 +324,20 @@ pub fn read_mspdi(xml: &str) -> Result<Project, EngineError> {
                             }
                         }
                     }
+                    "TimephasedData" => {
+                        // Types 1 and 2 are remaining and actual assignment work.
+                        if let (Some(owner), Some(item)) = (assignment.as_mut(), period.take()) {
+                            if matches!(item.kind, 1 | 2) {
+                                owner.periods.push(item);
+                            }
+                        }
+                    }
                     "Assignment" => {
-                        if let Some(builder) = assignment.take() {
+                        if let Some(mut builder) = assignment.take() {
+                            let periods = std::mem::take(&mut builder.periods);
+                            if builder.task_uid != 0 && !periods.is_empty() {
+                                timephased.entry(builder.task_uid).or_default().extend(periods);
+                            }
                             if builder.task_uid != 0 && builder.resource_uid != 0 {
                                 project.assignments.push(builder.finish());
                             }
@@ -276,6 +407,18 @@ pub fn read_mspdi(xml: &str) -> Result<Project, EngineError> {
         if units > 0.0 {
             task.units = units;
         }
+    }
+    let splits: Vec<(usize, Vec<Split>)> = project
+        .tasks
+        .iter()
+        .enumerate()
+        .filter_map(|(index, task)| {
+            let periods = timephased.get(&task.uid)?;
+            Some((index, splits_from_periods(project.task_calendar(task), periods)))
+        })
+        .collect();
+    for (index, task_splits) in splits {
+        project.tasks[index].splits = task_splits;
     }
     project.start = project.calendar().next_work_start(project.start);
     schedule(&mut project)?;
@@ -754,7 +897,7 @@ fn write_resource(xml: &mut String, resource: &Resource) {
     xml.push_str("</Resource>\n");
 }
 
-fn write_assignment(xml: &mut String, assignment: &Assignment) {
+fn write_assignment(xml: &mut String, project: &Project, assignment: &Assignment) {
     xml.push_str("<Assignment>\n");
     el(xml, "UID", &assignment.uid.to_string());
     el(xml, "TaskUID", &assignment.task_uid.to_string());
@@ -767,6 +910,9 @@ fn write_assignment(xml: &mut String, assignment: &Assignment) {
         &format_duration_iso(assignment.overtime_work),
     );
     el(xml, "Cost", &format_number(assignment.cost));
+    if let Some(task) = project.task(assignment.task_uid) {
+        write_timephased(xml, project, task, assignment.uid, assignment.work);
+    }
     xml.push_str("</Assignment>\n");
 }
 
@@ -1051,6 +1197,16 @@ struct AssignmentBuilder {
     units: f64,
     work: i64,
     overtime_work: i64,
+    periods: Vec<Period>,
+}
+
+/// One timephased work record of an assignment.
+#[derive(Clone, Default)]
+struct Period {
+    kind: u32,
+    start: i64,
+    finish: i64,
+    minutes: i64,
 }
 
 impl AssignmentBuilder {

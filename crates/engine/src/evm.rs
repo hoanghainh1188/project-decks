@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::calendar::Calendar;
 use crate::model::{Accrual, Baseline, Project, Task};
+use crate::split;
 use crate::timeutil::{civil, compose};
 
 const DAY_MS: i64 = 86_400_000;
@@ -80,6 +81,9 @@ pub struct BurndownReport {
     pub baseline_work: i64,
     /// Straight line from (baseline start, baseline work) to (baseline finish, 0); empty without baseline 0.
     pub ideal: Vec<BurndownPoint>,
+    /// Baseline 0 work still planned over time (start, each midnight, finish), skipping split
+    /// gaps and non-working time; empty without baseline 0.
+    pub planned: Vec<BurndownPoint>,
     /// Stored snapshots up to the status date, oldest first.
     pub actual: Vec<BurndownSnapshot>,
     /// Remaining work of the current schedule, in working minutes.
@@ -163,14 +167,18 @@ fn accrued_fraction(calendar: &Calendar, accrual: Accrual, start: i64, finish: i
 }
 
 /// Share of the baseline cost planned to be spent by `status`, following the task accrual.
+/// Prorated cost follows the baseline working time, so split gaps accrue nothing.
 pub fn planned_fraction(project: &Project, task: &Task, baseline: &Baseline, status: i64) -> f64 {
-    accrued_fraction(
-        project.task_calendar(task),
-        task.fixed_cost_accrual,
-        baseline.start,
-        baseline.finish,
-        status,
-    )
+    match task.fixed_cost_accrual {
+        Accrual::Prorated => worked_fraction(project, task, baseline, status),
+        accrual => accrued_fraction(
+            project.task_calendar(task),
+            accrual,
+            baseline.start,
+            baseline.finish,
+            status,
+        ),
+    }
 }
 
 /// Working-time window over which the recorded progress of `task` is assumed to have
@@ -216,6 +224,83 @@ fn earned_at(project: &Project, task: &Task, baseline: &Baseline, at: i64, statu
     let calendar = project.task_calendar(task);
     let fraction = accrued_fraction(calendar, Accrual::Prorated, start, finish, at);
     baseline.cost * percent / 100.0 * fraction
+}
+
+/// Windows the baseline planned work in: its segments when split, else start to finish.
+fn baseline_intervals(baseline: &Baseline) -> Vec<(i64, i64)> {
+    if baseline.segments.is_empty() {
+        vec![(baseline.start, baseline.finish)]
+    } else {
+        baseline
+            .segments
+            .iter()
+            .map(|segment| (segment.start, segment.finish))
+            .collect()
+    }
+}
+
+/// Share of the baseline working time elapsed by `at`. Split gaps do not count.
+pub fn worked_fraction(project: &Project, task: &Task, baseline: &Baseline, at: i64) -> f64 {
+    let intervals = baseline_intervals(baseline);
+    let begin = intervals.iter().map(|(start, _)| *start).min().unwrap_or(baseline.start);
+    let end = intervals.iter().map(|(_, finish)| *finish).max().unwrap_or(baseline.finish);
+    if at >= end {
+        return 1.0;
+    }
+    if at <= begin {
+        return 0.0;
+    }
+    let calendar = project.task_calendar(task);
+    let total = split::working_within(calendar, &intervals, i64::MIN, i64::MAX);
+    if total <= 0 {
+        // Zero-length baseline (milestone): all of it is planned once its finish is reached.
+        return if at >= baseline.finish { 1.0 } else { 0.0 };
+    }
+    let elapsed = split::working_within(calendar, &intervals, i64::MIN, at);
+    (elapsed as f64 / total as f64).clamp(0.0, 1.0)
+}
+
+/// Longest planned curve, in daily samples.
+const MAX_PLANNED_DAYS: usize = 3660;
+
+/// Baseline 0 work still planned at the end of each day, phased over working time.
+/// Flat across split gaps and non-working days.
+fn planned_curve(project: &Project, start: i64, finish: i64) -> Vec<BurndownPoint> {
+    let remaining_at = |at: i64| -> i64 {
+        leaves(project)
+            .filter_map(|task| baseline_zero(task).map(|baseline| (task, baseline)))
+            .map(|(task, baseline)| {
+                baseline.work.max(0) as f64 * (1.0 - worked_fraction(project, task, baseline, at))
+            })
+            .sum::<f64>()
+            .round() as i64
+    };
+    let mut points = vec![BurndownPoint {
+        date: start,
+        remaining_work: remaining_at(start),
+    }];
+    let (mut date, _) = civil(start);
+    for _ in 0..MAX_PLANNED_DAYS {
+        let Some(next) = date.succ_opt() else {
+            break;
+        };
+        let midnight = compose(next, 0);
+        if midnight >= finish {
+            break;
+        }
+        points.push(BurndownPoint {
+            date: midnight,
+            remaining_work: remaining_at(midnight),
+        });
+        date = next;
+    }
+    if finish > start {
+        points.push(BurndownPoint {
+            date: finish,
+            remaining_work: remaining_at(finish),
+        });
+    }
+    points
 }
 
 fn positive_ratio(numerator: f64, denominator: f64) -> Option<f64> {
@@ -325,6 +410,10 @@ pub fn burndown(project: &Project, snapshots: &[BurndownSnapshot]) -> BurndownRe
         ],
         _ => Vec::new(),
     };
+    let planned = match (baseline_start, baseline_finish) {
+        (Some(start), Some(finish)) => planned_curve(project, start, finish),
+        _ => Vec::new(),
+    };
     let mut actual: Vec<BurndownSnapshot> = snapshots
         .iter()
         .filter(|snapshot| {
@@ -341,6 +430,7 @@ pub fn burndown(project: &Project, snapshots: &[BurndownSnapshot]) -> BurndownRe
         baseline_finish,
         baseline_work,
         ideal,
+        planned,
         actual,
         current_remaining_work: remaining_work(project),
     }

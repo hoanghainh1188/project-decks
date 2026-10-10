@@ -574,6 +574,7 @@ fn mspdi_roundtrip_covers_phase_fields() {
             finish: task.finish,
             work: task.work,
             cost: task.cost,
+            segments: Vec::new(),
         }
     };
     project.tasks[0].baselines.push(baseline);
@@ -1001,6 +1002,7 @@ fn late_when_any_of_status_baseline_or_deadline_is_missed() {
         finish: finish - 1,
         work: 0,
         cost: 0.0,
+        segments: Vec::new(),
     });
     assert!(!task.is_late(None), "only baseline 0 counts");
     task.baselines.push(projectdesk_engine::model::Baseline {
@@ -1009,6 +1011,7 @@ fn late_when_any_of_status_baseline_or_deadline_is_missed() {
         finish,
         work: 0,
         cost: 0.0,
+        segments: Vec::new(),
     });
     assert!(
         !task.is_late(None),
@@ -1021,6 +1024,7 @@ fn late_when_any_of_status_baseline_or_deadline_is_missed() {
         finish: finish - 1,
         work: 0,
         cost: 0.0,
+        segments: Vec::new(),
     });
     assert!(task.is_late(None));
 
@@ -1065,6 +1069,7 @@ fn schedule_publishes_late_from_status_date_and_baseline() {
             finish,
             work: 0,
             cost: 0.0,
+            segments: Vec::new(),
         });
     schedule(&mut project).unwrap();
     assert!(!project.tasks[0].late);
@@ -1547,6 +1552,7 @@ fn set_baseline_zero(task: &mut Task, cost: f64) {
         finish: task.finish,
         work: task.work,
         cost,
+        segments: Vec::new(),
     });
 }
 
