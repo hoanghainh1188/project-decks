@@ -39,8 +39,51 @@ export function parseInstant(text: string): number | null {
   const year = Number(match[3]);
   const hour = match[4] ? Number(match[4]) : 8;
   const minute = match[5] ? Number(match[5]) : 0;
+  if (hour > 23 || minute > 59) return null;
   const ms = Date.UTC(year, month - 1, day, hour, minute);
+  if (Number.isNaN(ms)) return null;
+  const check = new Date(ms);
+  // Reject dates like 31/02 that Date.UTC would silently roll over.
+  if (check.getUTCDate() !== day || check.getUTCMonth() !== month - 1) return null;
+  return ms;
+}
+
+export function formatDateOnly(ms: number): string {
+  return formatInstant(ms).slice(0, 10);
+}
+
+// Date-only text maps to UTC midnight of that wall-clock day.
+export function parseDateOnly(text: string): number | null {
+  if (!/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(text.trim())) return null;
+  return parseInstant(`${text.trim()} 00:00`);
+}
+
+export function dateKeyToInstant(key: string): number | null {
+  const match = key.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  const ms = Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
   return Number.isNaN(ms) ? null : ms;
+}
+
+export function instantToDateKey(ms: number): string {
+  const date = new Date(ms);
+  return `${date.getUTCFullYear()}-${pad2(date.getUTCMonth() + 1)}-${pad2(date.getUTCDate())}`;
+}
+
+// Time-of-day in minutes; 24:00 is allowed because working ranges may end at midnight.
+export function parseTimeOfDay(text: string): number | null {
+  const match = text.trim().match(/^(\d{1,2})(?::|h)?(\d{2})$/);
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (minute > 59 || hour > 24 || (hour === 24 && minute !== 0)) return null;
+  return hour * 60 + minute;
+}
+
+// Today's wall-clock date in the user's timezone, as UTC midnight to match project instants.
+export function todayInstant(): number {
+  const now = new Date();
+  return Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
 }
 
 function pad2(value: number): string {

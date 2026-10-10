@@ -246,7 +246,54 @@ tr.child td:first-child { padding-left: 22px; color: #3a3a3c; }
 }
 .datetime-field { display: flex; align-items: center; gap: 4px; min-width: 0; }
 .datetime-field input { flex: 1; min-width: 0; }
-.sheet .datetime-field button { padding: 0 4px; }
+.datetime-field .picker-toggle,
+.datetime-field .picker-clear {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  padding: 2px 5px;
+  line-height: 1;
+  color: #3a3a3c;
+}
+.sheet .datetime-field { gap: 1px; }
+.sheet .datetime-field button { padding: 0 3px; border-color: transparent; background: transparent; }
+.sheet .datetime-field button:hover { border-color: #d0d0d5; background: white; }
+.exception-form .datetime-field input { width: 96px; }
+.range-row .datetime-field input { width: 56px; }
+
+.picker-popover {
+  position: fixed;
+  z-index: 1000;
+  width: 248px;
+  padding: 8px;
+  background: white;
+  border: 1px solid #d0d0d5;
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+}
+.picker-head { display: flex; align-items: center; gap: 6px; }
+.picker-head button { padding: 2px 8px; }
+.picker-title { flex: 1; text-align: center; font-weight: 600; }
+.picker-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.picker-weekday { text-align: center; color: #6e6e73; font-size: 11px; padding: 2px 0; }
+.picker-day {
+  padding: 4px 0;
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: 6px;
+  text-align: center;
+}
+.picker-day:hover { background: #f0f0f3; }
+.picker-day.outside { color: #a1a1a6; }
+.picker-day.today { border-color: #0a84ff; }
+.picker-day.selected { background: #0a84ff; color: white; }
+.picker-time { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.picker-time .meta { flex-basis: 100%; color: #6e6e73; font-size: 11px; }
+.picker-foot { display: flex; align-items: center; gap: 6px; }
+.picker-foot .spacer { flex: 1; }
 .calendar-cell { display: flex; gap: 4px; align-items: center; }
 .calendar-cell select { flex: 1; min-width: 88px; }
 .calendar-editor { display: grid; gap: 8px; }

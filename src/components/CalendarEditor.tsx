@@ -1,7 +1,8 @@
 import { useState } from "react";
 
-import { formatDateKeyDisplay, minuteToTime, timeToMinute } from "../format";
+import { formatDateKeyDisplay, minuteToTime } from "../format";
 import type { Calendar, Command, Snapshot, TimeRange } from "../types";
+import { DateKeyField, TimeField } from "./DateTimeField";
 
 const WEEKDAYS = ["Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy", "Chủ Nhật"];
 
@@ -110,12 +111,12 @@ export function CalendarEditor({ calendar, send }: CalendarEditorProps) {
         </select>
         <label>
           {span === "day" ? "Ngày" : "Từ"}
-          <input type="date" value={from} onChange={(event) => setFrom(event.target.value)} />
+          <DateKeyField ariaLabel={span === "day" ? "Ngày" : "Từ ngày"} value={from} onCommit={setFrom} />
         </label>
         {span === "range" && (
           <label>
             Đến
-            <input type="date" value={to} onChange={(event) => setTo(event.target.value)} />
+            <DateKeyField ariaLabel="Đến ngày" value={to} onCommit={setTo} />
           </label>
         )}
         <select value={kind} onChange={(event) => setKind(event.target.value as "off" | "hours")}>
@@ -183,28 +184,22 @@ function RangeRows({ ranges, onChange }: { ranges: TimeRange[]; onChange: (range
         <div className="range-row" key={index}>
           <label>
             Từ
-            <input
-              type="time"
-              step={60}
-              value={minuteToTime(range.start_minute)}
-              onChange={(event) => {
-                const minute = timeToMinute(event.target.value);
-                if (minute === null) return;
-                onChange(ranges.map((item, itemIndex) => (itemIndex === index ? { ...item, start_minute: minute } : item)));
-              }}
+            <TimeField
+              ariaLabel="Giờ bắt đầu"
+              minute={range.start_minute}
+              onCommit={(minute) =>
+                onChange(ranges.map((item, itemIndex) => (itemIndex === index ? { ...item, start_minute: minute } : item)))
+              }
             />
           </label>
           <label>
             Đến
-            <input
-              type="time"
-              step={60}
-              value={minuteToTime(range.end_minute)}
-              onChange={(event) => {
-                const minute = timeToMinute(event.target.value);
-                if (minute === null) return;
-                onChange(ranges.map((item, itemIndex) => (itemIndex === index ? { ...item, end_minute: minute } : item)));
-              }}
+            <TimeField
+              ariaLabel="Giờ kết thúc"
+              minute={range.end_minute}
+              onCommit={(minute) =>
+                onChange(ranges.map((item, itemIndex) => (itemIndex === index ? { ...item, end_minute: minute } : item)))
+              }
             />
           </label>
           <button type="button" onClick={() => onChange(ranges.filter((_, itemIndex) => itemIndex !== index))}>
