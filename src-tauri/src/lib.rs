@@ -159,6 +159,26 @@ fn export_mspdi(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(),
     fs::write(path, xml).map_err(|err| err.to_string())
 }
 
+#[tauri::command]
+fn save_pdf(app: tauri::AppHandle, bytes: Vec<u8>, file_name: String) -> Result<(), String> {
+    // The PDF is already rendered. This only shows the save dialog and writes bytes.
+    if bytes.is_empty() {
+        return Err("PDF trống".into());
+    }
+    let picked = app
+        .dialog()
+        .file()
+        .add_filter("PDF", &["pdf"])
+        .set_title("Xuất PDF")
+        .set_file_name(file_name)
+        .blocking_save_file();
+    let Some(path) = picked.and_then(path_from_dialog) else {
+        return Ok(());
+    };
+    let path = ensure_suffix(path, ".pdf");
+    fs::write(path, bytes).map_err(|err| err.to_string())
+}
+
 fn menu_item(
     app: &tauri::AppHandle,
     id: &str,
@@ -195,6 +215,7 @@ fn build_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
             &PredefinedMenuItem::separator(app)?,
             &menu_item(app, "import-xml", "Nhập MSPDI…", None)?,
             &menu_item(app, "export-xml", "Xuất MSPDI…", None)?,
+            &menu_item(app, "export-pdf", "Xuất PDF", None)?,
         ],
     )?;
     let edit_menu = Submenu::with_items(
@@ -269,7 +290,8 @@ pub fn run() {
             save_project,
             save_project_as,
             import_mspdi,
-            export_mspdi
+            export_mspdi,
+            save_pdf
         ])
         .run(tauri::generate_context!())
         .expect("error while running ProjectDesk");

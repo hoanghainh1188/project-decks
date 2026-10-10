@@ -11,6 +11,7 @@ import {
   onMenu,
   openProject,
   redo,
+  savePdf,
   saveProject,
   saveProjectAs,
   undo,
@@ -22,6 +23,7 @@ import { ResourceSheet } from "./components/ResourceSheet";
 import { TaskSheet } from "./components/TaskSheet";
 import { TaskUsage } from "./components/TaskUsage";
 import { formatDuration, formatInstant, formatMoney, parseDuration } from "./format";
+import { buildGanttPdf, pdfSuggestedName } from "./ganttPdf";
 import type {
   Accrual,
   Command,
@@ -63,6 +65,7 @@ export default function App() {
   const [rowHighlight, setRowHighlight] = useState<HighlightMode>("none");
   const sheetRef = useRef<HTMLDivElement>(null);
   const ganttRef = useRef<HTMLDivElement>(null);
+  const exportPdfRef = useRef<() => void>(() => {});
   const syncing = useRef(false);
   const lastAction = useRef(0);
 
@@ -113,6 +116,7 @@ export default function App() {
       if (id === "export-xml") void run(async () => {
         await exportMspdi();
       });
+      if (id === "export-pdf") exportPdfRef.current();
       if (id === "undo") void run(undo);
       if (id === "redo") void run(redo);
       if (id === "view-gantt") setView("gantt");
@@ -212,6 +216,19 @@ export default function App() {
     () => (project ? buildViewRows(project, rowFilter, filterResource, rowGroup, rowHighlight) : []),
     [project, rowFilter, filterResource, rowGroup, rowHighlight],
   );
+  exportPdfRef.current = () => {
+    if (!project) return;
+    void run(async () => {
+      const bytes = buildGanttPdf({
+        project,
+        rows,
+        scale,
+        selected,
+        tracking: view === "tracking",
+      });
+      await savePdf(bytes, pdfSuggestedName(project.name));
+    });
+  };
   const finish = project?.tasks.reduce((max, item) => Math.max(max, item.finish), 0) ?? 0;
   const editingCalendar = project?.calendars.find((calendar) => calendar.id === calendarEditId) ?? null;
 
@@ -236,6 +253,7 @@ export default function App() {
         <button type="button" disabled={!task} onClick={() => task && send({ type: "delete_task", uid: task.uid })}>Xóa</button>
         <button type="button" disabled={!task} onClick={() => linkAbove(project, task, send)}>Nối FS</button>
         <button type="button" onClick={() => setInfoOpen(true)}>Lịch</button>
+        <button type="button" disabled={!project} onClick={() => exportPdfRef.current()}>Xuất PDF</button>
         <span className="spacer" />
         <div className="segmented">
           <button type="button" className={view === "gantt" ? "on" : ""} onClick={() => setView("gantt")}>Gantt</button>

@@ -1,11 +1,22 @@
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 
-import { shiftDays, utcMidnight } from "../format";
+import { shiftDays } from "../format";
+import {
+  HEAD,
+  ROW,
+  barBox,
+  barColor,
+  buildTimescale,
+  dayLabel,
+  groupLabel,
+  holidayKeys,
+  isWeekend,
+  isoDate,
+  pixelsPerDay,
+  type Timescale,
+} from "../ganttLayout";
 import type { Project, Scale, Task } from "../types";
 import type { ViewRow } from "../viewRows";
-
-const ROW = 28;
-const HEAD = 48;
 
 interface DragState {
   kind: "move" | "resize" | "link";
@@ -51,8 +62,8 @@ export function GanttChart({
   const headCanvas = useRef<HTMLCanvasElement>(null);
   const bodyCanvas = useRef<HTMLCanvasElement>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
-  const px = scale === "day" ? 28 : scale === "week" ? 14 : 5;
-  const model = useMemo(() => buildModel(project), [project]);
+  const px = pixelsPerDay(scale);
+  const model = useMemo(() => buildTimescale(project), [project]);
 
   function paint() {
     const head = headCanvas.current;
@@ -194,45 +205,7 @@ export function GanttChart({
   );
 }
 
-interface Model {
-  origin: number;
-  days: number[];
-}
-
-function buildModel(project: Project): Model {
-  let min = Number.POSITIVE_INFINITY;
-  let max = Number.NEGATIVE_INFINITY;
-  for (const task of project.tasks) {
-    min = Math.min(min, task.start, task.finish);
-    max = Math.max(max, task.start, task.finish);
-    for (const baseline of task.baselines) {
-      if (baseline.number === 0) {
-        min = Math.min(min, baseline.start);
-        max = Math.max(max, baseline.finish);
-      }
-    }
-  }
-  if (!Number.isFinite(min) || !Number.isFinite(max)) {
-    min = project.start;
-    max = project.start + 14 * 86400000;
-  }
-  const origin = utcMidnight(min) - 2 * 86400000;
-  const end = utcMidnight(max) + 21 * 86400000;
-  const days: number[] = [];
-  for (let cursor = origin; cursor <= end; cursor += 86400000) days.push(cursor);
-  return { origin, days };
-}
-
-function barBox(task: Task, row: number, origin: number, px: number) {
-  const x = ((task.start - origin) / 86400000) * px;
-  const finishX = ((Math.max(task.finish, task.start) - origin) / 86400000) * px;
-  const w = Math.max(finishX - x, task.milestone ? 0 : 8);
-  const y = task.summary ? row * ROW + 12 : row * ROW + 6;
-  const h = task.summary ? 6 : 16;
-  return { x, y, w, h };
-}
-
-function paintHeader(canvas: HTMLCanvasElement, model: Model, px: number) {
+function paintHeader(canvas: HTMLCanvasElement, model: Timescale, px: number) {
   const width = model.days.length * px;
   const ratio = window.devicePixelRatio || 1;
   sizeCanvas(canvas, width, HEAD, ratio);
@@ -283,7 +256,7 @@ function paintBody(
   canvas: HTMLCanvasElement,
   project: Project,
   rows: ViewRow[],
-  model: Model,
+  model: Timescale,
   px: number,
   selected: number | null,
   tracking: boolean,
@@ -304,7 +277,7 @@ function paintBody(
   const windowHeight = Math.max(viewHeight, canvasHeight);
   const rowStart = Math.max(0, Math.floor(scrollTop / ROW) - 6);
   const rowEnd = Math.min(rows.length, rowStart + Math.ceil(windowHeight / ROW) + 12);
-  const holidays = new Set(Object.keys(project.calendars.find((item) => item.id === project.calendar_id)?.exceptions ?? {}).filter((key) => (project.calendars.find((item) => item.id === project.calendar_id)?.exceptions[key] ?? []).length === 0));
+  const holidays = holidayKeys(project);
   model.days.forEach((day, index) => {
     const key = isoDate(day);
     if (isWeekend(day) || holidays.has(key)) {
@@ -358,7 +331,7 @@ function paintBody(
     const start = moved?.kind === "move" ? shiftDays(task.start, Math.round((moved.x - moved.originX) / px)) : task.start;
     const finish = moved?.kind === "resize" ? shiftDays(task.finish, Math.round((moved.x - moved.originX) / px)) : task.finish;
     const preview = { ...task, start, finish };
-    const color = task.critical ? "#c23b3b" : task.manual ? "#2a9d8f" : task.summary ? "#1d1d1f" : "#2f6fad";
+    const color = barColor(task);
     drawBar(ctx, preview, row, model.origin, px, color, false, preview.start, preview.finish);
     if (!task.summary && task.percent_complete > 0) {
       const rect = barBox(preview, row, model.origin, px);
@@ -484,29 +457,3 @@ function sizeCanvas(canvas: HTMLCanvasElement, width: number, height: number, ra
   canvas.height = Math.max(1, Math.floor(height * ratio));
 }
 
-function isWeekend(ms: number): boolean {
-  const day = new Date(ms).getUTCDay();
-  return day === 0 || day === 6;
-}
-
-function isoDate(ms: number): string {
-  const date = new Date(ms);
-  const pad = (value: number) => String(value).padStart(2, "0");
-  return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`;
-}
-
-function groupLabel(ms: number, px: number): string {
-  const date = new Date(ms);
-  if (px >= 20) return `Tháng ${date.getUTCMonth() + 1} ${date.getUTCFullYear()}`;
-  const onejan = Date.UTC(date.getUTCFullYear(), 0, 1);
-  const week = Math.ceil(((ms - onejan) / 86400000 + new Date(onejan).getUTCDay() + 1) / 7);
-  return px >= 10 ? `Tuần ${week}` : `T${date.getUTCMonth() + 1}/${date.getUTCFullYear()}`;
-}
-
-function dayLabel(ms: number, px: number): string {
-  const date = new Date(ms);
-  if (px < 10) return "";
-  if (px < 20) return String(date.getUTCDate());
-  const names = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
-  return `${names[date.getUTCDay()]} ${date.getUTCDate()}`;
-}
