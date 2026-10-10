@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
-import type { Command, Snapshot } from "./types";
+import type { Command, ProjectMetrics, Snapshot } from "./types";
 
 export function inTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -15,6 +15,10 @@ export function errorMessage(error: unknown): string {
 
 export function loadState(): Promise<Snapshot> {
   return invoke<Snapshot>("project_state");
+}
+
+export function loadMetrics(): Promise<ProjectMetrics> {
+  return invoke<ProjectMetrics>("project_metrics");
 }
 
 export function applyCommand(command: Command): Promise<Snapshot> {

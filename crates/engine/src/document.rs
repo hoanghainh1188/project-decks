@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::command::{self, Command};
 use crate::error::EngineError;
+use crate::evm::{self, BurndownSnapshot, ProjectMetrics};
 use crate::model::{Project, Task};
 use crate::schedule::{mark_late, schedule};
 use crate::timeutil::{civil, compose};
@@ -23,6 +24,8 @@ pub struct Document {
     pub cursor: usize,
     pub path: Option<String>,
     pub dirty: bool,
+    /// Burn-down samples, oldest first. Kept outside the command log so undo does not drop them.
+    pub burndown: Vec<BurndownSnapshot>,
 }
 
 impl Document {
@@ -45,6 +48,7 @@ impl Document {
             cursor: 0,
             path: None,
             dirty: false,
+            burndown: Vec::new(),
         }
     }
 
@@ -65,11 +69,26 @@ impl Document {
         let mut trial = self.project.clone();
         command::apply_one(&mut trial, &command)?;
         schedule(&mut trial)?;
+        let status_changed = trial.status_date != self.project.status_date;
         self.commands.push(command);
         self.cursor = self.commands.len();
         self.project = trial;
         self.dirty = true;
+        if let Some(status) = self.project.status_date.filter(|_| status_changed) {
+            self.record_burndown(status);
+        }
         Ok(self.snapshot())
+    }
+
+    /// Sample burn-down for the status date day, or for `now` when there is no status date.
+    pub fn record_burndown(&mut self, now: i64) {
+        let date = self.project.status_date.unwrap_or(now);
+        let snapshot = evm::take_snapshot(&self.project, date);
+        evm::record_snapshot(&mut self.burndown, snapshot);
+    }
+
+    pub fn metrics(&self) -> ProjectMetrics {
+        evm::metrics(&self.project, &self.burndown)
     }
 
     pub fn undo(&mut self) -> Result<Snapshot, EngineError> {
@@ -101,6 +120,7 @@ impl Document {
         self.cursor = 0;
         self.path = path;
         self.dirty = false;
+        self.burndown.clear();
         Ok(self.snapshot())
     }
 }
@@ -118,7 +138,7 @@ pub fn replay(base: &Project, commands: &[Command]) -> Result<Project, EngineErr
     Ok(project)
 }
 
-fn now_millis() -> i64 {
+pub fn now_millis() -> i64 {
     use std::time::{SystemTime, UNIX_EPOCH};
     SystemTime::now()
         .duration_since(UNIX_EPOCH)

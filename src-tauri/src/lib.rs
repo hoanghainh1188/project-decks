@@ -2,6 +2,8 @@ use std::fs;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
+use projectdesk_engine::document::now_millis;
+use projectdesk_engine::evm::ProjectMetrics;
 use projectdesk_engine::mspdi::{read_mspdi, write_mspdi};
 use projectdesk_engine::store;
 use projectdesk_engine::{Command, Document, Snapshot};
@@ -80,6 +82,11 @@ fn project_state(state: State<'_, AppState>) -> Snapshot {
 }
 
 #[tauri::command]
+fn project_metrics(state: State<'_, AppState>) -> ProjectMetrics {
+    lock(&state).metrics()
+}
+
+#[tauri::command]
 fn apply_command(state: State<'_, AppState>, command: Command) -> Result<Snapshot, String> {
     lock(&state)
         .apply(command)
@@ -130,7 +137,7 @@ async fn save_project(app: tauri::AppHandle, state: State<'_, AppState>) -> Resu
     let path = lock(&state).path.clone();
     if let Some(path) = path {
         let mut doc = lock(&state);
-        store::save(&doc, &path).map_err(|err| err.to_string())?;
+        store::save_with_snapshot(&mut doc, &path, now_millis()).map_err(|err| err.to_string())?;
         doc.path = Some(path);
         doc.dirty = false;
         return Ok(doc.snapshot());
@@ -165,7 +172,7 @@ async fn save_project_as(
     };
     let path = ensure_suffix(path, ".pdproj");
     let mut doc = lock(&state);
-    store::save(&doc, &path).map_err(|err| err.to_string())?;
+    store::save_with_snapshot(&mut doc, &path, now_millis()).map_err(|err| err.to_string())?;
     doc.path = Some(path);
     doc.dirty = false;
     Ok(doc.snapshot())
@@ -311,6 +318,7 @@ fn build_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
             &menu_item(app, "view-tracking", "Gantt theo dõi", None)?,
             &menu_item(app, "view-resources", "Bảng nguồn lực", None)?,
             &menu_item(app, "view-usage", "Sử dụng công việc", None)?,
+            &menu_item(app, "view-evm", "Chỉ số EVM và burn-down", None)?,
             &PredefinedMenuItem::separator(app)?,
             &menu_item(app, "scale-day", "Thang ngày", None)?,
             &menu_item(app, "scale-week", "Thang tuần", None)?,
@@ -354,6 +362,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             project_state,
+            project_metrics,
             apply_command,
             undo,
             redo,

@@ -6,6 +6,7 @@ import {
   exportMspdi,
   importMspdi,
   inTauri,
+  loadMetrics,
   loadState,
   newProject,
   onMenu,
@@ -18,6 +19,7 @@ import {
 } from "./api";
 import { CalendarEditor } from "./components/CalendarEditor";
 import { DateTimeField } from "./components/DateTimeField";
+import { EvmPanel } from "./components/EvmPanel";
 import { GanttChart } from "./components/GanttChart";
 import { RecurringDialog } from "./components/RecurringDialog";
 import { ResourceSheet } from "./components/ResourceSheet";
@@ -30,6 +32,7 @@ import type {
   Command,
   ConstraintType,
   Project,
+  ProjectMetrics,
   Resource,
   Scale,
   Snapshot,
@@ -66,6 +69,8 @@ export default function App() {
   const [rowHighlight, setRowHighlight] = useState<HighlightMode>("none");
   // null: closed; 0: create a new series; otherwise the summary UID being edited.
   const [seriesDialog, setSeriesDialog] = useState<number | null>(null);
+  const [evmOpen, setEvmOpen] = useState(false);
+  const [metrics, setMetrics] = useState<ProjectMetrics | null>(null);
   const sheetRef = useRef<HTMLDivElement>(null);
   const ganttRef = useRef<HTMLDivElement>(null);
   const exportPdfRef = useRef<() => void>(() => {});
@@ -148,6 +153,10 @@ export default function App() {
       if (id === "view-tracking") setView("tracking");
       if (id === "view-resources") setView("resources");
       if (id === "view-usage") setView("usage");
+      if (id === "view-evm") {
+        setView((current) => (current === "gantt" || current === "tracking" ? current : "gantt"));
+        setEvmOpen(true);
+      }
       if (id === "scale-day") setScale("day");
       if (id === "scale-week") setScale("week");
       if (id === "scale-month") setScale("month");
@@ -193,6 +202,22 @@ export default function App() {
     if (selected != null && project.tasks.some((item) => item.uid === selected)) return;
     setSelected(project.tasks[0].uid);
   }, [project, selected]);
+
+  // EVM and burn-down numbers are computed by the engine; refresh them after every change.
+  useEffect(() => {
+    if (!evmOpen || !snap || !inTauri()) return;
+    let cancelled = false;
+    loadMetrics()
+      .then((next) => {
+        if (!cancelled) setMetrics(next);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(errorMessage(err));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [evmOpen, snap]);
 
   useEffect(() => {
     if (!project || filterResource == null) return;
@@ -281,6 +306,18 @@ export default function App() {
         <button type="button" disabled={!task} onClick={() => linkAbove(project, task, send)}>Nối FS</button>
         <button type="button" onClick={() => setInfoOpen(true)}>Lịch</button>
         <button type="button" disabled={!project || fileDialogBusy} onClick={() => exportPdfRef.current()}>Xuất PDF</button>
+        <button
+          type="button"
+          className={evmOpen ? "on" : ""}
+          disabled={!project}
+          title="Chỉ số EVM và burn-down"
+          onClick={() => {
+            if (!evmOpen && view !== "gantt" && view !== "tracking") setView("gantt");
+            setEvmOpen((open) => !open);
+          }}
+        >
+          EVM
+        </button>
         <span className="spacer" />
         <div className="segmented">
           <button type="button" className={view === "gantt" ? "on" : ""} onClick={() => setView("gantt")}>Gantt</button>
@@ -399,6 +436,14 @@ export default function App() {
               onLink={(from, to) => send({ type: "add_dependency", predecessor_uid: from, successor_uid: to, kind: "fs", lag: 0 })}
               onScroll={() => syncScroll("gantt")}
             />
+            {evmOpen && (
+              <EvmPanel
+                metrics={metrics}
+                onOpenProjectInfo={() => setInfoOpen(true)}
+                onOpenBaseline={() => setBaselineOpen(true)}
+                onClose={() => setEvmOpen(false)}
+              />
+            )}
           </>
         )}
         {project && view === "resources" && (
