@@ -82,6 +82,26 @@ export function groupLabel(ms: number, px: number): string {
   return px >= 10 ? `Tuần ${week}` : `T${date.getUTCMonth() + 1}/${date.getUTCFullYear()}`;
 }
 
+export interface TimescaleBand {
+  label: string;
+  count: number;
+}
+
+/** Each band is an exact run of equal day columns. Callers must not flex-shrink it. */
+export function timescaleBands(days: number[], px: number): TimescaleBand[] {
+  const bands: TimescaleBand[] = [];
+  let start = 0;
+  for (let index = 1; index <= days.length; index += 1) {
+    const previous = days[index - 1];
+    const day = days[index];
+    if (index === days.length || groupLabel(previous, px) !== groupLabel(day, px)) {
+      bands.push({ label: groupLabel(days[start], px), count: index - start });
+      start = index;
+    }
+  }
+  return bands;
+}
+
 export function dayLabel(ms: number, px: number): string {
   const date = new Date(ms);
   if (px < 10) return "";
