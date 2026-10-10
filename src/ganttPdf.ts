@@ -55,7 +55,7 @@ interface Clip {
   bottom: number;
 }
 
-function embeddedFont(): string {
+export function embeddedFont(): string {
   const comma = fontDataUrl.indexOf(",");
   return comma >= 0 ? fontDataUrl.slice(comma + 1) : fontDataUrl;
 }

@@ -7,6 +7,7 @@ import {
   importMspdi,
   inTauri,
   loadMetrics,
+  loadNetworkLayout,
   loadState,
   newProject,
   onMenu,
@@ -21,17 +22,21 @@ import { CalendarEditor } from "./components/CalendarEditor";
 import { DateTimeField } from "./components/DateTimeField";
 import { EvmPanel } from "./components/EvmPanel";
 import { GanttChart } from "./components/GanttChart";
+import { NetworkDiagram } from "./components/NetworkDiagram";
 import { RecurringDialog, recurringCommand } from "./components/RecurringDialog";
 import { ResourceSheet } from "./components/ResourceSheet";
 import { SplitDialog } from "./components/SplitDialog";
+import { TaskEditDialog } from "./components/TaskEditDialog";
 import { TaskSheet } from "./components/TaskSheet";
 import { TaskUsage } from "./components/TaskUsage";
 import { formatDuration, formatInstant, formatMoney, parseDuration } from "./format";
 import { buildGanttPdf, pdfSuggestedName } from "./ganttPdf";
+import { buildNetworkPdf } from "./networkPdf";
 import type {
   Accrual,
   Command,
   ConstraintType,
+  NetworkLayout,
   Project,
   ProjectMetrics,
   Resource,
@@ -74,6 +79,9 @@ export default function App() {
   const [splitDialog, setSplitDialog] = useState<number | null>(null);
   const [evmOpen, setEvmOpen] = useState(false);
   const [metrics, setMetrics] = useState<ProjectMetrics | null>(null);
+  const [networkSummaries, setNetworkSummaries] = useState(false);
+  const [networkLayout, setNetworkLayout] = useState<NetworkLayout | null>(null);
+  const [editUid, setEditUid] = useState<number | null>(null);
   const sheetRef = useRef<HTMLDivElement>(null);
   const ganttRef = useRef<HTMLDivElement>(null);
   const exportPdfRef = useRef<() => void>(() => {});
@@ -138,6 +146,8 @@ export default function App() {
 
   const project = snap?.project;
   const task = project?.tasks.find((item) => item.uid === selected) ?? null;
+  const editTask = project?.tasks.find((item) => item.uid === editUid) ?? null;
+  const closeEdit = useCallback(() => setEditUid(null), []);
 
   const handleMenu = useCallback(
     (id: string) => {
@@ -156,6 +166,7 @@ export default function App() {
       if (id === "view-tracking") setView("tracking");
       if (id === "view-resources") setView("resources");
       if (id === "view-usage") setView("usage");
+      if (id === "view-network") setView("network");
       if (id === "view-evm") {
         setView((current) => (current === "gantt" || current === "tracking" ? current : "gantt"));
         setEvmOpen(true);
@@ -271,8 +282,47 @@ export default function App() {
     () => (project ? buildViewRows(project, rowFilter, filterResource, rowGroup, rowHighlight) : []),
     [project, rowFilter, filterResource, rowGroup, rowHighlight],
   );
+  // The network diagram ignores grouping; filters choose the boxes and highlight tints them.
+  const networkRows = useMemo(
+    () => (project && view === "network" ? buildViewRows(project, rowFilter, filterResource, "none", rowHighlight) : []),
+    [project, view, rowFilter, filterResource, rowHighlight],
+  );
+  const networkVisible = useMemo(
+    () => (rowFilter === "none" ? null : networkRows.flatMap((row) => (row.kind === "task" ? [row.task.uid] : []))),
+    [networkRows, rowFilter],
+  );
+  const networkHighlighted = useMemo(
+    () => new Set(networkRows.flatMap((row) => (row.kind === "task" && row.highlighted ? [row.task.uid] : []))),
+    [networkRows],
+  );
+
+  // Layout comes from the engine, which also owns the schedule; refresh it after every change.
+  useEffect(() => {
+    if (view !== "network" || !snap || !inTauri()) return;
+    let cancelled = false;
+    loadNetworkLayout({ include_summary: networkSummaries, visible_uids: networkVisible })
+      .then((next) => {
+        if (!cancelled) setNetworkLayout(next);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(errorMessage(err));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [view, snap, networkSummaries, networkVisible]);
+
   exportPdfRef.current = () => {
     if (!project) return;
+    if (view === "network") {
+      const layout = networkLayout;
+      if (!layout) return;
+      startFileDialog(async () => {
+        const bytes = buildNetworkPdf({ project, layout, highlighted: networkHighlighted });
+        await savePdf(bytes, pdfSuggestedName(`${project.name.trim() || "Dự án"} - sơ đồ mạng`));
+      });
+      return;
+    }
     startFileDialog(async () => {
       const bytes = buildGanttPdf({
         project,
@@ -337,6 +387,7 @@ export default function App() {
           <button type="button" className={view === "tracking" ? "on" : ""} onClick={() => setView("tracking")}>Theo dõi</button>
           <button type="button" className={view === "resources" ? "on" : ""} onClick={() => setView("resources")}>Nguồn lực</button>
           <button type="button" className={view === "usage" ? "on" : ""} onClick={() => setView("usage")}>Sử dụng</button>
+          <button type="button" className={view === "network" ? "on" : ""} onClick={() => setView("network")}>Sơ đồ mạng</button>
         </div>
         {(view === "gantt" || view === "tracking") && (
           <div className="segmented">
@@ -347,7 +398,7 @@ export default function App() {
         )}
       </header>
       {error && <div className="banner">{error}</div>}
-      {project && (view === "gantt" || view === "tracking") && (
+      {project && (view === "gantt" || view === "tracking" || view === "network") && (
         <div className="viewbar">
           <label className="view-control">
             Lọc
@@ -382,18 +433,29 @@ export default function App() {
               ))}
             </select>
           )}
-          <label className="view-control">
-            Nhóm
-            <select
-              aria-label="Nhóm"
-              value={rowGroup}
-              onChange={(event) => setRowGroup(event.target.value as GroupMode)}
-            >
-              <option value="none">Không nhóm</option>
-              <option value="resource">Theo người</option>
-              <option value="summary">Theo summary</option>
-            </select>
-          </label>
+          {view === "network" ? (
+            <label className="view-control">
+              <input
+                type="checkbox"
+                checked={networkSummaries}
+                onChange={(event) => setNetworkSummaries(event.target.checked)}
+              />
+              Hiện công việc tóm tắt
+            </label>
+          ) : (
+            <label className="view-control">
+              Nhóm
+              <select
+                aria-label="Nhóm"
+                value={rowGroup}
+                onChange={(event) => setRowGroup(event.target.value as GroupMode)}
+              >
+                <option value="none">Không nhóm</option>
+                <option value="resource">Theo người</option>
+                <option value="summary">Theo summary</option>
+              </select>
+            </label>
+          )}
           <label className="view-control">
             Tô sáng
             <select
@@ -475,6 +537,19 @@ export default function App() {
           />
         )}
         {project && view === "usage" && <TaskUsage project={project} />}
+        {project && view === "network" && (
+          <NetworkDiagram
+            project={project}
+            layout={networkLayout}
+            selected={selected}
+            highlighted={networkHighlighted}
+            onSelect={setSelected}
+            onEdit={(uid) => {
+              setSelected(uid);
+              setEditUid(uid);
+            }}
+          />
+        )}
       </main>
       {project && task && (
         <Inspector
@@ -533,6 +608,7 @@ export default function App() {
           onSubmit={(at, gap) => send({ type: "split_task", uid: splitTask.uid, at, gap })}
         />
       )}
+      {editTask && <TaskEditDialog key={editTask.uid} task={editTask} send={send} onClose={closeEdit} />}
       {baselineOpen && (
         <BaselineDialog
           onClose={() => setBaselineOpen(false)}
