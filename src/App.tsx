@@ -606,7 +606,6 @@ function Inspector({
         <div>
           <label>Ngày ràng buộc</label>
           <DateTimeField
-            optional
             ariaLabel="Ngày ràng buộc"
             value={task.constraint_date}
             onCommit={(date) =>
