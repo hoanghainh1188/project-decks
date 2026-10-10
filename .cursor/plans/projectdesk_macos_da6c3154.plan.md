@@ -1,6 +1,6 @@
 ---
 name: ProjectDesk macOS
-overview: "ProjectDesk là ứng dụng desktop Tauri (Rust + React) quản lý dự án theo hướng Microsoft Project. Pha 1 đã xong; các pha sau thêm nguồn lực, theo dõi, leveling và MSPDI, rồi lịch trên giao diện, lọc, PDF Gantt, công việc lặp, chỉ số EVM và burn-down chart."
+overview: "ProjectDesk là ứng dụng desktop Tauri (Rust + React) quản lý dự án theo hướng Microsoft Project. Pha 1–8 đã xong trên main; pha 9 (công việc lặp) và pha 10 (chỉ số EVM và burn-down) chưa làm."
 todos:
   - id: scaffold
     content: Tauri 2 + React + crate engine
@@ -16,25 +16,25 @@ todos:
     status: completed
   - id: resources
     content: "Pha 2: nguồn lực, assignment, Fixed Duration/Units/Work, Resource Sheet, Task Usage, quá tải"
-    status: pending
+    status: completed
   - id: tracking
     content: "Pha 3: actuals, baseline 0–10, Tracking Gantt, chi phí"
-    status: pending
+    status: completed
   - id: leveling
     content: "Pha 4: heuristic theo priority rồi slack, leveling delay, không tách task"
-    status: pending
+    status: completed
   - id: mspdi
     content: "Pha 5: đọc/ghi MSPDI, không reader .mpp"
-    status: pending
+    status: completed
   - id: calendar-ui
-    content: "Pha 6: sửa lịch trên giao diện (tuần làm việc, ngày nghỉ, lịch dự án và lịch nguồn lực)"
-    status: pending
+    content: "Pha 6: sửa lịch trên giao diện (tuần làm việc, ngày nghỉ, lịch dự án và lịch nguồn lực). Ô ngày giờ dùng bộ chọn ngày giờ thay vì gõ chữ."
+    status: completed
   - id: filter-group
     content: "Pha 7: lọc, nhóm, highlight (đường găng, theo người, trễ hạn)"
-    status: pending
+    status: completed
   - id: gantt-pdf
     content: "Pha 8: in hoặc xuất PDF trang Gantt"
-    status: pending
+    status: completed
   - id: recurring
     content: "Pha 9: công việc lặp"
     status: pending
@@ -46,7 +46,7 @@ isProject: false
 
 # ProjectDesk — quản lý dự án kiểu Microsoft Project
 
-Pha 1 đã merge vào `main`, gồm bảng task, Gantt, menu và cột WBS (PR #3). Bốn pha kế tiếp — nguồn lực, theo dõi và chi phí, leveling, MSPDI — là việc phải làm xong trước chức năng mới ở pha 6–10.
+Pha 1–8 đã xong trên `main`. Pha 1 gồm bảng task, Gantt, menu và cột WBS (PR #3). Pha 2–5 (nguồn lực, theo dõi và chi phí, leveling, MSPDI) đã merge qua PR #5. Pha 6 (lịch trên giao diện) qua PR #6. Pha 7 (lọc, nhóm, highlight) qua PR #7. Pha 8 (PDF Gantt) qua PR #8; hộp thoại file được sửa trong PR #9 đã merge. Pha 9 và pha 10 chưa làm.
 
 Giao diện tiếng Việt. Các pha mở rộng cùng một mô hình lịch trong engine Rust.
 
@@ -92,11 +92,13 @@ Trao đổi file ngoài dùng MSPDI (pha 5). Reader `.mpp` không nằm trong c�
 - Lưu trữ: command log undo/redo, file SQLite `.pdproj`, lệnh Tauri áp command.
 - Giao diện: bảng task, Gantt (thanh task, summary, milestone, mũi tên phụ thuộc, đường găng, thang ngày/tuần/tháng), menu macOS, phím tắt, cột WBS. PR #3 đã merge.
 
-## Pha 2 đến Pha 5
+## Pha 2 đến Pha 5 — đã xong
 
-Todo pha 2–5 vẫn **pending** cho đến khi một lần đối chiếu code xác nhận phần đã có và phần còn thiếu, kể cả khi một số code đã nằm trong repo.
+Pha 2–5 đã xong trên `main` qua PR #5.
 
 ### Pha 2 — nguồn lực
+
+Đã xong.
 
 - Resource: người hoặc máy, đơn vị tối đa, lịch riêng, mức giá chuẩn.
 - Assignment: task gắn resource với units.
@@ -104,6 +106,8 @@ Todo pha 2–5 vẫn **pending** cho đến khi một lần đối chiếu code 
 - View Resource Sheet và Task Usage (lưới theo ngày). Cột quá tải khi tổng units trong một khoảng vượt max units.
 
 ### Pha 3 — theo dõi, baseline, chi phí
+
+Đã xong.
 
 - Phần trăm hoàn thành, actual start/finish, remaining duration, remaining work.
 - Baseline 0–10: mỗi mốc lưu start, finish, work, cost.
@@ -114,25 +118,32 @@ Pha 10 đọc đúng các số này (baseline 0, ngày trạng thái, % complete
 
 ### Pha 4 — leveling
 
-Phát hiện quá tải trước. Leveling là heuristic xếp theo priority rồi đến total slack (cùng họ với Project; không cam kết ra cùng một lịch từng giờ với Microsoft). Kết quả ghi vào field leveling delay. Pha này không tách task.
+Đã xong. Phát hiện quá tải trước. Leveling là heuristic xếp theo priority rồi đến total slack (cùng họ với Project; không cam kết ra cùng một lịch từng giờ với Microsoft). Kết quả ghi vào field leveling delay. Pha này không tách task.
 
 ### Pha 5 — trao đổi với Microsoft Project
+
+Đã xong.
 
 - Đọc và ghi **MSPDI** (XML schema công khai của Project) bằng code của mình, cho tập field các pha 1–3 đã có: task, phụ thuộc, lịch, resource, assignment, baseline.
 - Không có reader file nhị phân `.mpp` trong pha này. Parser Rust hiện có hoặc đọc một phần (MPP14), hoặc gắn giấy phép LGPL nên không link tĩnh vào app. Hướng đi đã chốt: người dùng Save As XML khi cần đủ field. Reader `.mpp` chỉ được xét lại khi có thư viện tương thích giấy phép và đọc đủ lịch cùng baseline — việc đó nằm ngoài mười pha.
 
 ## Pha 6 đến Pha 9
 
-Bốn pha này chỉ bắt đầu sau khi pha 2–5 đã được đối chiếu và làm nốt phần thiếu.
+Pha 6–8 đã xong trên `main`. Pha 9 chưa làm.
 
 ### Pha 6 — sửa lịch trên giao diện
 
+Đã xong qua PR #6.
+
+- Các ô ngày giờ đang sửa được (ngày công việc, ngày thực, ngày ràng buộc, ngày bắt đầu dự án, ngày trạng thái, ngày nghỉ) dùng bộ chọn ngày giờ (`datetime-local` hoặc `date`) thay vì gõ chữ. Mốc thời gian trong engine vẫn là millisecond.
 - Sửa tuần làm việc: ngày trong tuần và các khoảng giờ. Mặc định giữ thứ Hai–thứ Sáu, 08:00–12:00 và 13:00–17:00.
-- Thêm, sửa, xóa ngày nghỉ và ngoại lệ (một ngày hoặc một khoảng).
-- Sửa lịch dự án, lịch task và lịch nguồn lực trên cùng kiểu lịch của engine.
+- Thêm, sửa, xóa ngày nghỉ và ngoại lệ (một ngày hoặc một khoảng Từ–Đến), nghỉ cả ngày hoặc có giờ làm riêng. Ngày của ngoại lệ chọn bằng bộ chọn ngày, không gõ tự do.
+- Sửa lịch dự án, lịch task và lịch nguồn lực trên cùng kiểu lịch của engine. Chọn "lịch dự án" vẫn là kế thừa. Tạo hoặc sửa lịch có tên đi qua command nên undo/redo gồm các lần sửa đó.
 - Mỗi lần sửa là một command (undo được). Engine tính lại sớm/muộn, slack và đường găng. Giao diện không tự đổi phút làm việc.
 
 ### Pha 7 — lọc, nhóm, highlight
+
+Đã xong qua PR #7.
 
 - Lọc bảng và Gantt theo ba tiêu chí: đường găng (total slack nhỏ hơn hoặc bằng 0), theo người được gán, task trễ hạn.
 - Trễ hạn: finish hiện tại sau finish của baseline 0, hoặc task chưa xong mà finish đã qua ngày trạng thái.
@@ -141,21 +152,23 @@ Bốn pha này chỉ bắt đầu sau khi pha 2–5 đã được đối chiếu
 
 ### Pha 8 — in hoặc xuất PDF trang Gantt
 
+Đã xong qua PR #8. Hộp thoại file được sửa trong PR #9 đã merge.
+
 - In hoặc xuất PDF đúng trang đang xem: bảng task bên trái và Gantt bên phải.
 - Giữ thang ngày/tuần/tháng, đường găng, mũi tên phụ thuộc, và bộ lọc pha 7 nếu đang bật.
 - Cắt trang theo chiều thời gian và theo danh sách task.
 - Hộp thoại in/lưu của macOS. Ngày trên trang in là ngày engine đã tính. Không có server.
 
-### Pha 9 — công việc lặp
+### Pha 9 — công việc lặp — chưa làm
 
 - Tạo chuỗi lặp theo ngày, tuần hoặc tháng, với số lần hoặc một ngày kết thúc chuỗi.
 - Mỗi lần lặp là một task occurrence trên lịch làm việc, gắn task gốc. Summary của chuỗi rollup như summary thường. CPM áp dụng trên occurrence.
 - Sửa cả chuỗi hoặc sửa một lần. Xóa chuỗi xóa các occurrence còn theo chuỗi.
 - Sinh và sửa chuỗi đi qua command log. Không dùng tách task (split) để làm occurrence.
 
-## Pha 10 — chỉ số EVM và burn-down
+## Pha 10 — chỉ số EVM và burn-down — chưa làm
 
-Cả panel EVM và burn-down chỉ đọc số do engine trả về. JavaScript không tính lại EVM.
+Pha 10 chưa làm. Cả panel EVM và burn-down chỉ đọc số do engine trả về. JavaScript không tính lại EVM.
 
 ### EVM
 
