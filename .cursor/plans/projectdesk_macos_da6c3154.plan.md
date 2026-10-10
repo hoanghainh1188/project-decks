@@ -1,6 +1,6 @@
 ---
 name: ProjectDesk macOS
-overview: "ProjectDesk là ứng dụng desktop Tauri (Rust + React) quản lý dự án theo hướng Microsoft Project. Pha 1–8 đã xong trên main; pha 9 (công việc lặp) và pha 10 (chỉ số EVM và burn-down) chưa làm."
+overview: "ProjectDesk là ứng dụng desktop Tauri (Rust + React) quản lý dự án theo hướng Microsoft Project. Pha 1–9 đã xong trên main; pha 10 (chỉ số EVM và burn-down) chưa làm."
 todos:
   - id: scaffold
     content: Tauri 2 + React + crate engine
@@ -37,7 +37,7 @@ todos:
     status: completed
   - id: recurring
     content: "Pha 9: công việc lặp"
-    status: pending
+    status: completed
   - id: evm-burndown
     content: "Pha 10: chỉ số EVM và burn-down chart"
     status: pending
@@ -46,7 +46,7 @@ isProject: false
 
 # ProjectDesk — quản lý dự án kiểu Microsoft Project
 
-Pha 1–8 đã xong trên `main`. Pha 1 gồm bảng task, Gantt, menu và cột WBS (PR #3). Pha 2–5 (nguồn lực, theo dõi và chi phí, leveling, MSPDI) đã merge qua PR #5. Pha 6 (lịch trên giao diện) qua PR #6. Pha 7 (lọc, nhóm, highlight) qua PR #7. Pha 8 (PDF Gantt) qua PR #8; hộp thoại file được sửa trong PR #9 đã merge. Pha 9 và pha 10 chưa làm.
+Pha 1–9 đã xong trên `main`. Pha 1 gồm bảng task, Gantt, menu và cột WBS (PR #3). Pha 2–5 (nguồn lực, theo dõi và chi phí, leveling, MSPDI) đã merge qua PR #5. Pha 6 (lịch trên giao diện) qua PR #6. Pha 7 (lọc, nhóm, highlight) qua PR #7. Pha 8 (PDF Gantt) qua PR #8; hộp thoại file được sửa trong PR #9 đã merge. Pha 9 (công việc lặp) qua PR của nhánh `phase-9-recurring`. Pha 10 chưa làm.
 
 Giao diện tiếng Việt. Các pha mở rộng cùng một mô hình lịch trong engine Rust.
 
@@ -129,7 +129,7 @@ Pha 10 đọc đúng các số này (baseline 0, ngày trạng thái, % complete
 
 ## Pha 6 đến Pha 9
 
-Pha 6–8 đã xong trên `main`. Pha 9 chưa làm.
+Pha 6–9 đã xong trên `main`.
 
 ### Pha 6 — sửa lịch trên giao diện
 
@@ -159,12 +159,24 @@ Pha 6–8 đã xong trên `main`. Pha 9 chưa làm.
 - Cắt trang theo chiều thời gian và theo danh sách task.
 - Hộp thoại in/lưu của macOS. Ngày trên trang in là ngày engine đã tính. Không có server.
 
-### Pha 9 — công việc lặp — chưa làm
+### Pha 9 — công việc lặp — đã xong
 
-- Tạo chuỗi lặp theo ngày, tuần hoặc tháng, với số lần hoặc một ngày kết thúc chuỗi.
-- Mỗi lần lặp là một task occurrence trên lịch làm việc, gắn task gốc. Summary của chuỗi rollup như summary thường. CPM áp dụng trên occurrence.
-- Sửa cả chuỗi hoặc sửa một lần. Xóa chuỗi xóa các occurrence còn theo chuỗi.
-- Sinh và sửa chuỗi đi qua command log. Không dùng tách task (split) để làm occurrence.
+Đã làm (module `recurrence.rs` trong engine, hộp thoại `RecurringDialog`):
+
+- Mẫu lặp theo kiểu MS Project: ngày (mỗi N ngày làm việc trên lịch của chuỗi), tuần (mỗi N tuần vào các thứ đã chọn, tuần bắt đầu thứ Hai), tháng (ngày X của mỗi N tháng; X lớn hơn số ngày của tháng thì rơi vào ngày cuối tháng). Kết thúc sau N lần hoặc tại một ngày (tính cả ngày đó). Tối đa 999 lần như Project.
+- Chuỗi là một summary task giữ định nghĩa (`Task.recurrence`). Con của nó là các occurrence thật (`series_uid`, `occurrence_date`), mỗi cái có ràng buộc SNET tại giờ làm việc đầu tiên của ngày mẫu sinh ra, theo lịch của chuỗi hoặc lịch dự án. Ngày nghỉ nên occurrence dời sang giờ làm việc kế tiếp. Summary rollup như summary thường, CPM chạy trên occurrence. Occurrence là fixed units, không effort-driven, nên gán nhiều nguồn lực không rút ngắn thời lượng.
+- Lệnh `CreateRecurringTask` và `UpdateRecurringTask` đi qua command log, nên undo/redo và lưu `.pdproj` hoạt động. Đổi tên summary cũng sửa tên chuỗi và sinh lại.
+- Sửa riêng một occurrence (tên, thời lượng, ngày, ràng buộc, lịch, nguồn lực, tiến độ, chi phí…) đánh dấu `detached`; sinh lại chuỗi giữ nguyên lần đó và không sinh trùng ngày của nó. Occurrence còn theo chuỗi giữ UID theo thứ tự khi sinh lại, nên liên kết và baseline trên chúng còn.
+- Xóa một occurrence ghi ngày đó vào `skipped` để sinh lại không tạo lại. Xóa chuỗi xóa summary và các occurrence còn theo chuỗi; occurrence đã tách và task tự thêm bên dưới được giữ lại, lên một cấp.
+- Không đổi cấp (thụt vào/ra) từng occurrence; phải sửa cả chuỗi.
+- MSPDI: xuất occurrence như task thường dưới summary, summary có `<Recurring>1</Recurring>`. Nhập lại thành task thường (không dựng lại chuỗi).
+- Giao diện: nút "Công việc lặp" trên thanh công cụ và mục "Sửa → Công việc lặp…". Hộp thoại có tên, thời lượng, mẫu, ngày bắt đầu và kết thúc (dùng DateTimeField), lịch, nguồn lực. Dòng summary có biểu tượng ↻, bấm để sửa chuỗi; occurrence có dấu ·, lần đã tách có ↺. Inspector có nút "Sửa cả chuỗi…".
+
+Giới hạn:
+
+- Chưa có mẫu "mỗi N ngày lịch", "thứ X thứ Y trong tháng" (ví dụ thứ Hai đầu tiên) hay lặp theo năm.
+- Nhập MSPDI không dựng lại chuỗi lặp; chuỗi thành summary thường với các task con.
+- Sinh lại xóa assignment rồi gán lại trên occurrence còn theo chuỗi; giờ làm thêm hoặc đơn vị chỉnh trên assignment của chúng sẽ đánh dấu tách nên không bị mất.
 
 ## Pha 10 — chỉ số EVM và burn-down — chưa làm
 
