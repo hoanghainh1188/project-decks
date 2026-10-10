@@ -19,6 +19,7 @@ import {
 import { CalendarEditor } from "./components/CalendarEditor";
 import { DateTimeField } from "./components/DateTimeField";
 import { GanttChart } from "./components/GanttChart";
+import { RecurringDialog } from "./components/RecurringDialog";
 import { ResourceSheet } from "./components/ResourceSheet";
 import { TaskSheet } from "./components/TaskSheet";
 import { TaskUsage } from "./components/TaskUsage";
@@ -63,6 +64,8 @@ export default function App() {
   const [filterResource, setFilterResource] = useState<number | null>(null);
   const [rowGroup, setRowGroup] = useState<GroupMode>("none");
   const [rowHighlight, setRowHighlight] = useState<HighlightMode>("none");
+  // null: closed; 0: create a new series; otherwise the summary UID being edited.
+  const [seriesDialog, setSeriesDialog] = useState<number | null>(null);
   const sheetRef = useRef<HTMLDivElement>(null);
   const ganttRef = useRef<HTMLDivElement>(null);
   const exportPdfRef = useRef<() => void>(() => {});
@@ -152,6 +155,7 @@ export default function App() {
       if (id === "baseline") setBaselineOpen(true);
       if (id === "level") void send({ type: "level_resources" });
       if (id === "clear-level") void send({ type: "clear_leveling" });
+      if (id === "recurring") setSeriesDialog(0);
       if (!task) return;
       if (id === "indent") void send({ type: "indent", uid: task.uid });
       if (id === "outdent") void send({ type: "outdent", uid: task.uid });
@@ -270,6 +274,7 @@ export default function App() {
         <strong>ProjectDesk</strong>
         <button type="button" onClick={() => send({ type: "add_task", name: "", after_uid: selected })}>Thêm việc</button>
         <button type="button" onClick={() => send({ type: "add_milestone", name: "Mốc", after_uid: selected })}>Mốc</button>
+        <button type="button" disabled={!project} onClick={() => setSeriesDialog(0)}>Công việc lặp</button>
         <button type="button" disabled={!task} onClick={() => task && send({ type: "indent", uid: task.uid })}>Thụt vào</button>
         <button type="button" disabled={!task} onClick={() => task && send({ type: "outdent", uid: task.uid })}>Thụt ra</button>
         <button type="button" disabled={!task} onClick={() => task && send({ type: "delete_task", uid: task.uid })}>Xóa</button>
@@ -374,6 +379,10 @@ export default function App() {
               onRemainingWork={(uid, minutes) => send({ type: "set_remaining_work", uid, minutes })}
               onOvertime={(uid, minutes) => send({ type: "set_overtime_work", uid, minutes })}
               onCalendar={(uid, calendarId) => send({ type: "set_task_calendar", uid, calendar_id: calendarId })}
+              onEditSeries={(uid) => {
+                setSelected(uid);
+                setSeriesDialog(uid);
+              }}
               onScroll={() => syncScroll("sheet")}
             />
             <GanttChart
@@ -413,6 +422,7 @@ export default function App() {
           project={project}
           task={task}
           send={send}
+          onEditSeries={setSeriesDialog}
           onEditCalendar={setCalendarEditId}
           onCreateCalendar={() => {
             const name = task.name.trim() ? `Lịch ${task.name.trim()}` : "Lịch công việc";
@@ -444,6 +454,21 @@ export default function App() {
             <button type="button" onClick={() => setCalendarEditId(null)}>Đóng</button>
           </div>
         </div>
+      )}
+      {seriesDialog != null && project && (
+        <RecurringDialog
+          key={seriesDialog}
+          project={project}
+          initial={project.tasks.find((item) => item.uid === seriesDialog)?.recurrence?.spec ?? null}
+          defaultStart={task && !task.summary ? task.start : project.start}
+          onClose={() => setSeriesDialog(null)}
+          onSubmit={(spec) => {
+            const series = project.tasks.find((item) => item.uid === seriesDialog);
+            return series?.recurrence
+              ? send({ type: "update_recurring_task", uid: series.uid, spec })
+              : send({ type: "create_recurring_task", after_uid: selected, spec });
+          }}
+        />
       )}
       {baselineOpen && (
         <BaselineDialog
@@ -491,12 +516,14 @@ function Inspector({
   project,
   task,
   send,
+  onEditSeries,
   onEditCalendar,
   onCreateCalendar,
 }: {
   project: Project;
   task: Task;
   send: (command: Command) => void;
+  onEditSeries: (uid: number) => void;
   onEditCalendar: (calendarId: number) => void;
   onCreateCalendar: () => void;
 }) {
@@ -504,8 +531,22 @@ function Inspector({
   const overtime = project.assignments
     .filter((item) => item.task_uid === task.uid)
     .reduce((sum, item) => sum + item.overtime_work, 0);
+  const series = task.series_uid != null ? project.tasks.find((item) => item.uid === task.series_uid) : null;
   return (
     <section className="inspector">
+      {(task.recurrence || series) && (
+        <div>
+          <label>Công việc lặp</label>
+          <button type="button" onClick={() => onEditSeries(task.recurrence ? task.uid : (series?.uid ?? task.uid))}>
+            Sửa cả chuỗi…
+          </button>
+          {series && (
+            <p className="meta">
+              {task.detached ? "Lần này đã sửa riêng; sinh lại chuỗi sẽ giữ nguyên." : `Một lần của chuỗi “${series.name}”.`}
+            </p>
+          )}
+        </div>
+      )}
       <div>
         <label>Bắt đầu thực</label>
         <DateTimeField

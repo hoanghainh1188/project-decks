@@ -79,6 +79,33 @@ export interface Task {
   baselines: Baseline[];
   deadline: number | null;
   late: boolean;
+  recurrence: Recurrence | null;
+  series_uid: number | null;
+  occurrence_date: number | null;
+  detached: boolean;
+}
+
+/** Weekdays use 0 = Monday … 6 = Sunday, like calendar weeks. */
+export type RecurrencePattern =
+  | { kind: "daily"; every: number }
+  | { kind: "weekly"; every: number; weekdays: number[] }
+  | { kind: "monthly"; every: number; day: number };
+
+export type RecurrenceEnd = { kind: "count"; count: number } | { kind: "until"; date: number };
+
+export interface RecurrenceSpec {
+  name: string;
+  duration: number;
+  start: number;
+  pattern: RecurrencePattern;
+  end: RecurrenceEnd;
+  calendar_id: number | null;
+  resource_uids: number[];
+}
+
+export interface Recurrence {
+  spec: RecurrenceSpec;
+  skipped: number[];
 }
 
 export interface Dependency {
@@ -219,7 +246,9 @@ export type Command =
   | { type: "level_resources" }
   | { type: "clear_leveling" }
   | { type: "set_leveling_delay"; uid: number; minutes: number }
-  | { type: "set_deadline"; uid: number; date: number | null };
+  | { type: "set_deadline"; uid: number; date: number | null }
+  | { type: "create_recurring_task"; after_uid: number | null; spec: RecurrenceSpec }
+  | { type: "update_recurring_task"; uid: number; spec: RecurrenceSpec };
 
 export type ViewId = "gantt" | "tracking" | "resources" | "usage";
 export type Scale = "day" | "week" | "month";

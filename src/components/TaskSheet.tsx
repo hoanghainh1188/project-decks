@@ -68,6 +68,7 @@ interface Props {
   onRemainingWork: (uid: number, minutes: number) => void;
   onOvertime: (uid: number, minutes: number) => void;
   onCalendar: (uid: number, calendarId: number | null) => void;
+  onEditSeries: (uid: number) => void;
   onScroll: () => void;
 }
 
@@ -162,7 +163,7 @@ export function TaskSheet(props: Props) {
             >
               <span className="id">{task.id}</span>
               <span className="ro">{task.wbs}</span>
-              <NameCell task={task} onRename={props.onRename} />
+              <NameCell task={task} onRename={props.onRename} onEditSeries={props.onEditSeries} />
               <DurationCell task={task} onCommit={props.onDuration} />
               {props.tracking && (
                 <>
@@ -234,14 +235,82 @@ export function TaskSheet(props: Props) {
   );
 }
 
-function NameCell({ task, onRename }: { task: Task; onRename: (uid: number, name: string) => void }) {
+function NameCell({
+  task,
+  onRename,
+  onEditSeries,
+}: {
+  task: Task;
+  onRename: (uid: number, name: string) => void;
+  onEditSeries: (uid: number) => void;
+}) {
   const [value, setValue] = useState(task.name);
   const [editing, setEditing] = useState(false);
   const shown = editing ? value : task.name;
+  const indent = 8 + (task.outline_level - 1) * 14;
+  const marker = task.recurrence ? (
+    <button
+      type="button"
+      className="series-icon"
+      title="Công việc lặp — bấm để sửa cả chuỗi"
+      aria-label="Sửa chuỗi lặp"
+      onClick={(event) => {
+        event.stopPropagation();
+        onEditSeries(task.uid);
+      }}
+    >
+      ↻
+    </button>
+  ) : task.series_uid != null ? (
+    <span
+      className={`series-icon occurrence${task.detached ? " detached" : ""}`}
+      title={task.detached ? "Lần lặp đã sửa riêng, không theo chuỗi khi sinh lại" : "Một lần của chuỗi lặp"}
+    >
+      {task.detached ? "↺" : "·"}
+    </span>
+  ) : null;
+  if (marker) {
+    return (
+      <span className="name-cell" style={{ paddingLeft: indent - 4 }}>
+        {marker}
+        <NameInput task={task} shown={shown} value={value} setValue={setValue} setEditing={setEditing} onRename={onRename} />
+      </span>
+    );
+  }
+  return (
+    <NameInput
+      task={task}
+      shown={shown}
+      value={value}
+      setValue={setValue}
+      setEditing={setEditing}
+      onRename={onRename}
+      paddingLeft={indent}
+    />
+  );
+}
+
+function NameInput({
+  task,
+  shown,
+  value,
+  setValue,
+  setEditing,
+  onRename,
+  paddingLeft,
+}: {
+  task: Task;
+  shown: string;
+  value: string;
+  setValue: (value: string) => void;
+  setEditing: (editing: boolean) => void;
+  onRename: (uid: number, name: string) => void;
+  paddingLeft?: number;
+}) {
   return (
     <input
       className="name"
-      style={{ paddingLeft: 8 + (task.outline_level - 1) * 14 }}
+      style={paddingLeft != null ? { paddingLeft } : undefined}
       value={shown}
       onChange={(event) => setValue(event.target.value)}
       onFocus={() => {
