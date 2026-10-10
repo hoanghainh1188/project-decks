@@ -3,6 +3,7 @@ use rusqlite::{params, Connection};
 use crate::command::Command;
 use crate::document::{self, Document};
 use crate::error::EngineError;
+use crate::evm::BurndownSnapshot;
 use crate::model::Project;
 
 const VERSION: &str = "1";
@@ -18,9 +19,26 @@ pub fn save(document: &Document, path: &str) -> Result<(), EngineError> {
             CREATE TABLE IF NOT EXISTS command_log (
                 seq INTEGER PRIMARY KEY,
                 payload TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS burndown (
+                date INTEGER PRIMARY KEY,
+                remaining_work INTEGER NOT NULL,
+                ev REAL NOT NULL,
+                ac REAL NOT NULL
             );",
         )
         .map_err(|err| EngineError::Store(err.to_string()))?;
+    connection
+        .execute("DELETE FROM burndown", [])
+        .map_err(|err| EngineError::Store(err.to_string()))?;
+    for snapshot in &document.burndown {
+        connection
+            .execute(
+                "INSERT INTO burndown(date, remaining_work, ev, ac) VALUES(?1, ?2, ?3, ?4)",
+                params![snapshot.date, snapshot.remaining_work, snapshot.ev, snapshot.ac],
+            )
+            .map_err(|err| EngineError::Store(err.to_string()))?;
+    }
     let base = serde_json::to_string(&document.base).map_err(|err| EngineError::Store(err.to_string()))?;
     connection
         .execute("DELETE FROM command_log", [])
@@ -84,6 +102,7 @@ pub fn load(path: &str) -> Result<Document, EngineError> {
     }
     let cursor = cursor.min(commands.len());
     let project = document::replay(&base, &commands[..cursor])?;
+    let burndown = load_burndown(&connection)?;
     Ok(Document {
         base,
         project,
@@ -91,5 +110,41 @@ pub fn load(path: &str) -> Result<Document, EngineError> {
         cursor,
         path: Some(path.to_string()),
         dirty: false,
+        burndown,
     })
+}
+
+/// User save: sample burn-down for today (or the status date day), then write the file.
+pub fn save_with_snapshot(document: &mut Document, path: &str, now: i64) -> Result<(), EngineError> {
+    document.record_burndown(now);
+    save(document, path)
+}
+
+fn load_burndown(connection: &Connection) -> Result<Vec<BurndownSnapshot>, EngineError> {
+    // Files written before phase 10 have no burn-down table.
+    let exists: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'burndown'",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|err| EngineError::Store(err.to_string()))?;
+    if exists == 0 {
+        return Ok(Vec::new());
+    }
+    let mut statement = connection
+        .prepare("SELECT date, remaining_work, ev, ac FROM burndown ORDER BY date")
+        .map_err(|err| EngineError::Store(err.to_string()))?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok(BurndownSnapshot {
+                date: row.get(0)?,
+                remaining_work: row.get(1)?,
+                ev: row.get(2)?,
+                ac: row.get(3)?,
+            })
+        })
+        .map_err(|err| EngineError::Store(err.to_string()))?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|err| EngineError::Store(err.to_string()))
 }

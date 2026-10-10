@@ -1,16 +1,17 @@
 use chrono::Datelike;
 
 use projectdesk_engine::command::{parse_predecessor_text, Command};
+use projectdesk_engine::evm::{burndown, evm, evm_at, BurndownPoint, BurndownSnapshot};
 use projectdesk_engine::level::level_project;
 use projectdesk_engine::model::{
-    Accrual, ConstraintType, DepKind, Dependency, ResourceKind, Task, TaskType,
+    Accrual, Baseline, ConstraintType, DepKind, Dependency, ResourceKind, Task, TaskType,
 };
 use projectdesk_engine::mspdi::{read_mspdi, write_mspdi};
 use projectdesk_engine::recurrence::{
     occurrence_dates, RecurrenceEnd, RecurrencePattern, RecurrenceSpec,
 };
 use projectdesk_engine::schedule::schedule;
-use projectdesk_engine::store::{load, save};
+use projectdesk_engine::store::{load, save, save_with_snapshot};
 use projectdesk_engine::timeutil::timestamp;
 use projectdesk_engine::work::{self, Changed};
 use projectdesk_engine::{Calendar, Document, Project};
@@ -1525,4 +1526,231 @@ fn occurrences_cannot_change_level_and_mspdi_keeps_them() {
     let first = imported.tasks.iter().find(|task| task.name == "Họp 1").unwrap();
     assert_eq!(first.parent_uid, Some(summary_row.uid));
     assert_eq!(first.start, occ[0].start);
+}
+
+// ---- Phase 10: EVM and burn-down ----
+
+fn close(actual: f64, expected: f64) {
+    assert!((actual - expected).abs() < 1e-9, "expected {expected}, got {actual}");
+}
+
+fn close_opt(actual: Option<f64>, expected: f64) {
+    close(actual.expect("value should be defined"), expected);
+}
+
+fn set_baseline_zero(task: &mut Task, cost: f64) {
+    task.baselines.retain(|baseline| baseline.number != 0);
+    task.baselines.push(Baseline {
+        number: 0,
+        start: task.start,
+        finish: task.finish,
+        work: task.work,
+        cost,
+    });
+}
+
+/// Three parallel two-day tasks (Mon 08:00 to Tue 17:00), baseline cost 1000 each,
+/// accruing at start, prorated and at end.
+fn accrual_project() -> Project {
+    let mut project = project_with(vec![("Đầu", 960), ("Phân bổ", 960), ("Cuối", 960)], vec![]);
+    let accruals = [Accrual::Start, Accrual::Prorated, Accrual::End];
+    for (task, accrual) in project.tasks.iter_mut().zip(accruals) {
+        task.fixed_cost_accrual = accrual;
+        set_baseline_zero(task, 1000.0);
+    }
+    project
+}
+
+#[test]
+fn evm_planned_value_follows_each_accrual() {
+    let project = accrual_project();
+    assert_eq!(project.tasks[0].start, at(0, 8, 0));
+    assert_eq!(project.tasks[0].finish, at(1, 17, 0));
+
+    // Before any baseline start nothing is planned.
+    close(evm_at(&project, at(0, 7, 0)).pv, 0.0);
+    // Monday 17:00: start = 1000, prorated = 480/960 × 1000, end = 0.
+    close(evm_at(&project, at(0, 17, 0)).pv, 1500.0);
+    // Monday 12:30 is lunch: 240 working minutes elapsed → 250 prorated.
+    close(evm_at(&project, at(0, 12, 30)).pv, 1250.0);
+    // Tuesday 10:00: 480 + 120 = 600 of 960 → 625 prorated.
+    close(evm_at(&project, at(1, 10, 0)).pv, 1625.0);
+    // At the baseline finish all three accruals are fully planned.
+    close(evm_at(&project, at(1, 17, 0)).pv, 3000.0);
+    close(evm_at(&project, at(5, 9, 0)).pv, 3000.0);
+}
+
+#[test]
+fn evm_metrics_match_hand_computed_values() {
+    let mut project = accrual_project();
+    let percents = [50.0, 25.0, 0.0];
+    let actuals = [600.0, 400.0, 0.0];
+    for ((task, pct), cost) in project.tasks.iter_mut().zip(percents).zip(actuals) {
+        task.percent_complete = pct;
+        task.actual_cost = cost;
+    }
+    let m = evm_at(&project, at(0, 17, 0));
+    close(m.bac, 3000.0);
+    close(m.pv, 1500.0);
+    close(m.ev, 750.0); // 500 + 250 + 0
+    close(m.ac, 1000.0);
+    close(m.sv, -750.0);
+    close(m.cv, -250.0);
+    close_opt(m.spi, 0.5);
+    close_opt(m.cpi, 0.75);
+    close_opt(m.eac, 4000.0);
+    close_opt(m.etc, 3000.0);
+    close_opt(m.vac, -1000.0);
+
+    project.status_date = Some(at(0, 17, 0));
+    let report = evm(&project);
+    assert!(report.has_baseline);
+    assert_eq!(report.metrics, Some(m));
+}
+
+#[test]
+fn evm_counts_leaf_tasks_only() {
+    let mut doc = Document::from_project(project_with(
+        vec![("Tổng", 480), ("A", 480), ("B", 480)],
+        vec![],
+    ));
+    doc.apply(Command::Indent { uid: 2 }).unwrap();
+    doc.apply(Command::Indent { uid: 3 }).unwrap();
+    doc.apply(Command::SetFixedCost { uid: 2, cost: 1000.0, accrual: Accrual::Start }).unwrap();
+    doc.apply(Command::SetFixedCost { uid: 3, cost: 500.0, accrual: Accrual::End }).unwrap();
+    doc.apply(Command::SetBaseline { number: 0 }).unwrap();
+    doc.apply(Command::SetPercentComplete { uid: 2, percent: 100.0 }).unwrap();
+
+    let summary = doc.project.task(1).unwrap();
+    assert!(summary.summary);
+    // The summary repeats its children's figures; adding it would double them.
+    assert_eq!(summary.baselines[0].cost, 1500.0);
+    assert_eq!(summary.actual_cost, 1000.0);
+
+    let m = evm_at(&doc.project, at(0, 12, 0));
+    close(m.bac, 1500.0);
+    close(m.pv, 1000.0); // A accrues at start; B (end) finishes at 17:00.
+    close(m.ev, 1000.0);
+    close(m.ac, 1000.0);
+    close_opt(m.spi, 1.0);
+    close_opt(m.cpi, 1.0);
+    close_opt(m.eac, 1500.0);
+    close_opt(m.etc, 500.0);
+    close_opt(m.vac, 0.0);
+}
+
+#[test]
+fn evm_leaves_ratios_undefined_when_denominators_are_zero() {
+    let mut project = accrual_project();
+
+    // No status date: no metrics, even with a baseline.
+    let report = evm(&project);
+    assert!(report.has_baseline);
+    assert_eq!(report.metrics, None);
+
+    // No baseline 0: no metrics, even with a status date.
+    let mut bare = project_with(vec![("A", 480)], vec![]);
+    bare.status_date = Some(at(0, 17, 0));
+    let report = evm(&bare);
+    assert!(!report.has_baseline);
+    assert_eq!(report.metrics, None);
+
+    // PV = 0 and AC = 0: SPI, CPI, EAC, ETC, VAC are undefined.
+    let m = evm_at(&project, at(0, 7, 0));
+    close(m.pv, 0.0);
+    close(m.ac, 0.0);
+    assert_eq!((m.spi, m.cpi, m.eac, m.etc, m.vac), (None, None, None, None, None));
+    close(m.sv, 0.0);
+    close(m.cv, 0.0);
+
+    // EV = 0 with AC > 0: CPI is 0, so EAC (and ETC, VAC) stay undefined.
+    project.tasks[0].actual_cost = 200.0;
+    let m = evm_at(&project, at(0, 17, 0));
+    close_opt(m.spi, 0.0);
+    close_opt(m.cpi, 0.0);
+    assert_eq!((m.eac, m.etc, m.vac), (None, None, None));
+    close(m.cv, -200.0);
+}
+
+#[test]
+fn burndown_ideal_line_and_snapshots() {
+    let mut doc = Document::from_project(project_with(
+        vec![("A", 960), ("B", 480)],
+        vec![(1, 2, DepKind::Fs, 0)],
+    ));
+    doc.apply(Command::SetFixedCost { uid: 1, cost: 1000.0, accrual: Accrual::Prorated }).unwrap();
+    doc.apply(Command::SetFixedCost { uid: 2, cost: 400.0, accrual: Accrual::End }).unwrap();
+    doc.apply(Command::SetBaseline { number: 0 }).unwrap();
+
+    let report = doc.metrics().burndown;
+    assert_eq!(report.baseline_start, Some(at(0, 8, 0)));
+    assert_eq!(report.baseline_finish, Some(at(2, 17, 0)));
+    assert_eq!(report.baseline_work, 1440);
+    assert_eq!(
+        report.ideal,
+        vec![
+            BurndownPoint { date: at(0, 8, 0), remaining_work: 1440 },
+            BurndownPoint { date: at(2, 17, 0), remaining_work: 0 },
+        ]
+    );
+    assert!(report.actual.is_empty());
+
+    // Progress alone does not sample; a status date change does.
+    doc.apply(Command::SetPercentComplete { uid: 1, percent: 50.0 }).unwrap();
+    assert!(doc.burndown.is_empty());
+    doc.apply(Command::SetStatusDate { date: Some(at(0, 17, 0)) }).unwrap();
+    assert_eq!(
+        doc.burndown,
+        vec![BurndownSnapshot { date: at(0, 0, 0), remaining_work: 960, ev: 500.0, ac: 500.0 }]
+    );
+
+    doc.apply(Command::SetPercentComplete { uid: 1, percent: 100.0 }).unwrap();
+    doc.apply(Command::SetStatusDate { date: Some(at(1, 17, 0)) }).unwrap();
+    doc.apply(Command::SetPercentComplete { uid: 2, percent: 50.0 }).unwrap();
+
+    // Saving samples again; the same day overwrites its snapshot.
+    let path = std::env::temp_dir().join(format!("projectdesk-burndown-{}.pdproj", std::process::id()));
+    let path = path.to_string_lossy().to_string();
+    save_with_snapshot(&mut doc, &path, at(9, 9, 0)).unwrap();
+    let expected = vec![
+        BurndownSnapshot { date: at(0, 0, 0), remaining_work: 960, ev: 500.0, ac: 500.0 },
+        // B half done: 240 left, EV 1000 + 200, AC still 1000 because B accrues at end.
+        BurndownSnapshot { date: at(1, 0, 0), remaining_work: 240, ev: 1200.0, ac: 1000.0 },
+    ];
+    assert_eq!(doc.burndown, expected);
+    let report = doc.metrics().burndown;
+    assert_eq!(report.actual, expected);
+    assert_eq!(report.current_remaining_work, 240);
+
+    // Snapshots survive save/load and undo.
+    let loaded = load(&path).unwrap();
+    assert_eq!(loaded.burndown, expected);
+    doc.undo().unwrap();
+    assert_eq!(doc.burndown, expected);
+
+    // Only snapshots up to the status date are drawn.
+    let mut earlier = doc.project.clone();
+    earlier.status_date = Some(at(0, 17, 0));
+    assert_eq!(burndown(&earlier, &expected).actual, expected[..1].to_vec());
+
+    // Files from before phase 10 have no burn-down table and load with none.
+    let connection = rusqlite::Connection::open(&path).unwrap();
+    connection.execute("DROP TABLE burndown", []).unwrap();
+    drop(connection);
+    assert!(load(&path).unwrap().burndown.is_empty());
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn burndown_without_status_date_samples_the_given_day() {
+    let mut doc = Document::from_project(project_with(vec![("A", 480)], vec![]));
+    doc.record_burndown(at(3, 15, 30));
+    doc.record_burndown(at(3, 16, 0));
+    assert_eq!(doc.burndown.len(), 1);
+    assert_eq!(doc.burndown[0].date, at(3, 0, 0));
+    assert_eq!(doc.burndown[0].remaining_work, 480);
+    let report = doc.metrics().burndown;
+    assert!(report.ideal.is_empty());
+    assert_eq!(report.baseline_work, 0);
+    assert_eq!(report.actual.len(), 1);
 }

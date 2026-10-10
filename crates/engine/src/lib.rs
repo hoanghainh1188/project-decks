@@ -8,6 +8,7 @@ pub mod calendar;
 pub mod command;
 pub mod document;
 pub mod error;
+pub mod evm;
 pub mod level;
 pub mod model;
 pub mod mspdi;
