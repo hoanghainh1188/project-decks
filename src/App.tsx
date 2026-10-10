@@ -341,6 +341,7 @@ export default function App() {
             >
               <option value="none">Không nhóm</option>
               <option value="resource">Theo người</option>
+              <option value="summary">Theo summary</option>
             </select>
           </label>
           <label className="view-control">

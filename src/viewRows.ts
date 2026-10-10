@@ -1,7 +1,7 @@
 import type { Assignment, Project, Resource, Task } from "./types";
 
 export type FilterMode = "none" | "critical" | "resource" | "late";
-export type GroupMode = "none" | "resource";
+export type GroupMode = "none" | "resource" | "summary";
 export type HighlightMode = "none" | "critical" | "late";
 
 export interface TaskViewRow {
@@ -33,6 +33,7 @@ export function buildViewRows(
 ): ViewRow[] {
   const visible = visibleTasks(project, filter, resourceUid);
   if (group === "resource") return groupByResource(project, visible, highlight);
+  if (group === "summary") return groupBySummary(project, visible, highlight);
   return visible.map((task) => taskRow(`task-${task.uid}`, task, highlight));
 }
 
@@ -116,6 +117,59 @@ function groupByResource(project: Project, tasks: Task[], highlight: HighlightMo
     }
   }
   return rows;
+}
+
+/**
+ * Leaf tasks sit under their nearest summary ancestor; summaries are headers only.
+ * Groups follow the summary's outline position, and top-level leaves go last.
+ */
+function groupBySummary(project: Project, tasks: Task[], highlight: HighlightMode): ViewRow[] {
+  const byUid = new Map(project.tasks.map((task) => [task.uid, task]));
+  const buckets = new Map<number, Task[]>();
+  const orphans: Task[] = [];
+  for (const task of tasks) {
+    if (task.summary) continue;
+    const owner = nearestSummary(task, byUid);
+    if (!owner) {
+      orphans.push(task);
+      continue;
+    }
+    const list = buckets.get(owner.uid) ?? [];
+    list.push(task);
+    buckets.set(owner.uid, list);
+  }
+  const rows: ViewRow[] = [];
+  for (const summary of project.tasks) {
+    const list = buckets.get(summary.uid);
+    if (!list || list.length === 0) continue;
+    rows.push({ kind: "group", key: `group-summary-${summary.uid}`, label: summaryLabel(summary) });
+    for (const task of list) {
+      rows.push(taskRow(`group-summary-${summary.uid}-task-${task.uid}`, task, highlight));
+    }
+  }
+  if (orphans.length > 0) {
+    rows.push({ kind: "group", key: "group-no-summary", label: "Không có summary" });
+    for (const task of orphans) {
+      rows.push(taskRow(`group-no-summary-task-${task.uid}`, task, highlight));
+    }
+  }
+  return rows;
+}
+
+function nearestSummary(task: Task, byUid: Map<number, Task>): Task | null {
+  let parent = task.parent_uid;
+  while (parent != null) {
+    const ancestor = byUid.get(parent);
+    if (!ancestor) return null;
+    if (ancestor.summary) return ancestor;
+    parent = ancestor.parent_uid;
+  }
+  return null;
+}
+
+function summaryLabel(summary: Task): string {
+  const name = summary.name.trim() || `Task ${summary.uid}`;
+  return summary.wbs ? `${summary.wbs} ${name}` : name;
 }
 
 function assignedResourceIds(task: Task, resources: Resource[], assignments: Assignment[]): number[] {
