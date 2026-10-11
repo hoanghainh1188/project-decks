@@ -356,7 +356,14 @@ fn leaf_project(durations: &[i64]) -> Project {
 
 fn set_baseline_zero(task: &mut Task, cost: f64) {
     task.baselines.retain(|baseline| baseline.number != 0);
-    task.baselines.push(Baseline { number: 0, start: task.start, finish: task.finish, work: task.work, cost });
+    task.baselines.push(Baseline {
+        number: 0,
+        start: task.start,
+        finish: task.finish,
+        work: task.work,
+        cost,
+        segments: Vec::new(),
+    });
 }
 
 #[test]

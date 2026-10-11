@@ -1,4 +1,5 @@
 use crate::model::{Accrual, Assignment, Project, TaskType, UsageDay, UsageRow};
+use crate::split;
 use crate::timeutil::{civil, compose, date_key};
 
 #[derive(Clone, Copy, Debug)]
@@ -617,6 +618,8 @@ fn build_usage(project: &Project) -> Vec<UsageRow> {
             .filter(|a| a.task_uid == task.uid)
             .collect();
         let mut task_days: Vec<UsageDay> = Vec::new();
+        // Split gaps carry no work, so only the segments are distributed.
+        let intervals = split::work_intervals(task);
         if task.finish > task.start {
             let (mut date, _) = civil(task.start);
             let (end_date, _) = civil(task.finish);
@@ -624,13 +627,7 @@ fn build_usage(project: &Project) -> Vec<UsageRow> {
                 let day_start = compose(date, 0);
                 let next = date.succ_opt().unwrap_or(date);
                 let day_end = compose(next, 0);
-                let overlap_start = task.start.max(day_start);
-                let overlap_end = task.finish.min(day_end);
-                let minutes = if overlap_end > overlap_start {
-                    cal.working_between(overlap_start, overlap_end).max(0)
-                } else {
-                    0
-                };
+                let minutes = split::working_within(cal, &intervals, day_start, day_end);
                 if minutes > 0 {
                     let hours = if assignments.is_empty() {
                         minutes as f64 / 60.0

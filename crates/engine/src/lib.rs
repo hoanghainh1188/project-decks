@@ -14,6 +14,7 @@ pub mod model;
 pub mod mspdi;
 pub mod recurrence;
 pub mod schedule;
+pub mod split;
 pub mod store;
 pub mod timeutil;
 pub mod work;

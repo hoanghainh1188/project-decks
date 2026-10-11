@@ -9,6 +9,7 @@ use crate::model::{
 };
 use crate::recurrence::{self, Recurrence, RecurrenceSpec};
 use crate::schedule::normalize_outline;
+use crate::split;
 use crate::timeutil::{parse_date_key, MINUTES_PER_DAY, MINUTES_PER_HOUR};
 use crate::work::{self, Changed};
 
@@ -214,6 +215,17 @@ pub enum Command {
         uid: u32,
         spec: RecurrenceSpec,
     },
+    /// Interrupt the work at instant `at` for `gap` working minutes.
+    SplitTask {
+        uid: u32,
+        at: i64,
+        gap: i64,
+    },
+    /// Join the segments around split `index`; `None` joins every segment.
+    RemoveSplit {
+        uid: u32,
+        index: Option<u32>,
+    },
 }
 
 pub fn apply_one(project: &mut Project, command: &Command) -> Result<(), EngineError> {
@@ -249,7 +261,9 @@ fn edited_task(project: &Project, command: &Command) -> Option<u32> {
         | Command::SetOvertimeWork { uid, .. }
         | Command::SetFixedCost { uid, .. }
         | Command::SetLevelingDelay { uid, .. }
-        | Command::SetDeadline { uid, .. } => Some(*uid),
+        | Command::SetDeadline { uid, .. }
+        | Command::SplitTask { uid, .. }
+        | Command::RemoveSplit { uid, .. } => Some(*uid),
         Command::AssignResource { task_uid, .. } => Some(*task_uid),
         Command::UpdateAssignment { uid, .. } | Command::RemoveAssignment { uid } => project
             .assignments
@@ -695,6 +709,7 @@ fn apply_inner(project: &mut Project, command: &Command) -> Result<(), EngineErr
                     finish: task.finish,
                     work: task.work,
                     cost: task.cost,
+                    segments: task.segments.clone(),
                 });
             }
         }
@@ -748,6 +763,8 @@ fn apply_inner(project: &mut Project, command: &Command) -> Result<(), EngineErr
             current.spec = spec;
             recurrence::regenerate(project, *uid)?;
         }
+        Command::SplitTask { uid, at, gap } => split::split_task(project, *uid, *at, *gap)?,
+        Command::RemoveSplit { uid, index } => split::remove_split(project, *uid, *index)?,
     }
     Ok(())
 }
@@ -849,14 +866,13 @@ fn move_task(project: &mut Project, uid: u32, start: i64) -> Result<(), EngineEr
         return Ok(());
     }
     if manual {
-        let duration = project.task(uid).unwrap().duration;
-        let milestone = project.task(uid).unwrap().milestone;
+        let span = split::span(project.task(uid).unwrap());
         let cal = project.task_calendar(project.task(uid).unwrap()).clone();
         let start = cal.next_work_start(start);
-        let finish = if milestone || duration <= 0 {
+        let finish = if span <= 0 {
             start
         } else {
-            cal.add_working(start, duration)
+            cal.add_working(start, span)
         };
         let task = project.task_mut(uid).unwrap();
         task.start = start;
@@ -876,8 +892,9 @@ fn resize_task(project: &mut Project, uid: u32, finish: i64) -> Result<(), Engin
     }
     let cal = project.task_calendar(task).clone();
     let start = task.start;
-    let minutes = cal.working_between(start, finish).max(0);
+    let working_span = cal.working_between(start, finish).max(0);
     let task = project.task_mut(uid).unwrap();
+    let minutes = split::resize_duration(task, working_span);
     task.duration = minutes;
     task.milestone = minutes == 0;
     if task.manual {

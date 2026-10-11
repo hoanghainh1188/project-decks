@@ -10,11 +10,15 @@ import {
   holidayKeys,
   isWeekend,
   isoDate,
+  pieceSpan,
   pixelsPerDay,
+  previewPieces,
+  progressWidths,
+  splitPieces,
   timescaleBands,
   type Timescale,
 } from "../ganttLayout";
-import type { Project, Scale, Task } from "../types";
+import type { Project, Scale, Segment, Task } from "../types";
 import type { ViewRow } from "../viewRows";
 
 interface DragState {
@@ -297,18 +301,29 @@ function paintBody(
     ctx.stroke();
     if (tracking) {
       const baseline = task.baselines.find((baselineItem) => baselineItem.number === 0);
-      if (baseline) drawBar(ctx, task, row, model.origin, px, "#c5c5cb", true, baseline.start, baseline.finish);
+      if (baseline) {
+        const pieces = splitPieces(task, baseline.segments);
+        drawBar(ctx, task, row, model.origin, px, "#c5c5cb", true, baseline.start, baseline.finish, pieces);
+      }
     }
     const moved = drag && drag.moved && drag.uid === task.uid && drag.kind !== "link" ? drag : null;
     const start = moved?.kind === "move" ? shiftDays(task.start, Math.round((moved.x - moved.originX) / px)) : task.start;
     const finish = moved?.kind === "resize" ? shiftDays(task.finish, Math.round((moved.x - moved.originX) / px)) : task.finish;
     const preview = { ...task, start, finish };
+    const pieces = previewPieces(task, start, finish);
     const color = barColor(task);
-    drawBar(ctx, preview, row, model.origin, px, color, false, preview.start, preview.finish);
+    drawBar(ctx, preview, row, model.origin, px, color, false, preview.start, preview.finish, pieces);
     if (!task.summary && task.percent_complete > 0) {
       const rect = barBox(preview, row, model.origin, px);
       ctx.fillStyle = "rgba(0,0,0,0.28)";
-      ctx.fillRect(rect.x, rect.y, rect.w * Math.min(task.percent_complete, 100) / 100, rect.h);
+      if (pieces) {
+        const spans = pieces.map((piece) => pieceSpan(piece, model.origin, px));
+        progressWidths(spans, task.percent_complete).forEach((done, index) => {
+          if (done > 0) ctx.fillRect(spans[index].x, rect.y, done, rect.h);
+        });
+      } else {
+        ctx.fillRect(rect.x, rect.y, rect.w * Math.min(task.percent_complete, 100) / 100, rect.h);
+      }
     }
   }
   const indexOf = new Map<number, number>();
@@ -377,12 +392,40 @@ function drawBar(
   baseline: boolean,
   start: number,
   finish: number,
+  pieces: Segment[] | null,
 ) {
   const shaped = { ...task, start, finish };
   const rect = barBox(shaped, row, origin, px);
   const y = baseline ? row * ROW + 20 : rect.y;
   const h = baseline ? 5 : rect.h;
   ctx.fillStyle = color;
+  if (pieces) {
+    // Split task: one block per segment, joined by a dotted line across each gap.
+    const spans = pieces.map((piece) => pieceSpan(piece, origin, px));
+    spans.forEach((span) => ctx.fillRect(span.x, y, span.w, h));
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.2;
+    ctx.setLineDash([2, 3]);
+    for (let index = 0; index + 1 < spans.length; index += 1) {
+      const from = spans[index].x + spans[index].w;
+      ctx.beginPath();
+      ctx.moveTo(from, y + h / 2);
+      ctx.lineTo(spans[index + 1].x, y + h / 2);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    if (!baseline) {
+      const last = spans[spans.length - 1];
+      ctx.fillStyle = "#fff";
+      ctx.beginPath();
+      ctx.arc(last.x + last.w, y + h / 2, 3.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.restore();
+    return;
+  }
   if (task.milestone && !baseline) {
     const size = 7;
     const cx = rect.x;

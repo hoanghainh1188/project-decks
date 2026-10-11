@@ -3,8 +3,9 @@ use std::collections::BTreeMap;
 use chrono::NaiveDate;
 
 use crate::error::EngineError;
-use crate::model::{ConstraintType, Overallocation, Project};
+use crate::model::{ConstraintType, Overallocation, Project, Task};
 use crate::schedule::schedule;
+use crate::split;
 use crate::timeutil::{civil, compose, date_key};
 
 /// Resource units scheduled on a day, compared with max units.
@@ -29,7 +30,7 @@ pub fn find_overallocations(project: &Project) -> Vec<Overallocation> {
         let (mut date, _) = civil(task.start);
         let (end_date, _) = civil(task.finish);
         for _ in 0..3660 {
-            let minutes = overlap_minutes(task_cal, task.start, task.finish, date);
+            let minutes = overlap_minutes(task_cal, task, date);
             if minutes > 0 {
                 *totals
                     .entry((resource.uid, date_key(date)))
@@ -75,28 +76,19 @@ fn day_has_work(cal: &crate::calendar::Calendar, date: NaiveDate) -> bool {
     !cal.ranges_on(date).is_empty()
 }
 
-fn overlap_minutes(
-    cal: &crate::calendar::Calendar,
-    start: i64,
-    finish: i64,
-    date: NaiveDate,
-) -> i64 {
+/// Working minutes the task does on `date`; split gaps do not count.
+fn overlap_minutes(cal: &crate::calendar::Calendar, task: &Task, date: NaiveDate) -> i64 {
     let day_start = compose(date, 0);
     let day_end = date
         .succ_opt()
         .map(|next| compose(next, 0))
         .unwrap_or(day_start);
-    let overlap_start = start.max(day_start);
-    let overlap_end = finish.min(day_end);
-    if overlap_end <= overlap_start {
-        0
-    } else {
-        cal.working_between(overlap_start, overlap_end).max(0)
-    }
+    split::working_within(cal, &split::work_intervals(task), day_start, day_end)
 }
 
 /// Heuristic leveling: delay lower-priority tasks first, then tasks with more total slack.
-/// Writes the result into `leveling_delay`. Tasks are not split.
+/// Writes the result into `leveling_delay`. Leveling never splits a task; existing
+/// splits move with the task.
 pub fn level_project(project: &mut Project) -> Result<(), EngineError> {
     for task in &mut project.tasks {
         if task.manual
@@ -162,7 +154,7 @@ fn pick_victim(project: &Project, hit: &Overallocation) -> Option<u32> {
         let Some(date) = crate::timeutil::parse_date_key(&hit.date) else {
             continue;
         };
-        if overlap_minutes(cal, task.start, task.finish, date) <= 0 {
+        if overlap_minutes(cal, task, date) <= 0 {
             continue;
         }
         // Lower priority, then larger slack, then higher uid.
