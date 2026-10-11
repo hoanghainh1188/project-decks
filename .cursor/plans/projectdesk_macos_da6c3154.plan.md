@@ -374,7 +374,14 @@ Rủi ro: cần tài khoản Apple Developer; CSP có thể làm hỏng xuất P
 - Gantt dùng được bằng bàn phím; nút có kiểu focus.
 - Kéo riêng từng đoạn của task tách.
 - Sơ đồ mạng giữ liên kết gắn vào summary khi ẩn summary (chuyển xuống task con); các lần của chuỗi lặp không chen vào cột đầu cạnh việc chính (gom lại hoặc tùy chọn ẩn).
-- Thanh công cụ chia nhóm, có nút Hoàn tác/Làm lại; tiêu đề cửa sổ là tên dự án kèm dấu đã sửa; thanh trạng thái chỉ hiện tên tệp.
+- Thiết kế lại điều hướng và thanh công cụ theo luồng làm việc:
+  - Menu macOS giữ các thao tác hệ thống và phím tắt (`Tệp`, `Sửa`, `Xem`, `Dự án`); thanh công cụ ưu tiên thao tác hằng ngày.
+  - Chia thanh công cụ thành nhóm rõ ràng: Hoàn tác/Làm lại; tạo task; sửa task đang chọn; điều khiển dự án; xuất/báo cáo. Có vạch ngăn hoặc khoảng cách giữa các nhóm.
+  - Gộp “Thêm việc”, mốc và công việc lặp vào nút “Thêm việc ▾”. Đổi “Nối FS” thành “Liên kết”, có chọn FS/SS/FF/SF và gỡ liên kết. “Tách”, thụt vào/ra và xóa chỉ nằm trong nhóm thao tác task, với trạng thái vô hiệu hóa và chú thích theo ngữ cảnh.
+  - Đổi nhãn “Lịch” thành “Lịch dự án” hoặc chuyển vào nhóm Dự án. Đặt EVM trong nhóm Báo cáo/Xem thay vì cạnh các lệnh sửa task.
+  - Đưa các view thành thanh điều hướng riêng; thang ngày/tuần/tháng, lọc, nhóm và tô sáng là điều khiển theo view ở hàng phụ.
+  - Thêm test cho trạng thái bật/tắt của từng lệnh theo task được chọn và view hiện tại.
+- Tiêu đề cửa sổ là tên dự án kèm dấu đã sửa; thanh trạng thái chỉ hiện tên tệp.
 - View Sử dụng chỉ tô quá tải ở ô có giờ; định dạng số thống nhất; bớt biểu tượng lịch lặp lại ở mỗi dòng.
 - Màu thành token CSS rồi mới làm giao diện tối; xóa `src/App.css` thừa từ template.
 - Dọn 9 warning clippy của engine.
