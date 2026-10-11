@@ -54,8 +54,11 @@ todos:
     content: "Hỏi lưu khi còn thay đổi, lưu file nguyên tử, kiểm tra phiên bản tệp, phím tắt không cướp ô nhập (PR #23)"
     status: completed
   - id: ui-basics
-    content: "Pha 11: giao diện cơ bản (đơn vị thời lượng, panel thuộc tính, nhãn ngày, cột và nhãn nguồn lực, giải thích ngày kết thúc)"
-    status: pending
+    content: "Pha 11: giao diện cơ bản (PR #25; còn kiểm tra bằng mắt)"
+    status: completed
+  - id: release-0-1-0
+    content: "Bản v0.1.0: draft release, chưa ký số, macOS chỉ arm64"
+    status: in_progress
   - id: file-performance
     content: "Pha 12: nền tệp và hiệu năng (checkpoint, lệnh bất đồng bộ, khôi phục, autosave)"
     status: pending
@@ -288,7 +291,9 @@ Panel nhỏ cạnh Gantt, nhãn tiếng Việt và viết tắt trong ngoặc:
 
 Theo đánh giá độc lập sau PR #23 (đối chiếu từng mục với code) và kiểm tra giao diện trên một dự án mẫu 21 dòng. Pha 11 làm trước vì nhỏ và người dùng thấy ngay; Pha 12 là nền cho Pha 13 và 16. Pha 14 chạy song song khi có tài khoản Apple Developer.
 
-### Pha 11 — giao diện cơ bản (S–M)
+### Pha 11 — giao diện cơ bản (S–M) — đã xong (PR #25)
+
+Còn lại: kiểm tra bằng mắt trên dự án mẫu (chưa chụp được màn hình khi merge).
 
 Mục tiêu: màn hình chính đọc đúng và đủ thông tin mà không phải đoán.
 
@@ -311,6 +316,8 @@ Mục tiêu: undo, mở tệp và sửa không làm đứng UI ở dự án lớ
 - Một lệnh lỗi khi replay không làm mất cả tệp: mở ở checkpoint gần nhất, chỉ đọc, kèm cảnh báo.
 - Autosave và khôi phục sau crash vào tệp ẩn cạnh tệp thật.
 - Tùy chọn gộp lịch sử cũ để log không phình mãi.
+- Engine đổi logic thì tệp cũ có thể âm thầm ra ngày khác: khi mở tệp của phiên bản engine khác, so lịch replay với checkpoint đã lưu và báo người dùng những task đổi ngày.
+- `schedule()`: bỏ vòng lặp `n+2` lượt cho ràng buộc kết thúc của summary, và không bung liên kết giữa hai summary thành tích chéo các task lá.
 
 Nghiệm thu: bench trong `crates/engine/benches` với 1.000 task, 10.000 lệnh: Undo dưới 100 ms, mở dưới 1 giây; test tệp có lệnh hỏng; test tắt app giữa chừng rồi khôi phục.
 
@@ -327,9 +334,12 @@ Mục tiêu: nhập tiến độ thực tế làm lịch thay đổi như MS Pro
 - Lệnh theo dõi trên occurrence của chuỗi lặp không đánh dấu `detached`; sinh lại không động vào occurrence đã có tiến độ.
 - Nghĩa của lệnh cũ đổi nên tăng `FORMAT_VERSION`.
 
+- Task lên lịch tay: ngày thực tế đè lên ngày ghim tay.
+- Tùy chọn để chuỗi việc lặp (ví dụ họp hằng tuần) không quyết định ngày kết thúc dự án và đường găng; Pha 11 mới giải thích trên thanh trạng thái.
+
 Chỗ phải sửa: `schedule_leaf` và `late_leaf` (`schedule.rs`), `work.rs` (bỏ ép `actual_finish = finish`), `SetPercentComplete` và `SetRemainingDuration` (`command.rs`), `level.rs`, `evm.rs`.
 
-Nghiệm thu: test CPM bằng số tính tay (bắt đầu muộn đẩy task sau, task tách cộng dồn đúng); đối chiếu một tệp MSPDI mẫu xuất từ Project.
+Nghiệm thu: test CPM bằng số tính tay (bắt đầu muộn đẩy task sau, task tách cộng dồn đúng); test task tách × leveling; đối chiếu một tệp MSPDI mẫu xuất từ Project.
 
 ### Pha 14 — phát hành macOS (S–M, song song Pha 13)
 
@@ -338,6 +348,7 @@ Nghiệm thu: test CPM bằng số tính tay (bắt đầu muộn đẩy task sa
 - `bundle.fileAssociations` cho `.pdproj` với UTI riêng; xử lý `RunEvent::Opened` qua `confirm_discard`; danh sách "Mở gần đây".
 - CSP thay cho `csp: null`, cho phép `data:` và `blob:` mà jsPDF cần.
 - Sửa metadata `src-tauri/Cargo.toml` (`description`, `authors`).
+- Quy trình phát hành: tăng phiên bản đồng bộ ở `package.json`, `tauri.conf.json`, `Cargo.toml`; ghi chú phát hành tiếng Việt kèm giới hạn đã biết; tag `v*` từ `main`. Bản `v0.1.0` đã build (draft, chưa ký, macOS chỉ arm64).
 
 Nghiệm thu: CI chạy `codesign --verify --strict`, `spctl -a -vv`, `xcrun stapler validate`, `lipo -archs` (có x86_64 và arm64); bấm đúp tệp `.pdproj` mở được và vẫn hỏi lưu.
 
@@ -352,19 +363,22 @@ Rủi ro: cần tài khoản Apple Developer; CSP có thể làm hỏng xuất P
 
 - Quá tải tính theo giờ trùng nhau trong ngày, không cộng đơn vị của mọi task chạm cùng ngày.
 - Không chạy lại `schedule()` toàn bộ mỗi vòng.
+- Bỏ giới hạn 3.660 ngày khi tính quá tải (`level.rs`).
 - Lưu độ trễ cân bằng thành giá trị cụ thể trong log, để replay không chạy lại heuristic.
 - Nghiệm thu: hai task cùng ngày nhưng khác giờ không bị báo quá tải; bench 500 task dưới 1 giây.
 
 ### Pha 17 — UX ngang MS Project (L, tách 2–3 PR)
 
 - Copy/paste và điền xuống (fill-down) task.
-- Tách `App.tsx` (hơn 1.100 dòng); thêm test cho `GanttChart`, `ganttPdf`, `networkPdf`, `App`.
+- Tách `App.tsx` tiếp (PR #25 đã giảm còn 730 dòng); thêm test cho `GanttChart`, `ganttPdf`, `networkPdf`, `App`, `ResourceSheet`, `CalendarEditor`, `SplitDialog`, `TaskUsage`.
 - Gantt dùng được bằng bàn phím; nút có kiểu focus.
 - Kéo riêng từng đoạn của task tách.
-- Sơ đồ mạng giữ liên kết gắn vào summary khi ẩn summary (chuyển xuống task con).
+- Sơ đồ mạng giữ liên kết gắn vào summary khi ẩn summary (chuyển xuống task con); các lần của chuỗi lặp không chen vào cột đầu cạnh việc chính (gom lại hoặc tùy chọn ẩn).
 - Thanh công cụ chia nhóm, có nút Hoàn tác/Làm lại; tiêu đề cửa sổ là tên dự án kèm dấu đã sửa; thanh trạng thái chỉ hiện tên tệp.
 - View Sử dụng chỉ tô quá tải ở ô có giờ; định dạng số thống nhất; bớt biểu tượng lịch lặp lại ở mỗi dòng.
 - Màu thành token CSS rồi mới làm giao diện tối; xóa `src/App.css` thừa từ template.
+- Dọn 9 warning clippy của engine.
+- Viết lại README: tính năng, cách cài bản phát hành, cách build; bỏ đường dẫn cứng.
 
 ### Ngoài phạm vi
 
