@@ -1,6 +1,6 @@
 ---
 name: ProjectDesk macOS
-overview: "ProjectDesk là ứng dụng desktop Tauri (Rust + React) quản lý dự án theo hướng Microsoft Project. Pha 1–10 đã xong; pha 9 (công việc lặp) qua PR #15 đã merge, pha 10 (chỉ số EVM và burn-down) qua PR #16. Các sửa bổ sung trên main: PR #10, #12, #13, #14."
+overview: "ProjectDesk là ứng dụng desktop Tauri (Rust + React) quản lý dự án theo hướng Microsoft Project. Pha 1–10 đã xong. Sau pha 10 đã thêm: bản cài đa nền tảng (PR #17), test frontend (PR #18), phần còn lại của pha 9–10 (PR #19), sơ đồ mạng (PR #20), tách công việc (PR #21), CLAUDE.md (PR #22) và các sửa an toàn dữ liệu. Việc còn lại xếp theo ưu tiên ở mục Vẫn chưa làm."
 todos:
   - id: scaffold
     content: Tauri 2 + React + crate engine
@@ -41,6 +41,21 @@ todos:
   - id: evm-burndown
     content: "Pha 10: chỉ số EVM và burn-down chart"
     status: completed
+  - id: phase-9-10-followups
+    content: "AC theo thời gian, đường cong S, thêm mẫu lặp, đơn vị nguồn lực của chuỗi (PR #19)"
+    status: completed
+  - id: split-task
+    content: "Tách công việc (PR #21)"
+    status: completed
+  - id: network-diagram
+    content: "Sơ đồ mạng kiểu PERT (PR #20)"
+    status: completed
+  - id: data-safety
+    content: "Hỏi lưu khi còn thay đổi, lưu file nguyên tử, kiểm tra phiên bản tệp, phím tắt không cướp ô nhập"
+    status: completed
+  - id: actuals-drive-schedule
+    content: "Ngày thực tế điều khiển lịch"
+    status: pending
 isProject: false
 ---
 
@@ -49,6 +64,8 @@ isProject: false
 Pha 1–10 đã xong. Pha 1 gồm bảng task, Gantt, menu và cột WBS (PR #3). Pha 2–5 (nguồn lực, theo dõi và chi phí, leveling, MSPDI) đã merge qua PR #5. Pha 6 (lịch trên giao diện) qua PR #6. Pha 7 (lọc, nhóm, highlight) qua PR #7. Pha 8 (PDF Gantt) qua PR #8; hộp thoại file được sửa trong PR #9 đã merge. Pha 9 (công việc lặp) qua PR #15 đã merge. Pha 10 (chỉ số EVM và burn-down) qua PR #16.
 
 Các sửa bổ sung đã merge vào `main`: PR #10 (căn header với độ rộng ngày của Gantt), PR #12 (bộ chọn ngày giờ trong app), PR #13 (đồng bộ kế hoạch), PR #14 (nhóm theo summary ở pha 7).
+
+Sau pha 10 (chi tiết ở mục Sau pha 10): PR #17 (CI build bản cài macOS, Windows, Linux), PR #18 (test frontend với Vitest), PR #19 (phần còn lại của pha 9–10), PR #20 (sơ đồ mạng), PR #21 (tách công việc), PR #22 (CLAUDE.md), và PR sửa an toàn dữ liệu.
 
 Giao diện tiếng Việt. Các pha mở rộng cùng một mô hình lịch trong engine Rust.
 
@@ -176,10 +193,10 @@ Pha 6–9 đã xong trên `main`.
 
 Giới hạn:
 
-- Chưa có mẫu "mỗi N ngày lịch", "thứ X thứ Y trong tháng" (ví dụ thứ Hai đầu tiên) hay lặp theo năm.
+- ~~Chưa có mẫu "mỗi N ngày lịch", "thứ X thứ Y trong tháng" (ví dụ thứ Hai đầu tiên) hay lặp theo năm.~~ Đã thêm ở PR #19 (`calendar_daily`, `monthly_nth`, `yearly`, `yearly_nth`).
 - Nhập MSPDI không dựng lại chuỗi lặp; chuỗi thành summary thường với các task con.
-- Nguồn lực của chuỗi luôn gán với đơn vị 1.0; hộp thoại chưa cho chọn đơn vị. Muốn khác thì sửa riêng từng lần (lần đó thành tách).
-- Chưa kiểm thử tự động phần giao diện; engine có test, giao diện cần kiểm tay trong cửa sổ Tauri.
+- ~~Nguồn lực của chuỗi luôn gán với đơn vị 1.0.~~ PR #19 cho chọn đơn vị từng nguồn lực của chuỗi.
+- ~~Chưa kiểm thử tự động phần giao diện.~~ PR #18 thêm test Vitest cho hộp thoại.
 
 ## Pha 10 — chỉ số EVM và burn-down — đã xong (PR #16)
 
@@ -194,11 +211,11 @@ Giới hạn:
 
 Giới hạn:
 
-- AC là tổng chi phí thực tế hiện tại của task lá (pha 3 suy ra từ % complete và cách cộng dồn). Engine không có chi phí theo thời gian nên không cắt AC đúng tại ngày trạng thái.
+- ~~AC không cắt theo thời gian tại ngày trạng thái.~~ PR #19 rải AC đều theo thời gian làm việc từ ngày bắt đầu thực tế tới điểm tiến độ, theo cách cộng dồn của task.
 - Task lá chưa có baseline 0 (thêm sau khi đặt baseline) không góp vào BAC, PV, EV nhưng vẫn góp vào AC. Chi phí cố định đặt trên chính summary không được tính, vì chỉ cộng task lá.
 - Đường thực tế chỉ có điểm từ lúc dùng bản này: không dựng lại lịch sử cho file cũ. Hoàn tác việc đổi ngày trạng thái không xóa snapshot đã ghi. Ngày "hiện tại" khi chưa có ngày trạng thái lấy theo giờ UTC, giống ngày bắt đầu mặc định của dự án mới.
-- Kế hoạch không yêu cầu đường cong S (PV/EV/AC theo thời gian) nên chưa vẽ, dù snapshot đã lưu EV và AC.
-- Chưa kiểm thử tự động phần giao diện; panel và biểu đồ cần kiểm tay trong cửa sổ Tauri.
+- ~~Chưa vẽ đường cong S.~~ PR #19 thêm đường cong S (PV/EV/AC cộng dồn theo ngày hoặc tuần).
+- ~~Chưa kiểm thử tự động phần giao diện.~~ PR #18 thêm test cho `EvmPanel`.
 
 ### EVM
 
@@ -234,10 +251,28 @@ Panel nhỏ cạnh Gantt, nhãn tiếng Việt và viết tắt trong ngoặc:
 - Mỗi lần người dùng lưu file, hoặc khi ngày trạng thái đổi, engine ghi thêm một snapshot: ngày, remaining work, EV, AC. Cùng một ngày thì ghi đè snapshot của ngày đó.
 - Snapshot nằm trong SQLite `.pdproj`. Không có server, không có dịch vụ ngoài máy.
 
+## Sau pha 10 — đã xong
+
+- **Bản cài (PR #17):** `.github/workflows/build.yml` build bản cài chưa ký cho macOS, Windows, Linux; tag `v*` tạo draft release.
+- **Test frontend (PR #18):** Vitest, Testing Library, jsdom. `src/test/fakeBackend.ts` thay các lệnh Tauri; không chạy engine thật.
+- **Sơ đồ mạng (PR #20):** module `network.rs` xếp ô theo cột và tuyến cạnh; lệnh Tauri `network_layout`; view "Sơ đồ mạng" có kéo, phóng to, chọn chung với bảng task, hộp thoại sửa và xuất PDF. Mặc định ẩn summary.
+- **Tách công việc (PR #21):** module `split.rs`. Một lần tách lưu số phút làm việc trước khoảng nghỉ và độ dài khoảng nghỉ; `schedule()` tính ra các đoạn (`segments`). Baseline lưu đoạn của nó, PV và burn-down kế hoạch bỏ qua khoảng nghỉ. MSPDI đọc/ghi các đoạn. Gantt vẽ thanh đứt đoạn.
+- **An toàn dữ liệu:**
+  - Mới, Mở, Nhập MSPDI, đóng cửa sổ, Cmd+Q và thoát từ Dock đều hỏi "Lưu / Không lưu / Hủy" khi còn thay đổi chưa lưu. Cmd+Q dùng mục menu riêng thay cho mục Thoát có sẵn.
+  - Lưu ghi ra một tệp tạm ẩn, tên riêng, cạnh tệp thật (đi theo symlink) trong một transaction, giữ quyền của tệp cũ, rồi đổi tên đè lên. App crash giữa chừng không làm hỏng tệp, và không xóa nhầm tệp `.tmp` của người dùng.
+  - Trong lúc một hộp thoại native đang mở, các lệnh sửa, hoàn tác, làm lại bị từ chối, để câu trả lời "Lưu / Không lưu" áp đúng trạng thái người dùng đang thấy.
+  - Mở tệp kiểm tra `FORMAT_VERSION`: tệp của phiên bản mới hơn bị từ chối với thông báo rõ, và lệnh lạ trong log cũng báo như vậy. Thêm biến thể `Command` hoặc bảng mới thì phải tăng `FORMAT_VERSION`.
+  - Đang gõ dở trong ô nhập thì Cmd+Z, Cmd+Shift+Z hoàn tác/làm lại chữ trong ô; ô không còn chữ chưa xác nhận thì chúng hoàn tác dự án như thường. Cmd+Backspace trong ô xóa chữ tới đầu dòng, không xóa công việc (`src/shortcuts.ts`).
+
 ## Vẫn chưa làm
 
-- Giới hạn của pha 9 (chi tiết ở mục Pha 9): chưa có mẫu "thứ X thứ Y trong tháng", lặp theo năm, mỗi N ngày lịch; nhập MSPDI không dựng lại chuỗi; đơn vị nguồn lực của chuỗi cố định 1.0.
-- Giới hạn của pha 10 (chi tiết ở mục Pha 10): AC chưa cắt theo thời gian tại ngày trạng thái; đường burn-down thực tế chỉ có snapshot từ bản này trở đi; chưa có đường cong S.
-- Chưa có kiểm thử tự động cho giao diện; engine có test, giao diện kiểm tay trong cửa sổ Tauri.
-- Ngoài phạm vi: reader file nhị phân `.mpp` (xem pha 5).
-- Chưa làm: tách task, sơ đồ mạng, nhiều người dùng, server, công thức trường tùy chỉnh, CI bản cài Windows/Linux.
+Theo đánh giá độc lập sau PR #20, ưu tiên giảm dần:
+
+- **Theo dõi tiến độ:** ngày thực tế chưa điều khiển lịch. `schedule()` không đọc `actual_start`/`actual_finish`, nên nhập ngày bắt đầu thực tế muộn hơn kế hoạch không dời task và các task sau. Chưa có "dời phần việc chưa xong" sau ngày trạng thái.
+- **MSPDI:** chưa đọc/ghi `Deadline` và chi phí thực tế (nhập lại thành 0); chưa đọc/ghi `WorkWeeks` của lịch; nhập không dựng lại chuỗi lặp.
+- **EVM với task tách:** AC và EV trên đường cong S rải qua cả khoảng nghỉ (`progress_window` chưa dùng các đoạn), trong khi PV đã bỏ qua khoảng nghỉ. Giá trị tại ngày trạng thái vẫn đúng.
+- **Leveling:** quá tải được tính bằng tổng đơn vị của các task chạm cùng một ngày, không theo giờ trùng nhau; mỗi vòng chạy lại `schedule()` nên dự án lớn chậm.
+- **Hiệu năng:** undo/redo và mở tệp chạy lại toàn bộ command log từ base; tìm task theo UID là tuyến tính. Cần snapshot hoặc nén log.
+- **Phát hành macOS:** chưa ký số và notarize; chưa có CSP (`csp: null`); chỉ build arm64; chưa gắn kiểu tệp `.pdproj`.
+- **Giao diện:** `App.tsx` quá lớn cần tách; chưa có test cho Gantt, PDF, App; chưa có autosave và khôi phục sau crash; chưa có copy/paste task; chưa kéo riêng từng đoạn của task tách; sơ đồ mạng bỏ các liên kết gắn vào summary khi ẩn summary; Gantt chưa dùng được bằng bàn phím; chỉ có tiếng Việt.
+- Ngoài phạm vi: reader file nhị phân `.mpp` (xem pha 5), nhiều người dùng, server, công thức trường tùy chỉnh.
