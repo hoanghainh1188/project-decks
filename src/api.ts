@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
-import type { Command, ProjectMetrics, Snapshot } from "./types";
+import type { Command, NetworkLayout, NetworkOptions, ProjectMetrics, Snapshot } from "./types";
 
 export function inTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -19,6 +19,10 @@ export function loadState(): Promise<Snapshot> {
 
 export function loadMetrics(): Promise<ProjectMetrics> {
   return invoke<ProjectMetrics>("project_metrics");
+}
+
+export function loadNetworkLayout(options: NetworkOptions): Promise<NetworkLayout> {
+  return invoke<NetworkLayout>("network_layout", { options });
 }
 
 export function applyCommand(command: Command): Promise<Snapshot> {

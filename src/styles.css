@@ -376,3 +376,27 @@ tr.child td:first-child { padding-left: 22px; color: #3a3a3c; }
 }
 .series-icon.occurrence { color: #8e8e93; cursor: default; }
 .series-icon.detached { color: #c77c02; }
+.network { flex: 1; min-width: 0; display: flex; flex-direction: column; background: white; }
+.network-tools {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding: 4px 10px;
+  border-bottom: 1px solid #e4e4e8;
+  background: #f6f6f8;
+}
+.network-tools button { min-width: 32px; }
+.network-hint { margin-left: 8px; color: #8e8e93; font-size: 11px; }
+.network-body { flex: 1; min-height: 0; overflow: auto; cursor: grab; background: #fbfbfc; }
+.network-body.panning { cursor: grabbing; user-select: none; }
+.network-svg { display: block; max-width: none; }
+.network-node { cursor: pointer; }
+.network-name { font: 600 12px -apple-system, sans-serif; fill: #1d1d1f; }
+.network-field { font: 11px -apple-system, sans-serif; fill: #1d1d1f; }
+.network-label { fill: #6e6e73; }
+.network-edge-label {
+  font: 600 10px -apple-system, sans-serif;
+  paint-order: stroke;
+  stroke: #fbfbfc;
+  stroke-width: 3px;
+}

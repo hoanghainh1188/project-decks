@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 use projectdesk_engine::document::now_millis;
 use projectdesk_engine::evm::ProjectMetrics;
 use projectdesk_engine::mspdi::{read_mspdi, write_mspdi};
+use projectdesk_engine::network::{self, NetworkLayout, NetworkOptions};
 use projectdesk_engine::store;
 use projectdesk_engine::{Command, Document, Snapshot};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
@@ -84,6 +85,11 @@ fn project_state(state: State<'_, AppState>) -> Snapshot {
 #[tauri::command]
 fn project_metrics(state: State<'_, AppState>) -> ProjectMetrics {
     lock(&state).metrics()
+}
+
+#[tauri::command]
+fn network_layout(state: State<'_, AppState>, options: NetworkOptions) -> NetworkLayout {
+    network::layout(&lock(&state).project, &options)
 }
 
 #[tauri::command]
@@ -319,6 +325,7 @@ fn build_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
             &menu_item(app, "view-tracking", "Gantt theo dõi", None)?,
             &menu_item(app, "view-resources", "Bảng nguồn lực", None)?,
             &menu_item(app, "view-usage", "Sử dụng công việc", None)?,
+            &menu_item(app, "view-network", "Sơ đồ mạng", None)?,
             &menu_item(app, "view-evm", "Chỉ số EVM và burn-down", None)?,
             &PredefinedMenuItem::separator(app)?,
             &menu_item(app, "scale-day", "Thang ngày", None)?,
@@ -364,6 +371,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             project_state,
             project_metrics,
+            network_layout,
             apply_command,
             undo,
             redo,

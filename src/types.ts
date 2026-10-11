@@ -281,7 +281,46 @@ export type Command =
   | { type: "split_task"; uid: number; at: number; gap: number }
   | { type: "remove_split"; uid: number; index: number | null };
 
-export type ViewId = "gantt" | "tracking" | "resources" | "usage";
+export type ViewId = "gantt" | "tracking" | "resources" | "usage" | "network";
+
+export interface NetworkOptions {
+  include_summary: boolean;
+  visible_uids: number[] | null;
+}
+
+// Network diagram geometry comes from the engine in pixels at zoom 1.
+export interface NetworkNode {
+  uid: number;
+  column: number;
+  row: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface NetworkPoint {
+  x: number;
+  y: number;
+}
+
+export interface NetworkEdge {
+  uid: number;
+  from_uid: number;
+  to_uid: number;
+  kind: DepKind;
+  lag: number;
+  points: NetworkPoint[];
+}
+
+export interface NetworkLayout {
+  nodes: NetworkNode[];
+  edges: NetworkEdge[];
+  columns: number;
+  width: number;
+  height: number;
+  crossings: number;
+}
 
 // EVM values come from the engine; null means undefined because a denominator was not above zero.
 export interface EvmMetrics {

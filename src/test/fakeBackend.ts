@@ -1,4 +1,4 @@
-import type { Command, ProjectMetrics, Snapshot } from "../types";
+import type { Command, NetworkLayout, ProjectMetrics, Snapshot } from "../types";
 import { makeMetrics, makeSnapshot, makeTask } from "./fixtures";
 
 export interface InvokeCall {
@@ -14,12 +14,14 @@ class FakeBackend {
   calls: InvokeCall[] = [];
   snapshot: Snapshot = makeSnapshot();
   metrics: ProjectMetrics = makeMetrics();
+  network: NetworkLayout = emptyNetwork();
   private failures = new Map<string, unknown>();
 
   reset(snapshot: Snapshot = makeSnapshot(), metrics: ProjectMetrics = makeMetrics()): void {
     this.calls = [];
     this.snapshot = structuredClone(snapshot);
     this.metrics = structuredClone(metrics);
+    this.network = emptyNetwork();
     this.failures.clear();
   }
 
@@ -53,6 +55,8 @@ class FakeBackend {
         return structuredClone(this.snapshot);
       case "project_metrics":
         return structuredClone(this.metrics);
+      case "network_layout":
+        return structuredClone(this.network);
       case "export_mspdi":
       case "save_pdf":
         return undefined;
@@ -106,6 +110,10 @@ class FakeBackend {
         return;
     }
   }
+}
+
+function emptyNetwork(): NetworkLayout {
+  return { nodes: [], edges: [], columns: 0, width: 0, height: 0, crossings: 0 };
 }
 
 export const fakeBackend = new FakeBackend();
