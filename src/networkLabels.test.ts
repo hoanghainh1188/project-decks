@@ -14,7 +14,7 @@ describe("edgeLabel", () => {
 
   it("adds signed lag in working time", () => {
     expect(edgeLabel({ kind: "fs", lag: 480 })).toBe("FS+1 ngày");
-    expect(edgeLabel({ kind: "ss", lag: 240 })).toBe("SS+4 giờ");
+    expect(edgeLabel({ kind: "ss", lag: 240 })).toBe("SS+0,5 ngày");
     expect(edgeLabel({ kind: "ff", lag: -480 })).toBe("FF-1 ngày");
   });
 });
