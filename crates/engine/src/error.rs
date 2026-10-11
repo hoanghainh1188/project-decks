@@ -18,6 +18,12 @@ pub enum EngineError {
     NoWorkingTime,
     #[error("Không đọc được tệp: {0}")]
     Store(String),
+    #[error("Không lưu được tệp: {0}")]
+    Save(String),
+    #[error("Tệp được tạo bởi phiên bản mới hơn của ProjectDesk (định dạng {0}). Hãy cập nhật ứng dụng.")]
+    NewerFormat(u32),
+    #[error("Tệp có thao tác không nhận ra, có thể do phiên bản mới hơn của ProjectDesk tạo ra: {0}")]
+    UnknownCommand(String),
     #[error("XML MSPDI không hợp lệ: {0}")]
     Xml(String),
 }

@@ -46,6 +46,7 @@ import type {
   TaskType,
   ViewId,
 } from "./types";
+import { isEditableTarget, runFieldAction, shortcutId, shouldRunAction, trackCommittedText } from "./shortcuts";
 import { buildViewRows, type FilterMode, type GroupMode, type HighlightMode } from "./viewRows";
 import "./styles.css";
 
@@ -151,7 +152,7 @@ export default function App() {
 
   const handleMenu = useCallback(
     (id: string) => {
-      if (id === "new") void run(newProject);
+      if (id === "new") startFileDialog(newProject);
       if (id === "open") startFileDialog(openProject);
       if (id === "save") startFileDialog(saveProject);
       if (id === "save-as") startFileDialog(saveProjectAs);
@@ -189,6 +190,21 @@ export default function App() {
   );
   menuRef.current = handleMenu;
 
+  // Shortcuts and menu accelerators can both fire for one key press; act once, either on
+  // the project or on the focused text field.
+  const dispatchAction = useCallback(
+    (id: string, focused: EventTarget | null) => {
+      const now = Date.now();
+      if (now - lastAction.current < 40) return;
+      lastAction.current = now;
+      if (shouldRunAction(id, focused)) menuRef.current(id);
+      else if (isEditableTarget(focused)) runFieldAction(id, focused);
+    },
+    [],
+  );
+
+  useEffect(() => trackCommittedText(document), []);
+
   useEffect(() => {
     if (!inTauri()) {
       setError("Mở ProjectDesk bằng pnpm tauri dev để dùng lịch và lưu tệp.");
@@ -197,12 +213,7 @@ export default function App() {
     void run(() => loadState());
     let unlisten: (() => void) | undefined;
     let cancelled = false;
-    void onMenu((id) => {
-      const now = Date.now();
-      if (now - lastAction.current < 40) return;
-      lastAction.current = now;
-      menuRef.current(id);
-    }).then((stop) => {
+    void onMenu((id) => dispatchAction(id, document.activeElement)).then((stop) => {
       if (cancelled) stop();
       else unlisten = stop;
     });
@@ -210,7 +221,7 @@ export default function App() {
       cancelled = true;
       unlisten?.();
     };
-  }, [run]);
+  }, [run, dispatchAction]);
 
   useEffect(() => {
     if (!project || project.tasks.length === 0) return;
@@ -242,37 +253,14 @@ export default function App() {
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      const key = event.key.toLowerCase();
-      const meta = event.metaKey || event.ctrlKey;
-      if (!meta) return;
-      const id =
-        key === "z" && event.shiftKey
-          ? "redo"
-          : key === "z"
-            ? "undo"
-            : key === "s" && event.shiftKey
-              ? "save-as"
-              : key === "s"
-                ? "save"
-                : key === "o"
-                  ? "open"
-                  : key === "n"
-                    ? "new"
-                    : key === "]"
-                      ? "indent"
-                      : key === "["
-                        ? "outdent"
-                        : "";
+      const id = shortcutId(event);
       if (!id) return;
       event.preventDefault();
-      const now = Date.now();
-      if (now - lastAction.current < 40) return;
-      lastAction.current = now;
-      handleMenu(id);
+      dispatchAction(id, event.target);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [handleMenu]);
+  }, [dispatchAction]);
 
   const criticalCount = useMemo(
     () => project?.tasks.filter((item) => item.critical && !item.summary).length ?? 0,
