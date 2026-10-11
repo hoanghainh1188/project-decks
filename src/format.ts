@@ -1,15 +1,25 @@
 const DAY = 8 * 60;
 
+/** Hundredths of a unit as Vietnamese text: 150 -> "1,5", 75 -> "0,75". */
+function hundredths(value: number): string {
+  const whole = Math.floor(value / 100);
+  const fraction = value % 100;
+  if (fraction === 0) return String(whole);
+  return `${whole},${String(fraction).padStart(2, "0").replace(/0$/, "")}`;
+}
+
+/**
+ * Working minutes as days, the way Project shows durations ("7,5 ngày", a milestone
+ * "0 ngày"). Falls back to hours, then minutes, only when days with two decimals would
+ * not be exact, so text shown in an editor parses back to the same number of minutes.
+ */
 export function formatDuration(minutes: number): string {
   if (!Number.isFinite(minutes)) return "";
   const sign = minutes < 0 ? "-" : "";
   const abs = Math.abs(Math.round(minutes));
-  if (abs === 0) return "0 phút";
-  if (abs % DAY === 0) {
-    const days = abs / DAY;
-    return `${sign}${days} ngày`;
-  }
-  if (abs % 60 === 0) return `${sign}${abs / 60} giờ`;
+  if (abs === 0) return "0 ngày";
+  if ((abs * 100) % DAY === 0) return `${sign}${hundredths((abs * 100) / DAY)} ngày`;
+  if ((abs * 100) % 60 === 0) return `${sign}${hundredths((abs * 100) / 60)} giờ`;
   return `${sign}${abs} phút`;
 }
 

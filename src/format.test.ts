@@ -26,17 +26,25 @@ import { at } from "./test/fixtures";
 
 describe("formatDuration", () => {
   it.each([
-    [0, "0 phút"],
+    [0, "0 ngày"],
     [480, "1 ngày"],
     [2400, "5 ngày"],
+    [720, "1,5 ngày"],
+    [768, "1,6 ngày"],
+    [1536, "3,2 ngày"],
+    [3600, "7,5 ngày"],
     [60, "1 giờ"],
     [540, "9 giờ"],
-    [90, "90 phút"],
+    [12060, "201 giờ"],
+    [90, "1,5 giờ"],
+    [45, "0,75 giờ"],
+    [25, "25 phút"],
     [-480, "-1 ngày"],
-    [-120, "-2 giờ"],
-    [-45, "-45 phút"],
+    [-720, "-1,5 ngày"],
+    [-120, "-0,25 ngày"],
+    [-25, "-25 phút"],
     [59.6, "1 giờ"],
-    [0.4, "0 phút"],
+    [0.4, "0 ngày"],
   ])("%s minutes -> %s", (minutes, text) => {
     expect(formatDuration(minutes)).toBe(text);
   });
@@ -73,8 +81,14 @@ describe("parseDuration", () => {
     expect(parseDuration(text)).toBeNull();
   });
 
+  it("round-trips every whole minute from -3 days to 30 days", () => {
+    for (let minutes = -3 * 480; minutes <= 30 * 480; minutes += 1) {
+      expect(parseDuration(formatDuration(minutes))).toBe(minutes);
+    }
+  });
+
   it("round-trips with formatDuration", () => {
-    for (const minutes of [0, 15, 60, 480, 1440, 4800]) {
+    for (const minutes of [0, 15, 25, 45, 60, 90, 540, 720, 768, 1440, 4800, 12060]) {
       expect(parseDuration(formatDuration(minutes))).toBe(minutes);
     }
   });

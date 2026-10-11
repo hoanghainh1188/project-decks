@@ -22,6 +22,8 @@ import { CalendarEditor } from "./components/CalendarEditor";
 import { DateTimeField } from "./components/DateTimeField";
 import { EvmPanel } from "./components/EvmPanel";
 import { GanttChart } from "./components/GanttChart";
+import { Inspector } from "./components/inspector/Inspector";
+import { canSplit } from "./components/inspector/SplitSection";
 import { NetworkDiagram } from "./components/NetworkDiagram";
 import { RecurringDialog, recurringCommand } from "./components/RecurringDialog";
 import { ResourceSheet } from "./components/ResourceSheet";
@@ -29,13 +31,11 @@ import { SplitDialog } from "./components/SplitDialog";
 import { TaskEditDialog } from "./components/TaskEditDialog";
 import { TaskSheet } from "./components/TaskSheet";
 import { TaskUsage } from "./components/TaskUsage";
-import { formatDuration, formatInstant, formatMoney, parseDuration } from "./format";
+import { formatInstant } from "./format";
 import { buildGanttPdf, pdfSuggestedName } from "./ganttPdf";
 import { buildNetworkPdf } from "./networkPdf";
 import type {
-  Accrual,
   Command,
-  ConstraintType,
   NetworkLayout,
   Project,
   ProjectMetrics,
@@ -43,23 +43,12 @@ import type {
   Scale,
   Snapshot,
   Task,
-  TaskType,
   ViewId,
 } from "./types";
+import { projectFinish } from "./projectFinish";
 import { isEditableTarget, runFieldAction, shortcutId, shouldRunAction, trackCommittedText } from "./shortcuts";
 import { buildViewRows, type FilterMode, type GroupMode, type HighlightMode } from "./viewRows";
 import "./styles.css";
-
-const CONSTRAINTS: { id: ConstraintType; label: string }[] = [
-  { id: "asap", label: "Sớm nhất" },
-  { id: "alap", label: "Muộn nhất" },
-  { id: "snet", label: "Bắt đầu không sớm hơn" },
-  { id: "snlt", label: "Bắt đầu không muộn hơn" },
-  { id: "fnet", label: "Kết thúc không sớm hơn" },
-  { id: "fnlt", label: "Kết thúc không muộn hơn" },
-  { id: "mso", label: "Phải bắt đầu vào" },
-  { id: "mfo", label: "Phải kết thúc vào" },
-];
 
 export default function App() {
   const [snap, setSnap] = useState<Snapshot | null>(null);
@@ -322,7 +311,7 @@ export default function App() {
       await savePdf(bytes, pdfSuggestedName(project.name));
     });
   };
-  const finish = project?.tasks.reduce((max, item) => Math.max(max, item.finish), 0) ?? 0;
+  const end = project ? projectFinish(project.tasks) : null;
   const splitTask = project?.tasks.find((item) => item.uid === splitDialog) ?? null;
   const editingCalendar = project?.calendars.find((calendar) => calendar.id === calendarEditId) ?? null;
 
@@ -465,6 +454,7 @@ export default function App() {
               rows={rows}
               calendars={project.calendars}
               assignments={project.assignments}
+              resources={project.resources}
               selected={selected}
               tracking={view === "tracking"}
               bodyRef={sheetRef}
@@ -539,7 +529,7 @@ export default function App() {
           />
         )}
       </main>
-      {project && task && (
+      {project && task && (view === "gantt" || view === "tracking") && (
         <Inspector
           project={project}
           task={task}
@@ -558,7 +548,9 @@ export default function App() {
         <span>{snap?.path ?? "Chưa có tệp"}</span>
         <span>{project?.tasks.length ?? 0} công việc</span>
         <span>{criticalCount} việc găng</span>
-        <span>{finish ? `Kết thúc ${formatInstant(finish)}` : ""}</span>
+        <span className="status-finish" title="Công việc kết thúc muộn nhất quyết định ngày kết thúc dự án">
+          {end ? `Kết thúc ${formatInstant(end.finish)} · do “${end.driver}”` : ""}
+        </span>
         <span>{project ? project.overallocations.length : 0} khoảng quá tải</span>
       </footer>
       {infoOpen && project && (
@@ -608,11 +600,6 @@ export default function App() {
   );
 }
 
-/** Only leaf tasks with work can be split; summaries and milestones cannot. */
-function canSplit(task: Task | null): task is Task {
-  return task != null && !task.summary && !task.milestone && task.duration > 0;
-}
-
 function linkAbove(
   project: Project | undefined,
   task: Task | null,
@@ -642,429 +629,6 @@ function resourceCommand(resource: Resource): Command {
     overtime_rate: resource.overtime_rate,
     cost_per_use: resource.cost_per_use,
   };
-}
-
-function Inspector({
-  project,
-  task,
-  send,
-  onEditSeries,
-  onSplit,
-  onEditCalendar,
-  onCreateCalendar,
-}: {
-  project: Project;
-  task: Task;
-  send: (command: Command) => void;
-  onEditSeries: (uid: number) => void;
-  onSplit: (uid: number) => void;
-  onEditCalendar: (calendarId: number) => void;
-  onCreateCalendar: () => void;
-}) {
-  const needsDate = task.constraint_type !== "asap" && task.constraint_type !== "alap";
-  const overtime = project.assignments
-    .filter((item) => item.task_uid === task.uid)
-    .reduce((sum, item) => sum + item.overtime_work, 0);
-  const series = task.series_uid != null ? project.tasks.find((item) => item.uid === task.series_uid) : null;
-  return (
-    <section className="inspector">
-      {(task.recurrence || series) && (
-        <div>
-          <label>Công việc lặp</label>
-          <button type="button" onClick={() => onEditSeries(task.recurrence ? task.uid : (series?.uid ?? task.uid))}>
-            Sửa cả chuỗi…
-          </button>
-          {series && (
-            <p className="meta">
-              {task.detached ? "Lần này đã sửa riêng; sinh lại chuỗi sẽ giữ nguyên." : `Một lần của chuỗi “${series.name}”.`}
-            </p>
-          )}
-        </div>
-      )}
-      {canSplit(task) && <SplitSection task={task} send={send} onSplit={onSplit} />}
-      <div>
-        <label>Bắt đầu thực</label>
-        <DateTimeField
-          optional
-          disabled={task.summary}
-          ariaLabel="Bắt đầu thực"
-          value={task.actual_start}
-          onCommit={(start) => send({ type: "set_actual_start", uid: task.uid, start })}
-        />
-      </div>
-      <div>
-        <label>Kết thúc thực</label>
-        <DateTimeField
-          optional
-          disabled={task.summary}
-          ariaLabel="Kết thúc thực"
-          value={task.actual_finish}
-          onCommit={(finish) => send({ type: "set_actual_finish", uid: task.uid, finish })}
-        />
-      </div>
-      <div>
-        <label>Việc còn lại</label>
-        <input
-          disabled={task.summary}
-          defaultValue={formatDuration(task.remaining_work)}
-          key={`rw-${task.uid}-${task.remaining_work}`}
-          onBlur={(event) => {
-            const minutes = parseDuration(event.target.value);
-            if (minutes !== null && minutes !== task.remaining_work) {
-              send({ type: "set_remaining_work", uid: task.uid, minutes });
-            }
-          }}
-        />
-      </div>
-      <div>
-        <label>Giờ làm thêm</label>
-        <input
-          disabled={task.summary}
-          defaultValue={formatDuration(overtime)}
-          key={`ot-${task.uid}-${overtime}`}
-          onBlur={(event) => {
-            const minutes = parseDuration(event.target.value);
-            if (minutes !== null && minutes !== overtime) {
-              send({ type: "set_overtime_work", uid: task.uid, minutes });
-            }
-          }}
-        />
-      </div>
-      <div>
-        <label>Lịch công việc</label>
-        <select
-          value={task.calendar_id ?? ""}
-          onChange={(event) =>
-            send({
-              type: "set_task_calendar",
-              uid: task.uid,
-              calendar_id: event.target.value ? Number(event.target.value) : null,
-            })
-          }
-        >
-          <option value="">Lịch dự án</option>
-          {project.calendars.map((calendar) => (
-            <option key={calendar.id} value={calendar.id}>{calendar.name}</option>
-          ))}
-        </select>
-        <div className="row">
-          <button
-            type="button"
-            disabled={task.summary || task.calendar_id == null}
-            onClick={() => task.calendar_id != null && onEditCalendar(task.calendar_id)}
-          >
-            Sửa lịch
-          </button>
-          <button type="button" disabled={task.summary} onClick={onCreateCalendar}>
-            Tạo lịch riêng
-          </button>
-        </div>
-      </div>
-      <div>
-        <label>Ràng buộc</label>
-        <select
-          value={task.constraint_type}
-          onChange={(event) =>
-            send({
-              type: "set_constraint",
-              uid: task.uid,
-              constraint_type: event.target.value as ConstraintType,
-              date: task.constraint_date,
-            })
-          }
-        >
-          {CONSTRAINTS.map((item) => (
-            <option key={item.id} value={item.id}>{item.label}</option>
-          ))}
-        </select>
-      </div>
-      {needsDate && (
-        <div>
-          <label>Ngày ràng buộc</label>
-          <DateTimeField
-            ariaLabel="Ngày ràng buộc"
-            value={task.constraint_date}
-            onCommit={(date) =>
-              send({
-                type: "set_constraint",
-                uid: task.uid,
-                constraint_type: task.constraint_type,
-                date,
-              })
-            }
-          />
-        </div>
-      )}
-      <div>
-        <label>Hạn chót</label>
-        <DateTimeField
-          optional
-          ariaLabel="Hạn chót"
-          value={task.deadline}
-          onCommit={(date) => send({ type: "set_deadline", uid: task.uid, date })}
-        />
-      </div>
-      <div>
-        <label>Kiểu công việc</label>
-        <select
-          value={task.task_type}
-          onChange={(event) =>
-            send({
-              type: "set_task_type",
-              uid: task.uid,
-              task_type: event.target.value as TaskType,
-              effort_driven: task.effort_driven,
-            })
-          }
-        >
-          <option value="fixed_units">Đơn vị cố định</option>
-          <option value="fixed_duration">Thời lượng cố định</option>
-          <option value="fixed_work">Công việc cố định</option>
-        </select>
-      </div>
-      <label className="check">
-        <input
-          type="checkbox"
-          checked={task.effort_driven}
-          onChange={(event) =>
-            send({
-              type: "set_task_type",
-              uid: task.uid,
-              task_type: task.task_type,
-              effort_driven: event.target.checked,
-            })
-          }
-        />
-        Hướng theo nỗ lực
-      </label>
-      <label className="check">
-        <input
-          type="checkbox"
-          checked={task.manual}
-          onChange={(event) =>
-            send({
-              type: "set_manual",
-              uid: task.uid,
-              manual: event.target.checked,
-              start: task.start,
-              finish: task.finish,
-            })
-          }
-        />
-        Lên lịch tay
-      </label>
-      <div>
-        <label>WBS</label>
-        <input readOnly value={task.wbs} />
-      </div>
-      <div>
-        <label>Ưu tiên</label>
-        <input
-          defaultValue={task.priority}
-          key={`p-${task.uid}-${task.priority}`}
-          onBlur={(event) => send({ type: "set_priority", uid: task.uid, priority: Number(event.target.value) || 0 })}
-        />
-      </div>
-      <div>
-        <label>Chi phí cố định</label>
-        <input
-          defaultValue={task.fixed_cost}
-          key={`c-${task.uid}-${task.fixed_cost}`}
-          onBlur={(event) =>
-            send({
-              type: "set_fixed_cost",
-              uid: task.uid,
-              cost: Number(event.target.value) || 0,
-              accrual: task.fixed_cost_accrual,
-            })
-          }
-        />
-      </div>
-      <div>
-        <label>Cộng dồn</label>
-        <select
-          value={task.fixed_cost_accrual}
-          onChange={(event) =>
-            send({
-              type: "set_fixed_cost",
-              uid: task.uid,
-              cost: task.fixed_cost,
-              accrual: event.target.value as Accrual,
-            })
-          }
-        >
-          <option value="start">Đầu</option>
-          <option value="prorated">Phân bổ</option>
-          <option value="end">Cuối</option>
-        </select>
-      </div>
-      <div>
-        <label>Ghi chú</label>
-        <input
-          defaultValue={task.notes}
-          key={`n-${task.uid}-${task.notes}`}
-          onBlur={(event) => send({ type: "set_notes", uid: task.uid, notes: event.target.value })}
-        />
-      </div>
-      <div>
-        <label>Công việc</label>
-        <input
-          disabled={task.summary}
-          defaultValue={formatDuration(task.work)}
-          key={`work-${task.uid}-${task.work}`}
-          onBlur={(event) => {
-            const minutes = parseDuration(event.target.value);
-            if (minutes !== null && minutes !== task.work) {
-              send({ type: "set_work", uid: task.uid, minutes });
-            }
-          }}
-        />
-      </div>
-      <AssignmentEditor project={project} task={task} send={send} />
-      <p className="meta">
-        Chi phí {formatMoney(task.cost)} · Thực tế {formatMoney(task.actual_cost)} · Trễ cân bằng {formatDuration(task.leveling_delay)}
-        {task.late ? " · Trễ hạn" : ""}
-        {task.conflict ? " · Vi phạm ràng buộc" : ""}
-      </p>
-    </section>
-  );
-}
-
-function SplitSection({
-  task,
-  send,
-  onSplit,
-}: {
-  task: Task;
-  send: (command: Command) => void;
-  onSplit: (uid: number) => void;
-}) {
-  return (
-    <div className="split-section">
-      <label>Tách công việc</label>
-      {task.segments.length > 1 && (
-        <ol className="split-list">
-          {task.segments.map((segment, index) => (
-            <li key={`${segment.start}-${index}`}>
-              <span>
-                Đoạn {index + 1}: {formatInstant(segment.start)} – {formatInstant(segment.finish)}
-              </span>
-              {index + 1 < task.segments.length && (
-                <button
-                  type="button"
-                  title={`Ngắt ${formatDuration(task.splits[index]?.gap ?? 0)} làm việc`}
-                  onClick={() => send({ type: "remove_split", uid: task.uid, index })}
-                >
-                  Nối với đoạn {index + 2}
-                </button>
-              )}
-            </li>
-          ))}
-        </ol>
-      )}
-      <div className="row">
-        <button type="button" onClick={() => onSplit(task.uid)}>Tách…</button>
-        {task.splits.length > 0 && (
-          <button type="button" onClick={() => send({ type: "remove_split", uid: task.uid, index: null })}>
-            Nối tất cả các đoạn
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function AssignmentEditor({
-  project,
-  task,
-  send,
-}: {
-  project: Project;
-  task: Task;
-  send: (command: Command) => void;
-}) {
-  const [units, setUnits] = useState("1");
-  const rows = project.assignments.filter((item) => item.task_uid === task.uid);
-  return (
-    <div className="assign">
-      <label>Gán nguồn lực</label>
-      {rows.length > 0 && (
-        <ul className="assign-list">
-          {rows.map((assignment) => {
-            const name =
-              project.resources.find((resource) => resource.uid === assignment.resource_uid)?.name ??
-              `NL ${assignment.resource_uid}`;
-            return (
-              <li key={assignment.uid}>
-                <span>{name}</span>
-                <label>
-                  Đơn vị
-                  <input
-                    aria-label={`Đơn vị ${name}`}
-                    disabled={task.summary}
-                    defaultValue={String(assignment.units)}
-                    key={`${assignment.uid}-${assignment.units}`}
-                    onBlur={(event) => {
-                      const next = Number(event.target.value);
-                      if (Number.isFinite(next) && next !== assignment.units) {
-                        send({
-                          type: "update_assignment",
-                          uid: assignment.uid,
-                          units: next,
-                          work: null,
-                          overtime_work: null,
-                        });
-                      }
-                    }}
-                  />
-                </label>
-                <button
-                  type="button"
-                  disabled={task.summary}
-                  onClick={() => send({ type: "remove_assignment", uid: assignment.uid })}
-                >
-                  Bỏ
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-      <div className="assign-add">
-        <label>
-          Đơn vị
-          <input
-            aria-label="Đơn vị gán"
-            disabled={task.summary}
-            value={units}
-            onChange={(event) => setUnits(event.target.value)}
-          />
-        </label>
-        <select
-          disabled={task.summary}
-          defaultValue=""
-          onChange={(event) => {
-            const resource = Number(event.target.value);
-            const parsed = Number(units);
-            if (resource) {
-              send({
-                type: "assign_resource",
-                task_uid: task.uid,
-                resource_uid: resource,
-                units: Number.isFinite(parsed) ? Math.max(0, parsed) : 1,
-              });
-            }
-            event.target.value = "";
-          }}
-        >
-          <option value="">Chọn…</option>
-          {project.resources.map((resource) => (
-            <option key={resource.uid} value={resource.uid}>{resource.name}</option>
-          ))}
-        </select>
-      </div>
-    </div>
-  );
 }
 
 function ProjectDialog({

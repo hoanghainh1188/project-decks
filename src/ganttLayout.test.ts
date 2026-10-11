@@ -5,7 +5,9 @@ import {
   barColor,
   buildTimescale,
   dayLabel,
+  dayLabelParts,
   holidayKeys,
+  resourceLabelX,
   isWeekend,
   isoDate,
   pixelsPerDay,
@@ -64,6 +66,15 @@ describe("timescale bands and labels", () => {
     expect(dayLabel(monday, 14)).toBe("5");
     expect(dayLabel(monday, 5)).toBe("");
   });
+
+  it("splits the day label into weekday and date so neighbours never run together", () => {
+    const monday = at(2026, 1, 5);
+    const sunday = at(2026, 1, 11);
+    expect(dayLabelParts(monday, 28)).toEqual({ weekday: "T2", date: "5" });
+    expect(dayLabelParts(sunday, 20)).toEqual({ weekday: "CN", date: "11" });
+    expect(dayLabelParts(monday, 14)).toEqual({ weekday: "", date: "5" });
+    expect(dayLabelParts(monday, 5)).toEqual({ weekday: "", date: "" });
+  });
 });
 
 describe("calendar helpers", () => {
@@ -99,5 +110,19 @@ describe("bars", () => {
     expect(barColor({ ...task, manual: true, summary: true })).toBe("#2a9d8f");
     expect(barColor({ ...task, summary: true })).toBe("#1d1d1f");
     expect(barColor(task)).toBe("#2f6fad");
+  });
+});
+
+describe("resourceLabelX", () => {
+  it("puts the label just right of the bar when it fits", () => {
+    expect(resourceLabelX(100, 160, 40, 1000)).toBe(166);
+  });
+
+  it("moves the label left of the bar near the end of the timescale", () => {
+    expect(resourceLabelX(900, 980, 40, 1000)).toBe(854);
+  });
+
+  it("keeps it on the right when it fits neither side", () => {
+    expect(resourceLabelX(10, 990, 40, 1000)).toBe(996);
   });
 });

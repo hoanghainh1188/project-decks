@@ -253,7 +253,7 @@ describe("RecurringDialog payload", () => {
     const { user, onSubmit } = renderDialog({ initial });
     expect(screen.getByLabelText("Đơn vị của An")).toHaveValue("0.5");
     expect(screen.getByRole("heading", { name: "Sửa công việc lặp" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Thời lượng mỗi lần")).toHaveValue("4 giờ");
+    expect(screen.getByLabelText("Thời lượng mỗi lần")).toHaveValue("0,5 ngày");
     expect(screen.getByLabelText("Ngày trong tháng")).toHaveValue("31");
     expect(screen.getByLabelText("An")).toBeChecked();
     expect(screen.getByText(/Các lần đã sửa riêng được giữ nguyên/)).toBeInTheDocument();

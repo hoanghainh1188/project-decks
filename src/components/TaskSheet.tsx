@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 
 import { DateTimeField } from "./DateTimeField";
 import { formatDuration, formatInstant, parseDuration } from "../format";
-import type { Assignment, Calendar, Task } from "../types";
+import { resourceNamesByTask } from "../resourceNames";
+import type { Assignment, Calendar, Resource, Task } from "../types";
 import type { ViewRow } from "../viewRows";
 
 const ROW = 28;
@@ -40,6 +41,7 @@ function sheetColumns(tracking: boolean, nameWidth: number): SheetColumn[] {
         ]
       : []),
     { label: "Tiền nhiệm", width: 120 },
+    { label: "Nguồn lực", width: 160 },
     { label: "Trễ", width: 80 },
   ];
 }
@@ -53,6 +55,7 @@ interface Props {
   rows: ViewRow[];
   calendars: Calendar[];
   assignments: Assignment[];
+  resources: Resource[];
   selected: number | null;
   tracking: boolean;
   bodyRef: RefObject<HTMLDivElement | null>;
@@ -104,6 +107,10 @@ export function TaskSheet(props: Props) {
   }, [props.rows.length, props.tracking]);
 
   const visible = props.rows.slice(windowRange.start, windowRange.end);
+  const names = useMemo(
+    () => resourceNamesByTask(props.assignments, props.resources),
+    [props.assignments, props.resources],
+  );
 
   return (
     <div className="sheet">
@@ -225,6 +232,7 @@ export function TaskSheet(props: Props) {
                 disabled={false}
                 onCommit={(text) => props.onPredecessors(task.uid, text)}
               />
+              <ResourceCell names={names.get(task.uid) ?? ""} />
               <span className={`ro${task.total_slack < 0 ? " bad" : ""}`}>{formatDuration(task.total_slack)}</span>
             </div>
             );
@@ -451,5 +459,14 @@ function NumberCell({
         if (Number.isFinite(parsed)) onCommit(parsed);
       }}
     />
+  );
+}
+
+function ResourceCell({ names }: { names: string }) {
+  // Assignments are edited in the inspector; the sheet only shows them.
+  return (
+    <span className="ro" title={names || undefined}>
+      {names}
+    </span>
   );
 }

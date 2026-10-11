@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { createRef } from "react";
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 
-import { at, makeAssignment, makeTask, outlineProject, standardCalendar } from "../test/fixtures";
+import { at, makeAssignment, makeResource, makeTask, outlineProject, standardCalendar } from "../test/fixtures";
 import type { Task } from "../types";
 import { buildViewRows, type ViewRow } from "../viewRows";
 import { TaskSheet } from "./TaskSheet";
@@ -37,8 +37,9 @@ function renderSheet(rows: ViewRow[], options: { tracking?: boolean; selected?: 
       calendars={[standardCalendar(1), standardCalendar(2, "Ca đêm")]}
       assignments={[
         makeAssignment({ uid: 1, task_uid: 2, resource_uid: 10, overtime_work: 60 }),
-        makeAssignment({ uid: 2, task_uid: 2, resource_uid: 11, overtime_work: 30 }),
+        makeAssignment({ uid: 2, task_uid: 2, resource_uid: 11, overtime_work: 30, units: 0.5 }),
       ]}
+      resources={[makeResource({ uid: 10, name: "An" }), makeResource({ uid: 11, name: "Bình" })]}
       selected={options.selected ?? null}
       tracking={options.tracking ?? false}
       bodyRef={bodyRef}
@@ -64,10 +65,10 @@ function flatRows(tasks: Task[] = outlineProject().tasks): ViewRow[] {
   return buildViewRows({ ...outlineProject(), tasks }, "none", null, "none", "none");
 }
 
-const BASE_LABELS = ["ID", "WBS", "Tên", "Thời lượng", "Bắt đầu", "Kết thúc", "Tiền nhiệm", "Trễ"];
+const BASE_LABELS = ["ID", "WBS", "Tên", "Thời lượng", "Bắt đầu", "Kết thúc", "Tiền nhiệm", "Nguồn lực", "Trễ"];
 const TRACKING_LABELS = [
   "ID", "WBS", "Tên", "Thời lượng", "%", "Còn lại", "Bắt đầu", "Kết thúc",
-  "Bắt đầu thực", "Kết thúc thực", "Việc còn lại", "Làm thêm", "Lịch", "Tiền nhiệm", "Trễ",
+  "Bắt đầu thực", "Kết thúc thực", "Việc còn lại", "Làm thêm", "Lịch", "Tiền nhiệm", "Nguồn lực", "Trễ",
 ];
 
 describe("TaskSheet columns", () => {
@@ -77,6 +78,11 @@ describe("TaskSheet columns", () => {
   ])("tracking=%s renders the header labels", (tracking, labels) => {
     const { head } = renderSheet(flatRows(), { tracking });
     expect([...head.children].map((child) => child.textContent)).toEqual(labels);
+  });
+
+  it("shows the task's resource names the way Project writes them", () => {
+    const { container } = renderSheet(flatRows());
+    expect(within(rowOf(container, 2)).getByText("An, Bình[50%]")).toBeInTheDocument();
   });
 
   it.each([false, true])("tracking=%s: every task row has one cell per header column and the same tracks", (tracking) => {
@@ -95,10 +101,10 @@ describe("TaskSheet columns", () => {
 
   it("sizes the header from the column widths plus gaps and padding", () => {
     const { head } = renderSheet(flatRows());
-    expect(head.style.gridTemplateColumns).toBe("42px 72px 200px 100px 168px 168px 120px 80px");
-    // 950px of tracks + 7 gaps × 4px + 12px padding.
-    expect(head.style.width).toBe("990px");
-    expect(head.style.minWidth).toBe("990px");
+    expect(head.style.gridTemplateColumns).toBe("42px 72px 200px 100px 168px 168px 120px 160px 80px");
+    // 1110px of tracks + 8 gaps × 4px + 12px padding.
+    expect(head.style.width).toBe("1154px");
+    expect(head.style.minWidth).toBe("1154px");
   });
 
   describe("with a wide pane", () => {
@@ -111,7 +117,7 @@ describe("TaskSheet columns", () => {
         return this.classList.contains("sheet-body") ? 1500 : 0;
       });
       const { container, head } = renderSheet(flatRows());
-      expect(head.style.gridTemplateColumns).toBe("42px 72px 710px 100px 168px 168px 120px 80px");
+      expect(head.style.gridTemplateColumns).toBe("42px 72px 546px 100px 168px 168px 120px 160px 80px");
       expect(head.style.width).toBe("1500px");
       const canvas = container.querySelector<HTMLElement>(".sheet-body > div");
       expect(canvas?.style.width).toBe("1500px");
@@ -153,9 +159,10 @@ describe("TaskSheet rows", () => {
     expect(within(row).getByLabelText("Bắt đầu")).toHaveValue("05/01/2026 08:00");
     expect(cells[5]).toHaveTextContent("06/01/2026 17:00");
     expect(within(row).getByDisplayValue("1FS+2d")).toBeInTheDocument();
-    expect(cells[7]).toHaveTextContent("-1 ngày");
-    expect(cells[7]).toHaveClass("bad");
-    expect(rowOf(container, 3).children[7]).not.toHaveClass("bad");
+    expect(cells[7]).toHaveTextContent("An, Bình[50%]");
+    expect(cells[8]).toHaveTextContent("-1 ngày");
+    expect(cells[8]).toHaveClass("bad");
+    expect(rowOf(container, 3).children[8]).not.toHaveClass("bad");
   });
 
   it("indents names by outline level", () => {
@@ -273,7 +280,7 @@ describe("TaskSheet editing", () => {
     expect(handlers.onPercent).toHaveBeenCalledExactlyOnceWith(2, 37.5);
 
     // Overtime sums every assignment on the task: 60 + 30 minutes.
-    expect(within(row).getByDisplayValue("90 phút")).toBeInTheDocument();
+    expect(within(row).getByDisplayValue("1,5 giờ")).toBeInTheDocument();
 
     await user.selectOptions(within(row).getByRole("combobox"), "Ca đêm");
     expect(handlers.onCalendar).toHaveBeenCalledExactlyOnceWith(2, 2);

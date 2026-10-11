@@ -75,7 +75,7 @@ describe("NetworkDiagram", () => {
   it("labels links that are not FS without lag", () => {
     const { container } = renderDiagram();
     const labels = [...container.querySelectorAll(".network-edge-label")].map((item) => item.textContent);
-    expect(labels).toEqual(["SS+4 giờ"]);
+    expect(labels).toEqual(["SS+0,5 ngày"]);
     expect(container.querySelectorAll(".network-edge path")).toHaveLength(2);
   });
 

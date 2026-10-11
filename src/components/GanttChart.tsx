@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
 
 import { shiftDays } from "../format";
+import { resourceNamesByTask } from "../resourceNames";
 import {
   ROW,
   barBox,
   barColor,
   buildTimescale,
-  dayLabel,
+  dayLabelParts,
+  resourceLabelX,
   holidayKeys,
   isWeekend,
   isoDate,
@@ -68,6 +70,10 @@ export function GanttChart({
   const model = useMemo(() => buildTimescale(project), [project]);
   const bands = useMemo(() => timescaleBands(model.days, px), [model.days, px]);
   const timelineWidth = model.days.length * px;
+  const names = useMemo(
+    () => resourceNamesByTask(project.assignments, project.resources),
+    [project.assignments, project.resources],
+  );
 
   function paint() {
     const canvas = bodyCanvas.current;
@@ -76,6 +82,7 @@ export function GanttChart({
     paintBody(
       canvas,
       project,
+      names,
       rows,
       model,
       px,
@@ -95,7 +102,7 @@ export function GanttChart({
     const observer = new ResizeObserver(() => paint());
     observer.observe(scroller);
     return () => observer.disconnect();
-  }, [project, rows, model, px, selected, tracking, drag]);
+  }, [project, names, rows, model, px, selected, tracking, drag]);
 
   function contentPoint(event: { clientX: number; clientY: number; currentTarget: HTMLCanvasElement }) {
     const bounds = event.currentTarget.getBoundingClientRect();
@@ -135,9 +142,7 @@ export function GanttChart({
           </div>
           <div className="gantt-days">
             {model.days.map((day) => (
-              <div key={day} className={`gantt-day${isWeekend(day) ? " weekend" : ""}`} style={fixedSpan(px)}>
-                {dayLabel(day, px)}
-              </div>
+              <DayCell key={day} day={day} px={px} />
             ))}
           </div>
         </div>
@@ -152,6 +157,7 @@ export function GanttChart({
             paintBody(
               canvas,
               project,
+              names,
               rows,
               model,
               px,
@@ -230,6 +236,7 @@ function fixedSpan(width: number): CSSProperties {
 function paintBody(
   canvas: HTMLCanvasElement,
   project: Project,
+  names: Map<number, string>,
   rows: ViewRow[],
   model: Timescale,
   px: number,
@@ -254,6 +261,7 @@ function paintBody(
   const rowStart = Math.max(0, Math.floor(scrollTop / ROW) - 6);
   const rowEnd = Math.min(rows.length, rowStart + Math.ceil(windowHeight / ROW) + 12);
   const holidays = holidayKeys(project);
+  const labels: { text: string; left: number; right: number; y: number }[] = [];
   model.days.forEach((day, index) => {
     const key = isoDate(day);
     if (isWeekend(day) || holidays.has(key)) {
@@ -325,6 +333,11 @@ function paintBody(
         ctx.fillRect(rect.x, rect.y, rect.w * Math.min(task.percent_complete, 100) / 100, rect.h);
       }
     }
+    const label = task.summary ? "" : names.get(task.uid);
+    if (label) {
+      const rect = barBox(preview, row, model.origin, px);
+      labels.push({ text: label, left: rect.x, right: rect.x + Math.max(rect.w, rect.h), y: y + ROW / 2 });
+    }
   }
   const indexOf = new Map<number, number>();
   rows.forEach((item, index) => {
@@ -367,6 +380,7 @@ function paintBody(
     ctx.fillStyle = ctx.strokeStyle;
     ctx.fill();
   }
+  drawResourceLabels(ctx, labels, width);
   if (drag?.kind === "link" && drag.moved) {
     const from = rows[drag.row];
     if (from?.kind === "task") {
@@ -475,3 +489,35 @@ function sizeCanvas(canvas: HTMLCanvasElement, width: number, height: number, ra
   canvas.height = Math.max(1, Math.floor(height * ratio));
 }
 
+
+function DayCell({ day, px }: { day: number; px: number }) {
+  const { weekday, date } = dayLabelParts(day, px);
+  return (
+    <div className={`gantt-day${isWeekend(day) ? " weekend" : ""}`} style={fixedSpan(px)}>
+      {weekday && <span className="gantt-day-weekday">{weekday}</span>}
+      <span className="gantt-day-date">{date}</span>
+    </div>
+  );
+}
+
+/**
+ * Resource names beside the bars, as Project shows them. Drawn after the links with a
+ * white halo so arrows never strike through the text, and flipped left near the end.
+ */
+function drawResourceLabels(
+  ctx: CanvasRenderingContext2D,
+  labels: { text: string; left: number; right: number; y: number }[],
+  width: number,
+) {
+  ctx.font = "11px -apple-system, sans-serif";
+  ctx.textBaseline = "middle";
+  ctx.lineJoin = "round";
+  for (const label of labels) {
+    const x = resourceLabelX(label.left, label.right, ctx.measureText(label.text).width, width);
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
+    ctx.lineWidth = 3;
+    ctx.strokeText(label.text, x, label.y);
+    ctx.fillStyle = "#3a3a3c";
+    ctx.fillText(label.text, x, label.y);
+  }
+}

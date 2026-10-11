@@ -138,10 +138,32 @@ export function timescaleBands(days: number[], px: number): TimescaleBand[] {
   return bands;
 }
 
-export function dayLabel(ms: number, px: number): string {
+const WEEKDAYS = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
+
+export interface DayLabelParts {
+  weekday: string;
+  date: string;
+}
+
+/** Weekday and date for a day column; the window stacks them so they never touch. */
+export function dayLabelParts(ms: number, px: number): DayLabelParts {
   const date = new Date(ms);
-  if (px < 10) return "";
-  if (px < 20) return String(date.getUTCDate());
-  const names = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
-  return `${names[date.getUTCDay()]} ${date.getUTCDate()}`;
+  if (px < 10) return { weekday: "", date: "" };
+  return { weekday: px < 20 ? "" : WEEKDAYS[date.getUTCDay()], date: String(date.getUTCDate()) };
+}
+
+/** One-line day label, used by the PDF export where the text is shrunk to fit. */
+export function dayLabel(ms: number, px: number): string {
+  const { weekday, date } = dayLabelParts(ms, px);
+  return weekday ? `${weekday} ${date}` : date;
+}
+
+const LABEL_GAP = 6;
+
+/** Left edge of a bar's resource label: right of the bar, or left of it when it would be cut off. */
+export function resourceLabelX(barLeft: number, barRight: number, textWidth: number, canvasWidth: number): number {
+  const right = barRight + LABEL_GAP;
+  if (right + textWidth <= canvasWidth) return right;
+  const left = barLeft - LABEL_GAP - textWidth;
+  return left >= 0 ? left : right;
 }
