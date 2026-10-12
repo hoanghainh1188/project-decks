@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { setCurrentLang } from "./i18n";
 import { Root } from "./Root";
+import { applyTheme } from "./theme";
 import { fakeBackend } from "./test/fakeBackend";
 
 describe("Root", () => {
@@ -20,6 +21,7 @@ describe("Root", () => {
     vi.restoreAllMocks();
     vi.mocked(listen).mockClear();
     setCurrentLang("vi");
+    applyTheme("system");
   });
 
   it("uses the saved language and tells the backend to keep it", async () => {
@@ -74,6 +76,64 @@ describe("Root", () => {
     await act(async () => menu("lang-en"));
     expect(await screen.findByText("Không ghi được cài đặt")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Undo" })).toBeInTheDocument();
+  });
+
+  it("starts with the saved theme", async () => {
+    vi.spyOn(navigator, "languages", "get").mockReturnValue(["vi-VN"]);
+    fakeBackend.theme = "dark";
+    render(<Root />);
+    await screen.findByRole("button", { name: "Hoàn tác" });
+    expect(document.documentElement.dataset.theme).toBe("dark");
+  });
+
+  it("switches the theme from the menu, even with a dialog open, and remembers it", async () => {
+    vi.spyOn(navigator, "languages", "get").mockReturnValue(["vi-VN"]);
+    render(<Root />);
+    await screen.findByRole("button", { name: "Hoàn tác" });
+    expect(document.documentElement.dataset.theme).toBe("light");
+    const menu = await menuHandler();
+    const dialog = document.createElement("div");
+    dialog.setAttribute("aria-modal", "true");
+    document.body.append(dialog);
+    try {
+      await act(async () => menu("theme-dark"));
+      expect(document.documentElement.dataset.theme).toBe("dark");
+      expect(fakeBackend.calls).toContainEqual({ cmd: "set_theme", args: { theme: "dark" } });
+      expect(fakeBackend.theme).toBe("dark");
+      // One key press can fire both a shortcut and a menu item; App acts once per 40 ms.
+      await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+      await act(async () => menu("theme-system"));
+      // jsdom has no dark system setting.
+      expect(document.documentElement.dataset.theme).toBe("light");
+      expect(fakeBackend.theme).toBe("system");
+    } finally {
+      dialog.remove();
+    }
+  });
+
+  it("shows an error and goes back to the previous theme when it cannot be stored", async () => {
+    vi.spyOn(navigator, "languages", "get").mockReturnValue(["vi-VN"]);
+    render(<Root />);
+    await screen.findByRole("button", { name: "Hoàn tác" });
+    const menu = await menuHandler();
+    await waitFor(() => expect(fakeBackend.calls.some((call) => call.cmd === "check_autosave")).toBe(true));
+    await act(async () => {});
+    fakeBackend.failNext("set_theme", "Không ghi được cài đặt");
+    await act(async () => menu("theme-dark"));
+    expect(await screen.findByText("Không ghi được cài đặt")).toBeInTheDocument();
+    expect(document.documentElement.dataset.theme).toBe("light");
+  });
+
+  it("switches views from the menu", async () => {
+    vi.spyOn(navigator, "languages", "get").mockReturnValue(["vi-VN"]);
+    render(<Root />);
+    await screen.findByRole("button", { name: "Hoàn tác" });
+    const menu = await menuHandler();
+    await act(async () => menu("view-resources"));
+    expect(await screen.findByRole("button", { name: "Thêm người" })).toBeInTheDocument();
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    await act(async () => menu("view-gantt"));
+    expect(await screen.findByRole("group", { name: /^Biểu đồ Gantt/ })).toBeInTheDocument();
   });
 
   it("opens a file the app was launched with after the autosave offer", async () => {

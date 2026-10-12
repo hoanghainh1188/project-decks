@@ -48,6 +48,57 @@ describe("ResourceSheet", () => {
     renderSheet([]);
     expect(screen.getByText("Chưa có nguồn lực.")).toBeInTheDocument();
   });
+
+  it("sends the whole resource when a cell is committed", async () => {
+    const { handlers, user } = renderSheet([an]);
+    const [name, units, rate, overtime, perUse] = screen.getAllByRole("textbox");
+    await user.clear(name);
+    await user.type(name, "Bình");
+    await user.tab();
+    expect(handlers.onChange).toHaveBeenLastCalledWith({ ...an, name: "Bình" });
+    await user.clear(units);
+    await user.type(units, "0.5");
+    await user.tab();
+    expect(handlers.onChange).toHaveBeenLastCalledWith({ ...an, max_units: 0.5 });
+    await user.clear(rate);
+    await user.type(rate, "120000");
+    await user.tab();
+    expect(handlers.onChange).toHaveBeenLastCalledWith({ ...an, standard_rate: 120000 });
+    await user.clear(overtime);
+    await user.type(overtime, "abc");
+    await user.tab();
+    // Text that is not a number counts as 0.
+    expect(handlers.onChange).toHaveBeenLastCalledWith({ ...an, overtime_rate: 0 });
+    await user.clear(perUse);
+    await user.type(perUse, "50000");
+    await user.tab();
+    expect(handlers.onChange).toHaveBeenLastCalledWith({ ...an, cost_per_use: 50000 });
+  });
+
+  it("does not send an unchanged name", async () => {
+    const { handlers, user } = renderSheet([an]);
+    await user.click(screen.getAllByRole("textbox")[0]);
+    await user.tab();
+    expect(handlers.onChange).not.toHaveBeenCalled();
+  });
+
+  it("changes the kind and the calendar, and opens the calendar editors", async () => {
+    const own = makeResource({ uid: 12, name: "Chi", calendar_id: 1 });
+    const { handlers, user } = renderSheet([an, own]);
+    await user.selectOptions(screen.getAllByRole("combobox")[0], "machine");
+    expect(handlers.onChange).toHaveBeenLastCalledWith({ ...an, kind: "machine" });
+    await user.selectOptions(screen.getByLabelText("Lịch An"), "1");
+    expect(handlers.onChange).toHaveBeenLastCalledWith({ ...an, calendar_id: 1 });
+    await user.selectOptions(screen.getByLabelText("Lịch Chi"), "");
+    expect(handlers.onChange).toHaveBeenLastCalledWith({ ...own, calendar_id: null });
+    const [editAn, editChi] = screen.getAllByRole("button", { name: "Sửa" });
+    // A resource on the project calendar has no calendar of its own to edit.
+    expect(editAn).toBeDisabled();
+    await user.click(editChi);
+    expect(handlers.onEditCalendar).toHaveBeenCalledExactlyOnceWith(1);
+    await user.click(screen.getAllByRole("button", { name: "Tạo lịch" })[0]);
+    expect(handlers.onCreateCalendar).toHaveBeenCalledExactlyOnceWith(an);
+  });
 });
 
 describe("ResourceSheet in English", () => {

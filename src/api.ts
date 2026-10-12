@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 import { defineMessages, isLang, pick, type Lang } from "./i18n";
+import { isThemeChoice, type ThemeChoice } from "./theme";
 import type { Command, NetworkLayout, NetworkOptions, ProjectMetrics, Snapshot } from "./types";
 
 const apiMessages = defineMessages(
@@ -49,6 +50,17 @@ export async function getLanguage(): Promise<Lang | null> {
  */
 export function setLanguage(language: Lang, remember: boolean): Promise<void> {
   return invoke<void>("set_language", { language, remember });
+}
+
+/** The theme the user chose in View → Appearance; "system" when there is none. */
+export async function getTheme(): Promise<ThemeChoice> {
+  const saved = await invoke<string>("get_theme");
+  return isThemeChoice(saved) ? saved : "system";
+}
+
+/** Remember the theme, check it in the native menu, and match the window to it. */
+export function setTheme(theme: ThemeChoice): Promise<void> {
+  return invoke<void>("set_theme", { theme });
 }
 
 export function loadState(): Promise<Snapshot> {

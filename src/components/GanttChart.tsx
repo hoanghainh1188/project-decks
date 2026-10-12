@@ -22,6 +22,7 @@ import {
 } from "../ganttLayout";
 import { ganttKeyAction } from "../ganttKeys";
 import { useLang, useMessages } from "../i18n";
+import { canvasPalette, useResolvedTheme, type CanvasPalette } from "../theme";
 import { UI_FONT_FAMILY } from "../uiFont";
 import type { Project, Scale, Segment, Task } from "../types";
 import type { ViewRow } from "../viewRows";
@@ -84,6 +85,9 @@ export function GanttChart({
     () => resourceNamesByTask(project.assignments, project.resources),
     [project.assignments, project.resources],
   );
+  // Colours come from the CSS tokens of the theme on screen; read again when it changes.
+  const theme = useResolvedTheme();
+  const palette = useMemo(() => canvasPalette(), [theme]);
 
   function paint() {
     const canvas = bodyCanvas.current;
@@ -102,6 +106,7 @@ export function GanttChart({
       scroller.scrollTop,
       scroller.scrollLeft,
       scroller.clientHeight,
+      palette,
     );
   }
 
@@ -112,7 +117,7 @@ export function GanttChart({
     const observer = new ResizeObserver(() => paint());
     observer.observe(scroller);
     return () => observer.disconnect();
-  }, [project, names, rows, model, px, selected, tracking, drag]);
+  }, [project, names, rows, model, px, selected, tracking, drag, palette]);
 
   function contentPoint(event: { clientX: number; clientY: number; currentTarget: HTMLCanvasElement }) {
     const bounds = event.currentTarget.getBoundingClientRect();
@@ -194,6 +199,7 @@ export function GanttChart({
               event.currentTarget.scrollTop,
               event.currentTarget.scrollLeft,
               event.currentTarget.clientHeight,
+              palette,
             );
           }
           onScroll();
@@ -273,6 +279,7 @@ function paintBody(
   scrollTop: number,
   scrollLeft: number,
   viewHeight: number,
+  palette: CanvasPalette,
 ) {
   const width = model.days.length * px;
   const contentHeight = Math.max(rows.length * ROW, 1);
@@ -292,10 +299,10 @@ function paintBody(
   model.days.forEach((day, index) => {
     const key = isoDate(day);
     if (isWeekend(day) || holidays.has(key)) {
-      ctx.fillStyle = "#f3f3f5";
+      ctx.fillStyle = palette.weekend;
       ctx.fillRect(index * px, scrollTop, px, canvasHeight);
     }
-    ctx.strokeStyle = "#ececf0";
+    ctx.strokeStyle = palette.grid;
     ctx.beginPath();
     ctx.moveTo(index * px + 0.5, scrollTop);
     ctx.lineTo(index * px + 0.5, scrollTop + canvasHeight);
@@ -305,14 +312,14 @@ function paintBody(
     const item = rows[row];
     const y = row * ROW;
     if (item.kind === "group") {
-      ctx.fillStyle = "#ececf1";
+      ctx.fillStyle = palette.group;
       ctx.fillRect(0, y, width, ROW);
-      ctx.fillStyle = "#1d1d1f";
+      ctx.fillStyle = palette.text;
       ctx.font = `600 12px ${UI_FONT_FAMILY}`;
       ctx.textAlign = "left";
       ctx.textBaseline = "middle";
       ctx.fillText(item.label, scrollLeft + 8, y + ROW / 2);
-      ctx.strokeStyle = "#e4e4e8";
+      ctx.strokeStyle = palette.groupRule;
       ctx.beginPath();
       ctx.moveTo(0, y + ROW - 0.5);
       ctx.lineTo(width, y + ROW - 0.5);
@@ -322,14 +329,14 @@ function paintBody(
     const task = item.task;
     if (item.highlighted) {
       // Amber wash stays lighter than the critical-path bar so both remain readable.
-      ctx.fillStyle = "rgba(255, 214, 64, 0.38)";
+      ctx.fillStyle = palette.highlight;
       ctx.fillRect(0, y, width, ROW);
     }
     if (task.uid === selected) {
-      ctx.fillStyle = "rgba(10, 132, 255, 0.10)";
+      ctx.fillStyle = palette.selected;
       ctx.fillRect(0, y, width, ROW);
     }
-    ctx.strokeStyle = "#f0f0f2";
+    ctx.strokeStyle = palette.gridRow;
     ctx.beginPath();
     ctx.moveTo(0, y + ROW - 0.5);
     ctx.lineTo(width, y + ROW - 0.5);
@@ -338,7 +345,7 @@ function paintBody(
       const baseline = task.baselines.find((baselineItem) => baselineItem.number === 0);
       if (baseline) {
         const pieces = splitPieces(task, baseline.segments);
-        drawBar(ctx, task, row, model.origin, px, "#c5c5cb", true, baseline.start, baseline.finish, pieces);
+        drawBar(ctx, task, row, model.origin, px, palette.baseline, palette.knob, true, baseline.start, baseline.finish, pieces);
       }
     }
     const moved = drag && drag.moved && drag.uid === task.uid && drag.kind !== "link" ? drag : null;
@@ -346,11 +353,11 @@ function paintBody(
     const finish = moved?.kind === "resize" ? shiftDays(task.finish, Math.round((moved.x - moved.originX) / px)) : task.finish;
     const preview = { ...task, start, finish };
     const pieces = previewPieces(task, start, finish);
-    const color = barColor(task);
-    drawBar(ctx, preview, row, model.origin, px, color, false, preview.start, preview.finish, pieces);
+    const color = barColor(task, palette);
+    drawBar(ctx, preview, row, model.origin, px, color, palette.knob, false, preview.start, preview.finish, pieces);
     if (!task.summary && task.percent_complete > 0) {
       const rect = barBox(preview, row, model.origin, px);
-      ctx.fillStyle = "rgba(0,0,0,0.28)";
+      ctx.fillStyle = palette.progress;
       if (pieces) {
         const spans = pieces.map((piece) => pieceSpan(piece, model.origin, px));
         progressWidths(spans, task.percent_complete).forEach((done, index) => {
@@ -391,7 +398,7 @@ function paintBody(
     const startY = a.y + a.h / 2;
     const endX = dep.kind === "ff" || dep.kind === "sf" ? b.x + b.w : b.x;
     const endY = b.y + b.h / 2;
-    ctx.strokeStyle = pred.critical && succ.critical ? "#c23b3b" : "#6d6d72";
+    ctx.strokeStyle = pred.critical && succ.critical ? palette.critical : palette.link;
     ctx.beginPath();
     ctx.moveTo(startX, startY);
     const mid = startX + (endX >= startX ? 10 : -10);
@@ -407,12 +414,12 @@ function paintBody(
     ctx.fillStyle = ctx.strokeStyle;
     ctx.fill();
   }
-  drawResourceLabels(ctx, labels, width);
+  drawResourceLabels(ctx, labels, width, palette);
   if (drag?.kind === "link" && drag.moved) {
     const from = rows[drag.row];
     if (from?.kind === "task") {
       const rect = barBox(from.task, drag.row, model.origin, px);
-      ctx.strokeStyle = "#0a84ff";
+      ctx.strokeStyle = palette.accent;
       ctx.setLineDash([4, 3]);
       ctx.beginPath();
       ctx.moveTo(rect.x + rect.w, rect.y + rect.h / 2);
@@ -430,6 +437,7 @@ function drawBar(
   origin: number,
   px: number,
   color: string,
+  knob: string,
   baseline: boolean,
   start: number,
   finish: number,
@@ -458,7 +466,7 @@ function drawBar(
     ctx.setLineDash([]);
     if (!baseline) {
       const last = spans[spans.length - 1];
-      ctx.fillStyle = "#fff";
+      ctx.fillStyle = knob;
       ctx.beginPath();
       ctx.arc(last.x + last.w, y + h / 2, 3.5, 0, Math.PI * 2);
       ctx.fill();
@@ -478,7 +486,7 @@ function drawBar(
     ctx.lineTo(cx - size, cy);
     ctx.closePath();
     ctx.fill();
-    ctx.fillStyle = "#fff";
+    ctx.fillStyle = knob;
     ctx.beginPath();
     ctx.arc(cx + 11, cy, 3.5, 0, Math.PI * 2);
     ctx.fill();
@@ -497,7 +505,7 @@ function drawBar(
     ctx.lineTo(rect.x + rect.w, y + h);
     ctx.fill();
   } else if (!baseline && !task.summary) {
-    ctx.fillStyle = "#fff";
+    ctx.fillStyle = knob;
     ctx.beginPath();
     ctx.arc(rect.x + rect.w, y + h / 2, 3.5, 0, Math.PI * 2);
     ctx.fill();
@@ -529,22 +537,23 @@ function DayCell({ day, px }: { day: number; px: number }) {
 
 /**
  * Resource names beside the bars, as Project shows them. Drawn after the links with a
- * white halo so arrows never strike through the text, and flipped left near the end.
+ * halo in the background colour so arrows never strike through the text, and flipped left near the end.
  */
 function drawResourceLabels(
   ctx: CanvasRenderingContext2D,
   labels: { text: string; left: number; right: number; y: number }[],
   width: number,
+  palette: CanvasPalette,
 ) {
   ctx.font = `11px ${UI_FONT_FAMILY}`;
   ctx.textBaseline = "middle";
   ctx.lineJoin = "round";
   for (const label of labels) {
     const x = resourceLabelX(label.left, label.right, ctx.measureText(label.text).width, width);
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
+    ctx.strokeStyle = palette.labelHalo;
     ctx.lineWidth = 3;
     ctx.strokeText(label.text, x, label.y);
-    ctx.fillStyle = "#3a3a3c";
+    ctx.fillStyle = palette.label;
     ctx.fillText(label.text, x, label.y);
   }
 }

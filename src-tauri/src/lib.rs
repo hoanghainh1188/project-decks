@@ -1,6 +1,8 @@
 mod i18n;
 mod settings;
 
+use settings::Theme;
+
 use std::fs;
 use std::collections::VecDeque;
 use std::path::PathBuf;
@@ -39,6 +41,8 @@ struct AppState {
     slot_checked: AtomicBool,
     /// The language of menus, dialogs and messages.
     lang: Mutex<Lang>,
+    /// The colour theme the user chose (checked in View → Appearance).
+    theme: Mutex<Theme>,
     /// `settings.json`, where a chosen language and the recent files are remembered.
     /// `None` without a config folder.
     settings: Option<PathBuf>,
@@ -62,6 +66,7 @@ impl AppState {
             autosaved: AtomicU64::new(0),
             slot_checked: AtomicBool::new(false),
             lang: Mutex::new(lang),
+            theme: Mutex::new(settings.as_deref().map(settings::read_theme).unwrap_or_default()),
             settings,
             pending_open: Mutex::new(VecDeque::new()),
             settings_lock: Mutex::new(()),
@@ -150,6 +155,11 @@ async fn await_save<R: Runtime>(dialog: FileDialogBuilder<R>) -> Option<FilePath
         let _ = tx.try_send(path);
     });
     rx.recv().await.unwrap_or(None)
+}
+
+/// The colour theme checked in the menu.
+fn theme(state: &AppState) -> Theme {
+    *state.theme.lock().unwrap_or_else(|err| err.into_inner())
 }
 
 /// The current language of menus, dialogs and messages.
@@ -263,7 +273,7 @@ fn remember_recent(state: &AppState, path: &str) {
 /// Rebuild the native menu, e.g. after the recent files changed.
 fn refresh_menu(app: &AppHandle) {
     let Some(state) = app.try_state::<AppState>() else { return };
-    match build_menu(app, lang(&state), &recent_files(&state)) {
+    match build_menu(app, lang(&state), theme(&state), &recent_files(&state)) {
         Ok(menu) => {
             let _ = app.set_menu(menu);
         }
@@ -892,7 +902,22 @@ fn recent_menu(app: &tauri::AppHandle, lang: Lang, recent: &[String]) -> tauri::
     Ok(menu)
 }
 
-fn build_menu(app: &tauri::AppHandle, lang: Lang, recent: &[String]) -> tauri::Result<Menu<tauri::Wry>> {
+/// View → Appearance: System, Light, Dark, the current one checked. Choosing one sends
+/// `menu-action` with its id; the frontend applies it and calls `set_theme`.
+fn theme_menu(app: &tauri::AppHandle, lang: Lang, current: Theme) -> tauri::Result<Submenu<tauri::Wry>> {
+    let menu = Submenu::new(app, i18n::text(lang).menu_theme, true)?;
+    for (id, choice, vi, en) in i18n::THEMES {
+        menu.append(&CheckMenuItem::with_id(app, id, lang.pick(vi, en), true, choice == current, None::<&str>)?)?;
+    }
+    Ok(menu)
+}
+
+fn build_menu(
+    app: &tauri::AppHandle,
+    lang: Lang,
+    theme: Theme,
+    recent: &[String],
+) -> tauri::Result<Menu<tauri::Wry>> {
     let text = i18n::text(lang);
     let app_menu = Submenu::with_items(
         app,
@@ -914,6 +939,7 @@ fn build_menu(app: &tauri::AppHandle, lang: Lang, recent: &[String]) -> tauri::R
     let edit_menu = submenu(app, text.menu_edit, i18n::EDIT_MENU, lang)?;
     let view_menu = submenu(app, text.menu_view, i18n::VIEW_MENU, lang)?;
     view_menu.append(&PredefinedMenuItem::separator(app)?)?;
+    view_menu.append(&theme_menu(app, lang, theme)?)?;
     view_menu.append(&language_menu(app, lang)?)?;
     let project_menu = submenu(app, text.menu_project, i18n::PROJECT_MENU, lang)?;
     let help_menu = submenu(app, text.menu_help, i18n::HELP_MENU, lang)?;
@@ -946,7 +972,7 @@ fn set_language(
         return Err(i18n::unknown_language(lang(&state), &language));
     };
     // Rebuild the menu first, so the stored language never disagrees with it.
-    app.set_menu(build_menu(&app, chosen, &recent_files(&state)).map_err(|err| err.to_string())?)
+    app.set_menu(build_menu(&app, chosen, theme(&state), &recent_files(&state)).map_err(|err| err.to_string())?)
         .map_err(|err| err.to_string())?;
     *state.lang.lock().unwrap_or_else(|err| err.into_inner()) = chosen;
     // The untouched project made at launch, before the language was known, gets its
@@ -962,6 +988,44 @@ fn set_language(
         (Some(path), true) => settings::write_language(path, chosen)
             .map_err(|err| i18n::settings_not_saved(chosen, &err.to_string())),
         _ => Ok(()),
+    }
+}
+
+/// Match the window's own appearance (title bar, scroll bars) to `theme`; `System`
+/// hands it back to the system.
+fn apply_window_theme(app: &AppHandle, theme: Theme) {
+    if let Some(window) = app.get_webview_window("main") {
+        let native = match theme {
+            Theme::System => None,
+            Theme::Light => Some(tauri::Theme::Light),
+            Theme::Dark => Some(tauri::Theme::Dark),
+        };
+        if let Err(err) = window.set_theme(native) {
+            eprintln!("Sheafly: không đổi được giao diện cửa sổ: {err}");
+        }
+    }
+}
+
+/// The colour theme the user chose: `"system"`, `"light"` or `"dark"`.
+#[tauri::command]
+fn get_theme(state: State<'_, AppState>) -> String {
+    theme(&state).code().to_string()
+}
+
+/// Remember `theme`, check it in the menu and match the window to it.
+#[tauri::command]
+fn set_theme(app: AppHandle, state: State<'_, AppState>, theme: String) -> Result<(), String> {
+    let Some(chosen) = Theme::from_code(&theme) else {
+        return Err(i18n::unknown_theme(lang(&state), &theme));
+    };
+    *state.theme.lock().unwrap_or_else(|err| err.into_inner()) = chosen;
+    refresh_menu(&app);
+    apply_window_theme(&app, chosen);
+    let _guard = state.settings_lock.lock().unwrap_or_else(|err| err.into_inner());
+    match &state.settings {
+        Some(path) => settings::write_theme(path, chosen)
+            .map_err(|err| i18n::settings_not_saved(lang(&state), &err.to_string())),
+        None => Ok(()),
     }
 }
 
@@ -1027,9 +1091,11 @@ pub fn run() {
             if let Some(path) = project_path_arg(command_line(), &current_dir()) {
                 state.pending_open.lock().unwrap_or_else(|err| err.into_inner()).push_back(path);
             }
-            let menu = build_menu(app.handle(), lang(&state), &recent_files(&state))?;
+            let menu = build_menu(app.handle(), lang(&state), theme(&state), &recent_files(&state))?;
+            let chosen_theme = theme(&state);
             app.manage(state);
             app.set_menu(menu)?;
+            apply_window_theme(app.handle(), chosen_theme);
             let handle = app.handle().clone();
             std::thread::spawn(move || loop {
                 std::thread::sleep(AUTOSAVE_INTERVAL);
@@ -1086,7 +1152,9 @@ pub fn run() {
             check_autosave,
             compact_history,
             get_language,
-            set_language
+            set_language,
+            get_theme,
+            set_theme
         ])
         .build(tauri::generate_context!())
         .expect("error while building Sheafly")

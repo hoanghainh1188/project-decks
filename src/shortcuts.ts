@@ -63,7 +63,17 @@ export function hasUncommittedText(field: HTMLElement): boolean {
  * switch only relabels. Anything else (delete, indent, a view switch, opening a file,
  * another dialog) waits.
  */
-const MODAL_ACTIONS = new Set(["undo", "redo", "save", "save-as", "lang-vi", "lang-en"]);
+const MODAL_ACTIONS = new Set([
+  "undo",
+  "redo",
+  "save",
+  "save-as",
+  "lang-vi",
+  "lang-en",
+  "theme-system",
+  "theme-light",
+  "theme-dark",
+]);
 
 /**
  * Whether a menu or shortcut action should act on the project. While a text field has

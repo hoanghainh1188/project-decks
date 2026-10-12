@@ -1,64 +1,49 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { CalendarPlus, Check, Flag, Trash2, X } from "lucide-react";
+import { Check } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   applyCommand,
   checkAutosave,
-  compactHistory,
   errorMessage,
-  exportMspdi,
-  importMspdi,
   inTauri,
   loadMetrics,
   loadNetworkLayout,
   loadState,
-  newProject,
   onMenu,
   onOpenFile,
   openPending,
-  openProject,
-  openRecent,
   redo,
   savePdf,
-  saveProject,
-  saveProjectAs,
+  setTheme,
   undo,
 } from "./api";
 import { appMessages } from "./App.i18n";
+import { linkAbove, resourceCommand } from "./appCommands";
+import { BaselineDialog } from "./components/BaselineDialog";
 import { Button } from "./components/Button";
 import { CalendarEditor } from "./components/CalendarEditor";
-import { DateTimeField } from "./components/DateTimeField";
 import { EvmPanel } from "./components/EvmPanel";
 import { GanttChart } from "./components/GanttChart";
 import { Inspector } from "./components/inspector/Inspector";
 import { Modal } from "./components/Modal";
 import { NetworkDiagram } from "./components/NetworkDiagram";
+import { ProjectDialog } from "./components/ProjectDialog";
 import { RecurringDialog, recurringCommand } from "./components/RecurringDialog";
 import { ResourceSheet } from "./components/ResourceSheet";
 import { SplitDialog } from "./components/SplitDialog";
+import { StatusBar } from "./components/StatusBar";
 import { TaskEditDialog } from "./components/TaskEditDialog";
 import { TaskSheet } from "./components/TaskSheet";
 import { TaskUsage } from "./components/TaskUsage";
 import { Toolbar } from "./components/Toolbar";
 import { VIEW_PANEL_ID, ViewBar, viewTabId } from "./components/ViewBar";
-import { formatInstant, normalizePredecessorText } from "./format";
+import { normalizePredecessorText } from "./format";
 import { pick, useLang, useMessages, useSetLang } from "./i18n";
 import { buildGanttPdf, pdfSuggestedName } from "./ganttPdf";
+import { handleMenuAction } from "./menuActions";
 import { buildNetworkPdf } from "./networkPdf";
-import type {
-  Command,
-  DepKind,
-  NetworkLayout,
-  Project,
-  ProjectMetrics,
-  Resource,
-  Scale,
-  Snapshot,
-  Task,
-  ViewId,
-} from "./types";
-import { projectFinish } from "./projectFinish";
+import type { Command, NetworkLayout, ProjectMetrics, Scale, Snapshot, ViewId } from "./types";
 import {
   commitFocusedField,
   isEditableTarget,
@@ -67,10 +52,12 @@ import {
   shouldRunAction,
   trackCommittedText,
 } from "./shortcuts";
-import { linkFromAbove, taskAbove, toolbarStates } from "./toolbarState";
+import { applyTheme, themeChoice, type ThemeChoice } from "./theme";
+import { linkFromAbove, toolbarStates } from "./toolbarState";
 import { undoTo } from "./undoTo";
+import { useFileDialog } from "./useFileDialog";
 import { buildViewRows, type FilterMode, type GroupMode, type HighlightMode } from "./viewRows";
-import { fileName, windowTitle } from "./windowTitle";
+import { windowTitle } from "./windowTitle";
 import "./styles.css";
 
 export default function App() {
@@ -105,8 +92,6 @@ export default function App() {
   const exportPdfRef = useRef<() => void>(() => {});
   const syncing = useRef(false);
   const lastAction = useRef(0);
-  const fileDialogBusyRef = useRef(false);
-  const [fileDialogBusy, setFileDialogBusy] = useState(false);
 
   // `null` from `work` means nothing happened (no queued file to open): the last error
   // stays on screen instead of being cleared by a call the user did not make.
@@ -128,40 +113,7 @@ export default function App() {
 
   const send = useCallback((command: Command) => run(() => applyCommand(command)), [run]);
 
-  // One native file chooser at a time. A second click is ignored so it cannot
-  // open another dialog while the first still owns the macOS run loop.
-  // A file the system asked to open while a dialog was up; opened when it closes.
-  const openWhenFreeRef = useRef(false);
-
-  const startFileDialog = useCallback((work: () => Promise<Snapshot | void | null>) => {
-    if (fileDialogBusyRef.current) return;
-    if (!inTauri()) {
-      setError(pick(appMessages).needsTauri);
-      return;
-    }
-    fileDialogBusyRef.current = true;
-    setFileDialogBusy(true);
-    void (async () => {
-      try {
-        await run(work);
-      } finally {
-        fileDialogBusyRef.current = false;
-        setFileDialogBusy(false);
-        if (openWhenFreeRef.current) {
-          openWhenFreeRef.current = false;
-          openFileWhenFreeRef.current();
-        }
-      }
-    })();
-  }, [run]);
-
-  // Open a double-clicked project now, or as soon as the current dialog closes.
-  const openFileWhenFree = useCallback(() => {
-    if (fileDialogBusyRef.current) openWhenFreeRef.current = true;
-    else startFileDialog(openPending);
-  }, [startFileDialog]);
-  const openFileWhenFreeRef = useRef(openFileWhenFree);
-  openFileWhenFreeRef.current = openFileWhenFree;
+  const { startFileDialog, openFileWhenFree, fileDialogBusy } = useFileDialog(run, setError);
 
   const createCalendar = useCallback(
     async (name: string, assign: (id: number) => Command | null, openEditor: boolean) => {
@@ -200,58 +152,45 @@ export default function App() {
   const editTask = project?.tasks.find((item) => item.uid === editUid) ?? null;
   const closeEdit = useCallback(() => setEditUid(null), []);
 
+  // The theme switches at once; if the backend cannot store it, the previous one comes
+  // back, so the screen, the menu check and settings.json agree.
+  const changeTheme = useCallback((theme: ThemeChoice) => {
+    const previous = themeChoice();
+    applyTheme(theme);
+    if (!inTauri()) return;
+    setTheme(theme).catch((err) => {
+      applyTheme(previous);
+      setError(errorMessage(err));
+    });
+  }, []);
+
   const handleMenu = useCallback(
-    (id: string) => {
-      if (id === "new") startFileDialog(newProject);
-      if (id === "open") startFileDialog(openProject);
-      if (id.startsWith("recent:")) startFileDialog(() => openRecent(Number(id.slice("recent:".length))));
-      if (id === "save" || id === "save-as") {
-        commitFocusedField();
-        startFileDialog(id === "save" ? saveProject : saveProjectAs);
-      }
-      if (id === "import-xml") startFileDialog(importMspdi);
-      if (id === "export-xml") startFileDialog(async () => {
-        await exportMspdi();
-      });
-      if (id === "export-pdf") exportPdfRef.current();
-      // Inside Thông tin dự án, undo stops at the state the dialog opened with, so
-      // Hủy can still restore exactly that.
-      if (id === "undo" && !(infoStart != null && (snap?.history_cursor ?? 0) <= infoStart)) void run(undo);
-      if (id === "redo") void run(redo);
-      if (id === "view-gantt") setView("gantt");
-      if (id === "view-tracking") setView("tracking");
-      if (id === "view-resources") setView("resources");
-      if (id === "view-usage") setView("usage");
-      if (id === "view-network") setView("network");
-      if (id === "view-evm") {
-        setView((current) => (current === "gantt" || current === "tracking" ? current : "gantt"));
-        setEvmOpen(true);
-      }
-      if (id === "scale-day") setScale("day");
-      if (id === "scale-week") setScale("week");
-      if (id === "scale-month") setScale("month");
-      if (id === "project-info") void openProjectInfo();
-      if (id === "lang-vi" || id === "lang-en") {
+    (id: string) =>
+      handleMenuAction(id, {
+        snap,
+        task,
+        view,
+        fileDialogBusy,
+        infoStart,
+        run,
+        send,
+        startFileDialog,
+        exportPdf: () => exportPdfRef.current(),
+        setView,
+        setScale,
+        setEvmOpen,
+        openProjectInfo: () => void openProjectInfo(),
+        openBaseline: () => setBaselineOpen(true),
+        openRecurring: () => setSeriesDialog(0),
+        openSplit: setSplitDialog,
         // A new, untouched project is renamed in the new language by the backend.
-        void setLang(id === "lang-vi" ? "vi" : "en")
-          .then(() => run(loadState))
-          .catch((err) => setError(errorMessage(err)));
-      }
-      if (id === "baseline") setBaselineOpen(true);
-      if (id === "level") void send({ type: "level_resources" });
-      if (id === "clear-level") void send({ type: "clear_leveling" });
-      if (id === "reschedule-uncompleted") void send({ type: "reschedule_uncompleted" });
-      if (id === "compact-history") startFileDialog(compactHistory);
-      if (id === "recurring") setSeriesDialog(0);
-      if (!task) return;
-      // Shortcuts follow the same rules as the toolbar buttons.
-      const states = toolbarStates({ snap, task, view, fileDialogBusy });
-      if (id === "split-task" && states.split.enabled) setSplitDialog(task.uid);
-      if (id === "indent" && states.indent.enabled) void send({ type: "indent", uid: task.uid });
-      if (id === "outdent" && states.outdent.enabled) void send({ type: "outdent", uid: task.uid });
-      if (id === "delete" && states.remove.enabled) void send({ type: "delete_task", uid: task.uid });
-    },
-    [run, send, startFileDialog, task, snap, view, fileDialogBusy, openProjectInfo, infoStart, setLang],
+        changeLang: (next) =>
+          void setLang(next)
+            .then(() => run(loadState))
+            .catch((err) => setError(errorMessage(err))),
+        changeTheme,
+      }),
+    [run, send, startFileDialog, task, snap, view, fileDialogBusy, openProjectInfo, infoStart, setLang, changeTheme],
   );
   menuRef.current = handleMenu;
 
@@ -303,12 +242,12 @@ export default function App() {
       else stops.push(stop);
     };
     void onMenu((id) => dispatchAction(id, document.activeElement)).then(keep);
-    void onOpenFile(() => openFileWhenFreeRef.current()).then(keep);
+    void onOpenFile(openFileWhenFree).then(keep);
     return () => {
       cancelled = true;
       stops.forEach((stop) => stop());
     };
-  }, [run, dispatchAction, startFileDialog]);
+  }, [run, dispatchAction, startFileDialog, openFileWhenFree]);
 
   useEffect(() => {
     if (!project || project.tasks.length === 0) return;
@@ -349,10 +288,6 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [dispatchAction]);
 
-  const criticalCount = useMemo(
-    () => project?.tasks.filter((item) => item.critical && !item.summary).length ?? 0,
-    [project],
-  );
   const rows = useMemo(
     () => (project ? buildViewRows(project, rowFilter, filterResource, rowGroup, rowHighlight) : []),
     // Group headers ("Chưa gán" / "Unassigned") are text, so they follow the language.
@@ -410,7 +345,6 @@ export default function App() {
       await savePdf(bytes, pdfSuggestedName(project.name));
     });
   };
-  const end = project ? projectFinish(project.tasks) : null;
   const splitTask = project?.tasks.find((item) => item.uid === splitDialog) ?? null;
   const editingCalendar = project?.calendars.find((calendar) => calendar.id === calendarEditId) ?? null;
 
@@ -575,16 +509,7 @@ export default function App() {
           />
         )}
       </div>
-      <footer className="status">
-        <span>{snap?.dirty ? m.unsaved : m.saved}</span>
-        <span title={snap?.path ?? undefined}>{snap?.path ? fileName(snap.path) : m.noFile}</span>
-        <span>{m.taskCount(project?.tasks.length ?? 0)}</span>
-        <span>{m.criticalCount(criticalCount)}</span>
-        <span className="status-finish" title={m.finishTip}>
-          {end ? m.finishedBy(formatInstant(end.finish), end.driver) : ""}
-        </span>
-        <span>{m.overallocations(project ? project.overallocations.length : 0)}</span>
-      </footer>
+      <StatusBar snap={snap} />
       {infoStart != null && project && (
         <ProjectDialog
           project={project}
@@ -642,152 +567,5 @@ export default function App() {
         />
       )}
     </div>
-  );
-}
-
-function linkAbove(
-  project: Project | undefined,
-  task: Task | null,
-  kind: DepKind,
-  send: (command: Command) => void,
-) {
-  const above = project ? taskAbove(project.tasks, task) : null;
-  if (!above || !task) return;
-  send({ type: "add_dependency", predecessor_uid: above.uid, successor_uid: task.uid, kind, lag: 0 });
-}
-
-function resourceCommand(resource: Resource): Command {
-  return {
-    type: "update_resource",
-    uid: resource.uid,
-    name: resource.name,
-    kind: resource.kind,
-    max_units: resource.max_units,
-    calendar_id: resource.calendar_id,
-    standard_rate: resource.standard_rate,
-    overtime_rate: resource.overtime_rate,
-    cost_per_use: resource.cost_per_use,
-  };
-}
-
-/**
- * Changes apply as they are made, so the Gantt previews them; Lưu keeps them and Hủy
- * (✕, Escape) undoes back to the state the dialog opened with.
- */
-function ProjectDialog({
-  project,
-  changed,
-  onSave,
-  onCancel,
-  send,
-  onCreateCalendar,
-}: {
-  project: Project;
-  changed: boolean;
-  onSave: () => void;
-  onCancel: () => void;
-  send: (command: Command) => Promise<Snapshot | void>;
-  onCreateCalendar: () => Promise<number | null>;
-}) {
-  const m = useMessages(appMessages);
-  const [editingId, setEditingId] = useState(project.calendar_id);
-  const calendar =
-    project.calendars.find((item) => item.id === editingId) ??
-    project.calendars.find((item) => item.id === project.calendar_id) ??
-    project.calendars[0];
-  return (
-    <Modal
-      title={m.projectInfo}
-      className="wide"
-      onClose={onCancel}
-      footer={
-        <>
-          <span className="meta dialog-foot-note">{changed ? m.previewing : ""}</span>
-          <Button Icon={X} onClick={onCancel}>{m.cancel}</Button>
-          <Button variant="primary" Icon={Check} onClick={onSave}>{m.save}</Button>
-        </>
-      }
-    >
-      <label>{m.name}</label>
-      <input
-        // Shows the name again after undo or redo inside the dialog.
-        key={project.name}
-        defaultValue={project.name}
-        onBlur={(event) => {
-          if (event.target.value !== project.name) void send({ type: "rename_project", name: event.target.value });
-        }}
-      />
-      <label>{m.startDate}</label>
-      <DateTimeField
-        ariaLabel={m.startDateLabel}
-        value={project.start}
-        onCommit={(start) => {
-          if (start != null) void send({ type: "set_project_start", start });
-        }}
-      />
-      <label>{m.statusDate}</label>
-      <DateTimeField
-        optional
-        ariaLabel={m.statusDate}
-        value={project.status_date}
-        onCommit={(date) => void send({ type: "set_status_date", date })}
-      />
-      {calendar && (
-        <>
-          <label>{m.editingCalendar}</label>
-          <div className="row">
-            <select value={calendar.id} onChange={(event) => setEditingId(Number(event.target.value))}>
-              {project.calendars.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                  {item.id === project.calendar_id ? m.projectCalendarMark : ""}
-                </option>
-              ))}
-            </select>
-            <Button
-              Icon={CalendarPlus}
-              onClick={() => {
-                void onCreateCalendar().then((id) => {
-                  if (id != null) setEditingId(id);
-                });
-              }}
-            >
-              {m.newCalendarButton}
-            </Button>
-          </div>
-          <CalendarEditor calendar={calendar} send={send} />
-        </>
-      )}
-    </Modal>
-  );
-}
-
-function BaselineDialog({
-  onClose,
-  onSet,
-  onClear,
-}: {
-  onClose: () => void;
-  onSet: (number: number) => void;
-  onClear: (number: number) => void;
-}) {
-  const m = useMessages(appMessages);
-  const [number, setNumber] = useState(0);
-  return (
-    <Modal
-      title={m.baseline}
-      onClose={onClose}
-      footer={
-        <>
-          <Button variant="danger" Icon={Trash2} onClick={() => onClear(Math.min(10, Math.max(0, number)))}>{m.baselineDelete}</Button>
-          <span className="spacer" />
-          <Button Icon={X} onClick={onClose}>{m.close}</Button>
-          <Button variant="primary" Icon={Flag} onClick={() => onSet(Math.min(10, Math.max(0, number)))}>{m.baselineSet}</Button>
-        </>
-      }
-    >
-      <label>{m.baselineNumber}</label>
-      <input type="number" min={0} max={10} value={number} onChange={(event) => setNumber(Number(event.target.value))} />
-    </Modal>
   );
 }

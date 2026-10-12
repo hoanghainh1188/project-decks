@@ -5,6 +5,7 @@ import { barColor } from "./ganttLayout";
 import { embeddedFont } from "./ganttPdf";
 import { pdfMessages } from "./ganttPdf.i18n";
 import { pick } from "./i18n";
+import { fitText, setDraw, setFill, setText } from "./pdfDraw";
 import { edgeLabel, nodeKind, occurrenceCounts } from "./networkLabels";
 import { networkBoxMessages } from "./networkLabels.i18n";
 import type { NetworkLayout, NetworkNode, NetworkPoint, Project, Task } from "./types";
@@ -27,16 +28,41 @@ export interface NetworkPdfInput {
   highlighted: Set<number>;
 }
 
-/** One page sized to the diagram (at least A4 landscape), drawn from the engine layout. */
-export function buildNetworkPdf(input: NetworkPdfInput): Uint8Array {
-  const { project, layout } = input;
+/**
+ * The page for `layout`: the diagram at print size, shrunk only so neither side passes
+ * MAX_SIDE, on at least an A4 landscape page.
+ */
+export function networkPage(layout: Pick<NetworkLayout, "width" | "height">): {
+  scale: number;
+  pageW: number;
+  pageH: number;
+} {
   const scale = Math.min(
     PX_TO_MM,
     (MAX_SIDE - 2 * MARGIN) / Math.max(1, layout.width),
     (MAX_SIDE - 2 * MARGIN - TITLE_H) / Math.max(1, layout.height),
   );
-  const pageW = Math.max(MIN_W, layout.width * scale + 2 * MARGIN);
-  const pageH = Math.max(MIN_H, layout.height * scale + 2 * MARGIN + TITLE_H);
+  return {
+    scale,
+    pageW: Math.max(MIN_W, layout.width * scale + 2 * MARGIN),
+    pageH: Math.max(MIN_H, layout.height * scale + 2 * MARGIN + TITLE_H),
+  };
+}
+
+/** The label and value rows of a box, as on screen: start, finish, % complete. */
+export function nodeFields(task: Task): { label: string; value: string }[] {
+  const m = pick(networkBoxMessages);
+  return [
+    { label: m.start, value: formatInstant(task.start) },
+    { label: m.finish, value: formatInstant(task.finish) },
+    { label: m.complete, value: `${Math.round(Math.max(0, Math.min(100, task.percent_complete)))}%` },
+  ];
+}
+
+/** One page sized to the diagram (at least A4 landscape), drawn from the engine layout. */
+export function buildNetworkPdf(input: NetworkPdfInput): Uint8Array {
+  const { project, layout } = input;
+  const { scale, pageW, pageH } = networkPage(layout);
   const doc = new jsPDF({
     orientation: pageW >= pageH ? "landscape" : "portrait",
     unit: "mm",
@@ -148,43 +174,12 @@ function drawNode(
   const kind = kindLabel || formatDuration(task.duration);
   doc.text(`ID ${task.id}${task.wbs ? ` · WBS ${task.wbs}` : ""}`, x + pad, y + px(43));
   doc.text(kind, x + w - pad, y + px(43), { align: "right" });
-  const rows: [string, string, number][] = [
-    [m.start, formatInstant(task.start), 60],
-    [m.finish, formatInstant(task.finish), 76],
-    [m.complete, `${Math.round(Math.max(0, Math.min(100, task.percent_complete)))}%`, 92],
-  ];
-  for (const [label, value, top] of rows) {
+  const tops = [60, 76, 92];
+  for (const [index, { label, value }] of nodeFields(task).entries()) {
+    const top = tops[index];
     setText(doc, "#6e6e73");
     doc.text(label, x + pad, y + px(top));
     setText(doc, "#1d1d1f");
     doc.text(value, x + w - pad, y + px(top), { align: "right" });
   }
-}
-
-function fitText(doc: jsPDF, text: string, maxWidth: number): string {
-  if (doc.getTextWidth(text) <= maxWidth) return text;
-  const chars = Array.from(text);
-  let end = chars.length;
-  while (end > 0 && doc.getTextWidth(`${chars.slice(0, end).join("")}...`) > maxWidth) end -= 1;
-  return end === 0 ? "" : `${chars.slice(0, end).join("")}...`;
-}
-
-function setText(doc: jsPDF, hex: string) {
-  const [r, g, b] = rgb(hex);
-  doc.setTextColor(r, g, b);
-}
-
-function setFill(doc: jsPDF, hex: string) {
-  const [r, g, b] = rgb(hex);
-  doc.setFillColor(r, g, b);
-}
-
-function setDraw(doc: jsPDF, hex: string) {
-  const [r, g, b] = rgb(hex);
-  doc.setDrawColor(r, g, b);
-}
-
-function rgb(hex: string): [number, number, number] {
-  const value = hex.replace("#", "");
-  return [0, 2, 4].map((offset) => Number.parseInt(value.slice(offset, offset + 2), 16)) as [number, number, number];
 }

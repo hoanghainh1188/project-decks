@@ -214,11 +214,11 @@ function BurndownChart({ report, box = CHART }: { report: BurndownReport; box?: 
         role="img"
         aria-label={m.burndownChart}
       >
-        <rect x={box.left} y={box.top} width={plotW} height={plotH} fill="#fafafa" stroke="#e4e4e8" />
+        <rect x={box.left} y={box.top} width={plotW} height={plotH} style={{ fill: "var(--chart-bg)", stroke: "var(--chart-frame)" }} />
         {yTicks.map((tick) => (
           <g key={`y-${tick}`}>
-            <line x1={box.left} x2={box.left + plotW} y1={y(tick)} y2={y(tick)} stroke="#ececf0" />
-            <text x={box.left - 4} y={y(tick) + 3} textAnchor="end" fontSize="10" fill="#6e6e73">
+            <line x1={box.left} x2={box.left + plotW} y1={y(tick)} y2={y(tick)} style={{ stroke: "var(--chart-grid)" }} />
+            <text x={box.left - 4} y={y(tick) + 3} textAnchor="end" fontSize="10" style={{ fill: "var(--text-muted)" }}>
               {Math.round(tick / 60)}
             </text>
           </g>
@@ -230,33 +230,33 @@ function BurndownChart({ report, box = CHART }: { report: BurndownReport; box?: 
             y={box.height - box.bottom + 14}
             textAnchor={index === 0 ? "start" : index === xTicks.length - 1 ? "end" : "middle"}
             fontSize="10"
-            fill="#6e6e73"
+            style={{ fill: "var(--text-muted)" }}
           >
             {formatTickDate(tick)}
           </text>
         ))}
-        <text x={4} y={box.top + 8} fontSize="10" fill="#6e6e73">{m.hoursAxis}</text>
+        <text x={4} y={box.top + 8} fontSize="10" style={{ fill: "var(--text-muted)" }}>{m.hoursAxis}</text>
         {report.status_date != null && (
           <line
             x1={x(report.status_date)}
             x2={x(report.status_date)}
             y1={box.top}
             y2={box.top + plotH}
-            stroke="#c23b3b"
+            style={{ stroke: "var(--chart-status)" }}
             strokeDasharray="3 3"
           />
         )}
         {report.ideal.length >= 2 && (
-          <path d={path(report.ideal)} fill="none" stroke="#8e8e93" strokeWidth={1.5} strokeDasharray="5 4" />
+          <path d={path(report.ideal)} fill="none" style={{ stroke: "var(--chart-ideal)" }} strokeWidth={1.5} strokeDasharray="5 4" />
         )}
         {report.planned.length >= 2 && (
-          <path d={path(report.planned)} fill="none" stroke="#2a9d8f" strokeWidth={1.2} />
+          <path d={path(report.planned)} fill="none" style={{ stroke: "var(--chart-planned)" }} strokeWidth={1.2} />
         )}
         {report.actual.length > 0 && (
           <>
-            <path d={path(report.actual)} fill="none" stroke="#0a84ff" strokeWidth={2} />
+            <path d={path(report.actual)} fill="none" style={{ stroke: "var(--chart-actual)" }} strokeWidth={2} />
             {report.actual.map((point) => (
-              <circle key={point.date} cx={x(point.date)} cy={y(point.remaining_work)} r={3} fill="#0a84ff">
+              <circle key={point.date} cx={x(point.date)} cy={y(point.remaining_work)} r={3} style={{ fill: "var(--chart-actual)" }}>
                 <title>{m.remainingAt(formatDateOnly(point.date), formatWorkHours(point.remaining_work))}</title>
               </circle>
             ))}
@@ -298,9 +298,9 @@ type CurveKey = "pv" | "ev" | "ac";
 
 // Each curve's legend is the message named by `label` in evmMessages.
 const CURVES: { key: CurveKey; label: "curvePv" | "curveEv" | "curveAc"; color: string; dash?: string }[] = [
-  { key: "pv", label: "curvePv", color: "#8e8e93", dash: "5 4" },
-  { key: "ev", label: "curveEv", color: "#34a853" },
-  { key: "ac", label: "curveAc", color: "#e8890c" },
+  { key: "pv", label: "curvePv", color: "var(--chart-ideal)", dash: "5 4" },
+  { key: "ev", label: "curveEv", color: "var(--chart-ev)" },
+  { key: "ac", label: "curveAc", color: "var(--chart-ac)" },
 ];
 
 function SCurveChart({ report, box = CHART }: { report: SCurveReport; box?: ChartBox }) {
@@ -332,11 +332,11 @@ function SCurveChart({ report, box = CHART }: { report: SCurveReport; box?: Char
         role="img"
         aria-label={m.sCurveChart}
       >
-        <rect x={box.left} y={box.top} width={plotW} height={plotH} fill="#fafafa" stroke="#e4e4e8" />
+        <rect x={box.left} y={box.top} width={plotW} height={plotH} style={{ fill: "var(--chart-bg)", stroke: "var(--chart-frame)" }} />
         {yTicks.map((tick) => (
           <g key={`y-${tick}`}>
-            <line x1={box.left} x2={box.left + plotW} y1={y(tick)} y2={y(tick)} stroke="#ececf0" />
-            <text x={box.left - 4} y={y(tick) + 3} textAnchor="end" fontSize="10" fill="#6e6e73">
+            <line x1={box.left} x2={box.left + plotW} y1={y(tick)} y2={y(tick)} style={{ stroke: "var(--chart-grid)" }} />
+            <text x={box.left - 4} y={y(tick) + 3} textAnchor="end" fontSize="10" style={{ fill: "var(--text-muted)" }}>
               {formatCompactMoney(tick)}
             </text>
           </g>
@@ -348,7 +348,7 @@ function SCurveChart({ report, box = CHART }: { report: SCurveReport; box?: Char
             y={box.height - box.bottom + 14}
             textAnchor={index === 0 ? "start" : index === xTicks.length - 1 ? "end" : "middle"}
             fontSize="10"
-            fill="#6e6e73"
+            style={{ fill: "var(--text-muted)" }}
           >
             {formatTickDate(tick)}
           </text>
@@ -359,7 +359,7 @@ function SCurveChart({ report, box = CHART }: { report: SCurveReport; box?: Char
             x2={x(report.status_date)}
             y1={box.top}
             y2={box.top + plotH}
-            stroke="#c23b3b"
+            style={{ stroke: "var(--chart-status)" }}
             strokeDasharray="3 3"
           />
         )}
@@ -368,7 +368,7 @@ function SCurveChart({ report, box = CHART }: { report: SCurveReport; box?: Char
             key={curve.key}
             d={path(curve.key)}
             fill="none"
-            stroke={curve.color}
+            style={{ stroke: curve.color }}
             strokeWidth={curve.dash ? 1.5 : 2}
             strokeDasharray={curve.dash}
           />

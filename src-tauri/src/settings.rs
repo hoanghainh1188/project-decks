@@ -1,5 +1,5 @@
 //! `settings.json` in the app config folder, shaped like
-//! `{"language":"en","recent":["/path/a.sheafly", …]}`.
+//! `{"language":"en","theme":"dark","recent":["/path/a.sheafly", …]}`.
 
 use std::fs;
 use std::io;
@@ -33,6 +33,50 @@ pub fn read_language(path: &Path) -> Option<Lang> {
 pub fn write_language(path: &Path, lang: Lang) -> io::Result<()> {
     let mut settings = read_object(path);
     settings.insert("language".into(), Value::String(lang.code().into()));
+    write_object(path, settings)
+}
+
+/// The colour theme: follow the system, or always light or dark.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Theme {
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
+impl Theme {
+    pub fn code(self) -> &'static str {
+        match self {
+            Theme::System => "system",
+            Theme::Light => "light",
+            Theme::Dark => "dark",
+        }
+    }
+
+    pub fn from_code(code: &str) -> Option<Theme> {
+        match code {
+            "system" => Some(Theme::System),
+            "light" => Some(Theme::Light),
+            "dark" => Some(Theme::Dark),
+            _ => None,
+        }
+    }
+}
+
+/// The theme the user chose; `System` when the file, the key, or a known value is missing.
+pub fn read_theme(path: &Path) -> Theme {
+    read_object(path)
+        .get("theme")
+        .and_then(Value::as_str)
+        .and_then(Theme::from_code)
+        .unwrap_or_default()
+}
+
+/// Remember `theme`, keeping any other settings.
+pub fn write_theme(path: &Path, theme: Theme) -> io::Result<()> {
+    let mut settings = read_object(path);
+    settings.insert("theme".into(), Value::String(theme.code().into()));
     write_object(path, settings)
 }
 
@@ -146,6 +190,26 @@ mod tests {
         assert_eq!(read_language(&path), None);
         fs::write(&path, "{}").unwrap();
         assert_eq!(read_language(&path), None, "no language key");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn theme_round_trips_and_keeps_other_settings() {
+        let dir = temp_dir("theme");
+        let path = dir.join(FILE_NAME);
+        assert_eq!(read_theme(&path), Theme::System, "no file yet");
+        write_language(&path, Lang::En).unwrap();
+        write_theme(&path, Theme::Dark).unwrap();
+        assert_eq!(read_theme(&path), Theme::Dark);
+        assert_eq!(read_language(&path), Some(Lang::En));
+        write_theme(&path, Theme::Light).unwrap();
+        let stored: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(stored, serde_json::json!({ "language": "en", "theme": "light" }));
+        fs::write(&path, r#"{"theme":"sepia"}"#).unwrap();
+        assert_eq!(read_theme(&path), Theme::System, "unknown theme");
+        for theme in [Theme::System, Theme::Light, Theme::Dark] {
+            assert_eq!(Theme::from_code(theme.code()), Some(theme));
+        }
         let _ = fs::remove_dir_all(&dir);
     }
 
