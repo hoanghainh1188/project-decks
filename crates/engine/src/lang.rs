@@ -1,6 +1,6 @@
-//! The language of messages shown to the user. Only messages: data written into a
-//! project (default names and the like) stays the same in every language, so replaying
-//! a file gives the same project wherever it is opened.
+//! The language of messages shown to the user. Data written into a project stays as it was
+//! written: a new project takes its default names in the language it was created in
+//! (`Document::new_in`), and replaying a file gives the same project wherever it is opened.
 
 use serde::{Deserialize, Serialize};
 

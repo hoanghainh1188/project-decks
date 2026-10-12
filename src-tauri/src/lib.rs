@@ -383,8 +383,9 @@ async fn new_project(app: AppHandle, state: State<'_, AppState>) -> Result<Snaps
     if !confirm_discard(&app, &state).await? {
         return Ok(lock(&state).snapshot());
     }
+    let current = lang(&state);
     let mut doc = lock(&state);
-    *doc = Document::new_default();
+    *doc = Document::new_in(current);
     clear_autosave(&state);
     Ok(doc.snapshot())
 }
@@ -760,9 +761,18 @@ fn set_language(
     let Some(chosen) = Lang::from_code(&language) else {
         return Err(i18n::unknown_language(lang(&state), &language));
     };
-    *state.lang.lock().unwrap_or_else(|err| err.into_inner()) = chosen;
+    // Rebuild the menu first, so the stored language never disagrees with it.
     app.set_menu(build_menu(&app, chosen).map_err(|err| err.to_string())?)
         .map_err(|err| err.to_string())?;
+    *state.lang.lock().unwrap_or_else(|err| err.into_inner()) = chosen;
+    // The untouched project made at launch, before the language was known, gets its
+    // default names again in the chosen language.
+    {
+        let mut doc = lock(&state);
+        if doc.commands.is_empty() && doc.path.is_none() && !doc.dirty {
+            *doc = Document::new_in(chosen);
+        }
+    }
     match (&state.settings, remember) {
         (Some(path), true) => settings::write_language(path, chosen)
             .map_err(|err| i18n::settings_not_saved(chosen, &err.to_string())),

@@ -18,7 +18,7 @@ export const splitDialogMessages = defineMessages(
     badPoint: "Điểm tách phải nằm giữa ngày bắt đầu và ngày kết thúc của công việc",
   },
   {
-    title: "Split Task",
+    title: "Split task",
     cancel: "Cancel",
     split: "Split",
     summary: (name: string, start: string, finish: string, duration: string) =>

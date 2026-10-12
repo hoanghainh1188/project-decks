@@ -12,6 +12,7 @@ import {
   formatHours,
   formatInstant,
   formatMoney,
+  normalizePredecessorText,
   instantToDateKey,
   instantToDatetimeLocal,
   minuteToTime,
@@ -248,10 +249,19 @@ describe("English formatting", () => {
     expect(formatHours(2.5)).toBe("2.5");
   });
 
-  it("reads both languages' input whatever the interface language", () => {
+  it("reads ISO dates only in English, so 1/5/2026 is never taken as May 1", () => {
     setCurrentLang("en");
     expect(parseInstant("2026-01-05 08:00")).toBe(at(2026, 1, 5, 8, 0));
+    expect(parseInstant("05/01/2026 08:00")).toBeNull();
+    expect(parseInstant("1/5/2026")).toBeNull();
+    expect(formatDateKey("1/5/2026")).toBeNull();
+    setCurrentLang("vi");
+    expect(parseInstant("2026-01-05 08:00")).toBe(at(2026, 1, 5, 8, 0));
     expect(parseInstant("05/01/2026 08:00")).toBe(at(2026, 1, 5, 8, 0));
+  });
+
+  it("reads durations in both languages whatever the interface language", () => {
+    setCurrentLang("en");
     expect(parseDuration("7.5 days")).toBe(3600);
     expect(parseDuration("2 hrs")).toBe(120);
     expect(parseDuration("30 mins")).toBe(30);
@@ -264,5 +274,15 @@ describe("English formatting", () => {
     for (const minutes of [0, 1, 7, 60, 90, 480, 720, 3600, 2410]) {
       expect(parseDuration(formatDuration(minutes))).toBe(minutes);
     }
+  });
+});
+
+describe("normalizePredecessorText", () => {
+  it("turns English lag units into the short forms the engine reads", () => {
+    expect(normalizePredecessorText("2SS+2 hrs")).toBe("2SS+2h");
+    expect(normalizePredecessorText("3FS-30 mins; 4")).toBe("3FS-30m; 4");
+    expect(normalizePredecessorText("5FF+1.5 days")).toBe("5FF+1.5d");
+    expect(normalizePredecessorText("2SS+1d")).toBe("2SS+1d");
+    expect(normalizePredecessorText("2SS+2giờ")).toBe("2SS+2giờ");
   });
 });

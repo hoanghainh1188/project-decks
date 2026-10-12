@@ -48,7 +48,7 @@ describe("TaskEditDialog in English", () => {
         <TaskEditDialog task={makeTask({ uid: 2, wbs: "1.2" })} send={() => {}} onClose={() => {}} />
       </I18nProvider>,
     );
-    expect(screen.getByRole("heading", { name: "1.2 · Edit Task" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "1.2 · Edit task" })).toBeInTheDocument();
     for (const label of ["Name", "Duration", "Start", "Finish", "% Complete", "Predecessors"]) {
       expect(screen.getByText(label, { selector: "label" })).toBeInTheDocument();
     }

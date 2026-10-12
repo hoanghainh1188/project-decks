@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use crate::lang::Lang;
 use crate::checkpoint::Checkpoints;
 use crate::command::{self, Command};
 use crate::error::EngineError;
@@ -47,8 +48,24 @@ pub struct Document {
 }
 
 impl Document {
+    /// A new project in Vietnamese ("Dự án mới", "Công việc 1", calendar "Chuẩn").
     pub fn new_default() -> Self {
-        Self::from_project(Project::new("Dự án mới", default_start(now_millis())))
+        Self::new_in(Lang::Vi)
+    }
+
+    /// A new project whose default names (project, first task, calendar) are in `lang`.
+    /// The names are data: they go into `base` and stay as they are wherever the file is
+    /// opened later, so replay never depends on the language.
+    pub fn new_in(lang: Lang) -> Self {
+        let mut project = Project::new(lang.pick("Dự án mới", "New project"), default_start(now_millis()));
+        if let Some(calendar) = project.calendars.first_mut() {
+            calendar.name = lang.pick("Chuẩn", "Standard").into();
+        }
+        let uid = project.alloc_task_uid();
+        let mut task = Task::new(uid, lang.pick("Công việc 1", "Task 1"));
+        task.start = project.start;
+        project.tasks.push(task);
+        Self::from_project(project)
     }
 
     pub fn from_project(mut project: Project) -> Self {

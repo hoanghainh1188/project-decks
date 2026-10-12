@@ -32,7 +32,7 @@ describe("SplitDialog", () => {
         <SplitDialog task={task} onClose={onClose} onSubmit={onSubmit} />
       </I18nProvider>,
     );
-    expect(screen.getByRole("heading", { name: "Split Task" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Split task" })).toBeInTheDocument();
     expect(screen.getByText("Viết · 2026-01-05 08:00 – 2026-01-07 17:00 · duration 3 days")).toBeInTheDocument();
     expect(screen.getByText("Split at")).toBeInTheDocument();
     expect(screen.getByLabelText("Split point")).toBeInTheDocument();

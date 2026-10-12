@@ -1,4 +1,5 @@
-//! Messages in each language. The project data never depends on the language.
+//! Messages in each language, and the default names of a new project. Data already in a
+//! project never changes with the language.
 
 use std::fs;
 
@@ -128,4 +129,19 @@ fn a_damaged_file_is_explained_in_english() {
     let vietnamese = opened.report.message(Lang::Vi).unwrap();
     assert!(vietnamese.contains("thao tác 3/4"), "{vietnamese}");
     let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn new_projects_take_default_names_in_their_language() {
+    let english = Document::new_in(Lang::En);
+    assert_eq!(english.project.name, "New project");
+    assert_eq!(english.project.tasks[0].name, "Task 1");
+    assert_eq!(english.project.calendars[0].name, "Standard");
+    // The names are data in the base project, so undoing back to it keeps them.
+    assert_eq!(english.base.tasks[0].name, "Task 1");
+
+    let vietnamese = Document::new_default();
+    assert_eq!(vietnamese.project.name, "Dự án mới");
+    assert_eq!(vietnamese.project.tasks[0].name, "Công việc 1");
+    assert_eq!(vietnamese.project.calendars[0].name, "Chuẩn");
 }

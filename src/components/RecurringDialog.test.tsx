@@ -415,7 +415,7 @@ describe("RecurringDialog in English", () => {
 
   it("shows English labels, weekdays, plurals and defaults", async () => {
     const { user, onSubmit } = renderEnglish();
-    expect(screen.getByRole("heading", { name: "Recurring Task" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Recurring task" })).toBeInTheDocument();
     expect(screen.getByLabelText("Series name")).toHaveValue("Recurring meeting");
     expect(screen.getByLabelText("Duration of each occurrence")).toHaveValue("1 hr");
     expect(screen.getByLabelText("Weekly")).toBeChecked();

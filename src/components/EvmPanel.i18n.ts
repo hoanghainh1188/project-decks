@@ -91,7 +91,7 @@ export const evmMessages = defineMessages(
     noActualPoints: "No actual points yet. Save the file or change the status date to record the first one.",
     burndownChart: "Burn-down chart: remaining work by date",
     hoursAxis: "hrs",
-    hours: (hours: string) => `${hours} hrs`,
+    hours: (hours: string) => `${hours} ${hours === "1" ? "hr" : "hrs"}`,
     remainingAt: (date: string, work: string) => `${date}: ${work} left`,
     ideal: "Ideal (baseline 0)",
     plannedTitle: "Baseline 0 work left over working time; flat on days off and in the gaps of split tasks",

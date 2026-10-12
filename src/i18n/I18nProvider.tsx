@@ -4,12 +4,12 @@ import { setCurrentLang, type Lang } from "./lang";
 import { pick, type Catalog, type Messages } from "./messages";
 
 const LangContext = createContext<Lang>("vi");
-const SetLangContext = createContext<(lang: Lang) => void>(() => {});
+const SetLangContext = createContext<(lang: Lang) => Promise<void>>(async () => {});
 
 interface Props {
   lang: Lang;
   /** Called by `useSetLang()`, e.g. from the language menu; the owner stores the choice. */
-  onLangChange?: (lang: Lang) => void;
+  onLangChange?: (lang: Lang) => Promise<void>;
   children: ReactNode;
 }
 
@@ -27,14 +27,14 @@ export function I18nProvider({ lang, onLangChange, children }: Props) {
   );
 }
 
-function noop() {}
+async function noop() {}
 
 export function useLang(): Lang {
   return useContext(LangContext);
 }
 
-/** Switch the interface language. */
-export function useSetLang(): (lang: Lang) => void {
+/** Switch the interface language; rejects if the choice could not be stored. */
+export function useSetLang(): (lang: Lang) => Promise<void> {
   return useContext(SetLangContext);
 }
 

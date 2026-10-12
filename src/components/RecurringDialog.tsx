@@ -9,6 +9,9 @@ import { useLang, useMessages } from "../i18n";
 import type { Command, Project, RecurrenceEnd, RecurrencePattern, RecurrenceSpec, Task } from "../types";
 import { ORDINAL_VALUES, recurringDialogMessages, WEEKDAY_INDEXES } from "./RecurringDialog.i18n";
 
+/** Same limit as `MAX_OCCURRENCES` in the engine (`recurrence.rs`). */
+const MAX_OCCURRENCES = 999;
+
 const DAY_MS = 86_400_000;
 
 type Group = "daily" | "weekly" | "monthly" | "yearly";
@@ -133,7 +136,7 @@ export function RecurringDialog({ project, initial, defaultStart, onClose, onSub
     let end: RecurrenceEnd;
     if (endKind === "count") {
       const times = Math.floor(Number(count));
-      if (!Number.isFinite(times) || times < 1 || times > 999) return m.badCount;
+      if (!Number.isFinite(times) || times < 1 || times > MAX_OCCURRENCES) return m.badCount(MAX_OCCURRENCES);
       end = { kind: "count", count: times };
     } else {
       end = { kind: "until", date: until };

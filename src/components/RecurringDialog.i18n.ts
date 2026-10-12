@@ -98,7 +98,7 @@ export const recurringDialogMessages = defineMessages(
     noWeekday: "Hãy chọn ít nhất một thứ trong tuần",
     badDay: "Ngày trong tháng phải từ 1 đến 31",
     badUnits: "Đơn vị nguồn lực phải lớn hơn 0 (1 = 100%)",
-    badCount: "Số lần lặp phải từ 1 đến 999",
+    badCount: (max: number) => `Số lần lặp phải từ 1 đến ${max}`,
   },
   {
     weekdayShort: (index: number) => EN_WEEKDAYS[index] ?? "",
@@ -107,8 +107,8 @@ export const recurringDialogMessages = defineMessages(
     monthName: (month: number) => EN_MONTHS[month - 1] ?? String(month),
     defaultName: "Recurring meeting",
     fallbackName: "Recurring task",
-    titleNew: "Recurring Task",
-    titleEdit: "Edit Recurring Task",
+    titleNew: "Recurring task",
+    titleEdit: "Edit recurring task",
     cancel: "Cancel",
     create: "Create series",
     update: "Update series",
@@ -165,7 +165,7 @@ export const recurringDialogMessages = defineMessages(
     noWeekday: "Select at least one day of the week",
     badDay: "The day of the month must be from 1 to 31",
     badUnits: "Resource units must be greater than 0 (1 = 100%)",
-    badCount: "The number of occurrences must be from 1 to 999",
+    badCount: (max: number) => `The number of occurrences must be from 1 to ${max}`,
   },
 );
 

@@ -13,7 +13,7 @@ export const taskEditDialogMessages = defineMessages(
     predecessorsPlaceholder: "VD: 2, 3SS+1d",
   },
   {
-    title: "Edit Task",
+    title: "Edit task",
     close: "Close",
     name: "Name",
     duration: "Duration",

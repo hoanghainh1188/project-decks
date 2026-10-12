@@ -2,6 +2,7 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
 import { afterEach, beforeEach, vi } from "vitest";
 
+import { setCurrentLang } from "../i18n/lang";
 import { fakeBackend } from "./fakeBackend";
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -26,4 +27,6 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  // Tests that switch to English cannot leak it into the next test.
+  setCurrentLang("vi");
 });

@@ -125,6 +125,8 @@ export function makeProject(overrides: Partial<Project> = {}): Project {
     dependencies: [],
     resources: [],
     assignments: [],
+    next_task_uid: 1,
+    next_resource_uid: 1,
     overallocations: [],
     usage: [],
     ...overrides,

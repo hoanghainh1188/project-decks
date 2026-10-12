@@ -39,7 +39,7 @@ import { TaskSheet } from "./components/TaskSheet";
 import { TaskUsage } from "./components/TaskUsage";
 import { Toolbar } from "./components/Toolbar";
 import { VIEW_PANEL_ID, ViewBar, viewTabId } from "./components/ViewBar";
-import { formatInstant } from "./format";
+import { formatInstant, normalizePredecessorText } from "./format";
 import { pick, useLang, useMessages, useSetLang } from "./i18n";
 import { buildGanttPdf, pdfSuggestedName } from "./ganttPdf";
 import { buildNetworkPdf } from "./networkPdf";
@@ -209,7 +209,12 @@ export default function App() {
       if (id === "scale-week") setScale("week");
       if (id === "scale-month") setScale("month");
       if (id === "project-info") void openProjectInfo();
-      if (id === "lang-vi" || id === "lang-en") setLang(id === "lang-vi" ? "vi" : "en");
+      if (id === "lang-vi" || id === "lang-en") {
+        // A new, untouched project is renamed in the new language by the backend.
+        void setLang(id === "lang-vi" ? "vi" : "en")
+          .then(() => run(loadState))
+          .catch((err) => setError(errorMessage(err)));
+      }
       if (id === "baseline") setBaselineOpen(true);
       if (id === "level") void send({ type: "level_resources" });
       if (id === "clear-level") void send({ type: "clear_leveling" });
@@ -394,7 +399,9 @@ export default function App() {
         evmOpen={evmOpen}
         onUndo={() => void run(undo)}
         onRedo={() => void run(redo)}
-        onAddTask={() => void send({ type: "add_task", name: "", after_uid: selected })}
+        onAddTask={() =>
+          void send({ type: "add_task", name: m.newTask(project?.next_task_uid ?? 1), after_uid: selected })
+        }
         onAddMilestone={() => void send({ type: "add_milestone", name: m.newMilestone, after_uid: selected })}
         onAddRecurring={() => setSeriesDialog(0)}
         onIndent={() => task && void send({ type: "indent", uid: task.uid })}
@@ -451,7 +458,7 @@ export default function App() {
                   onRename={(uid, name) => send({ type: "rename_task", uid, name })}
                   onDuration={(uid, minutes) => send({ type: "set_duration", uid, minutes })}
                   onStart={(uid, start) => send({ type: "move_task", uid, start })}
-                  onPredecessors={(uid, text) => send({ type: "set_predecessors", uid, text })}
+                  onPredecessors={(uid, text) => send({ type: "set_predecessors", uid, text: normalizePredecessorText(text) })}
                   onPercent={(uid, percent) => send({ type: "set_percent_complete", uid, percent })}
                   onRemaining={(uid, minutes) => send({ type: "set_remaining_duration", uid, minutes })}
                   onActualStart={(uid, start) => send({ type: "set_actual_start", uid, start })}
@@ -486,7 +493,7 @@ export default function App() {
                 resources={project.resources}
                 calendars={project.calendars}
                 overallocations={project.overallocations}
-                onAdd={(kind) => send({ type: "add_resource", name: "", kind })}
+                onAdd={(kind) => send({ type: "add_resource", name: m.newResource(project.next_resource_uid), kind })}
                 onChange={(resource) => send(resourceCommand(resource))}
                 onDelete={(uid) => send({ type: "delete_resource", uid })}
                 onEditCalendar={setCalendarEditId}

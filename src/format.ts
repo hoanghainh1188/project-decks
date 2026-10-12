@@ -1,8 +1,9 @@
 import { getLang } from "./i18n/lang";
 
 // Text shown follows the interface language: Vietnamese "05/01/2026 08:00", "7,5 ngày",
-// "3.480.000"; English "2026-01-05 08:00", "7.5 days", "3,480,000". Parsing accepts both
-// forms in either language, since a day-first date and an ISO date cannot be confused.
+// "3.480.000"; English "2026-01-05 08:00", "7.5 days", "3,480,000". Durations parse in
+// either language. Dates: Vietnamese accepts its day-first form and ISO; English accepts
+// only ISO, because an English reader may mean "1/5/2026" as January 5.
 
 const DAY = 8 * 60;
 
@@ -63,22 +64,35 @@ function pad2(value: number): string {
   return String(value).padStart(2, "0");
 }
 
+/**
+ * Lag units the English interface shows but the engine's predecessor parser does not read
+ * ("2SS+2 hrs", "+30 mins") become the short forms it does ("2SS+2h", "+30m"). Normalized
+ * here rather than in the engine, so a project saved by this app still replays in an older
+ * one.
+ */
+export function normalizePredecessorText(text: string): string {
+  return text
+    .replace(/(\d)\s*(?:hrs|hours?|hr)\b/gi, "$1h")
+    .replace(/(\d)\s*(?:mins|minutes?|min)\b/gi, "$1m")
+    .replace(/(\d)\s*days?\b/gi, "$1d");
+}
+
 export function formatInstant(ms: number): string {
   const date = new Date(ms);
   const time = `${pad2(date.getUTCHours())}:${pad2(date.getUTCMinutes())}`;
   return `${formatDateOnly(ms)} ${time}`;
 }
 
-/** Day, month, year from "05/01/2026" or "2026-01-05". */
+/** Day, month, year from "2026-01-05", or in Vietnamese also "05/01/2026". */
 function parseDateParts(text: string): { day: number; month: number; year: number } | null {
-  const dayFirst = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  const dayFirst = getLang() === "en" ? null : text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (dayFirst) return { day: Number(dayFirst[1]), month: Number(dayFirst[2]), year: Number(dayFirst[3]) };
   const iso = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
   if (iso) return { day: Number(iso[3]), month: Number(iso[2]), year: Number(iso[1]) };
   return null;
 }
 
-/** "05/01/2026 08:00" or "2026-01-05 08:00"; without a time, 08:00. */
+/** "2026-01-05 08:00" (or "05/01/2026 08:00" in Vietnamese); without a time, 08:00. */
 export function parseInstant(text: string): number | null {
   const match = text.trim().match(/^(\S+)(?:\s+(\d{1,2}):(\d{2}))?$/);
   if (!match) return null;
@@ -169,7 +183,7 @@ export function formatDateKeyDisplay(key: string): string {
   return `${match[3]}/${match[2]}/${match[1]}`;
 }
 
-/** Typed date ("05/01/2026" or "2026-01-05") to a calendar key ("2026-01-05"). */
+/** Typed date ("2026-01-05", or "05/01/2026" in Vietnamese) to a calendar key. */
 export function formatDateKey(text: string): string | null {
   const parts = parseDateParts(text.trim());
   if (!parts) return null;

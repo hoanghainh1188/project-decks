@@ -19,23 +19,24 @@ export function Root() {
   useEffect(() => {
     if (!inTauri()) return;
     let cancelled = false;
-    getLanguage()
-      .catch(() => null)
-      .then((saved) => {
-        if (cancelled) return;
-        const next = saved ?? systemLang();
-        setLang(next);
-        // Not remembered when it only follows the system.
-        void setLanguage(next, saved != null).catch(() => undefined);
-      });
+    void (async () => {
+      const saved = await getLanguage().catch(() => null);
+      const next = saved ?? systemLang();
+      // Wait for the backend to switch first, so a dialog it opens at launch (restoring an
+      // autosave) is already in this language. Not remembered when it follows the system.
+      await setLanguage(next, saved != null).catch(() => undefined);
+      if (!cancelled) setLang(next);
+    })();
     return () => {
       cancelled = true;
     };
   }, []);
 
-  const change = useCallback((next: Lang) => {
+  // The interface switches at once; a failure to tell the backend or store the choice is
+  // returned to the caller, which shows it.
+  const change = useCallback(async (next: Lang) => {
     setLang(next);
-    if (inTauri()) void setLanguage(next, true).catch(() => undefined);
+    if (inTauri()) await setLanguage(next, true);
   }, []);
 
   if (!lang) return null;

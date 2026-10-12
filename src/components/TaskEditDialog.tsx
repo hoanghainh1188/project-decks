@@ -3,7 +3,7 @@ import { Check } from "lucide-react";
 import { Button } from "./Button";
 import { DateTimeField } from "./DateTimeField";
 import { Modal } from "./Modal";
-import { formatDuration, formatInstant, parseDuration } from "../format";
+import { formatDuration, formatInstant, normalizePredecessorText, parseDuration } from "../format";
 import { useMessages } from "../i18n";
 import type { Command, Task } from "../types";
 import { taskEditDialogMessages } from "./TaskEditDialog.i18n";
@@ -78,7 +78,7 @@ export function TaskEditDialog({ task, send, onClose }: Props) {
         onKeyDown={(event) => event.key === "Enter" && event.currentTarget.blur()}
         onBlur={(event) => {
           if (event.target.value !== task.predecessors) {
-            send({ type: "set_predecessors", uid: task.uid, text: event.target.value });
+            send({ type: "set_predecessors", uid: task.uid, text: normalizePredecessorText(event.target.value) });
           }
         }}
       />
