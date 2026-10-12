@@ -49,13 +49,25 @@ impl Calendar {
         }
     }
 
-    pub fn ranges_on(&self, date: NaiveDate) -> Vec<TimeRange> {
-        let key = date_key(date);
-        if let Some(ranges) = self.exceptions.get(&key) {
-            return ranges.clone();
+    pub fn ranges_on(&self, date: NaiveDate) -> &[TimeRange] {
+        if let Some(ranges) = self.exception_on(date) {
+            return ranges;
         }
         let index = date.weekday().num_days_from_monday() as usize;
-        self.week[index].clone()
+        &self.week[index]
+    }
+
+    /// The scheduler asks for every civil day it walks, so the lookup must not allocate.
+    fn exception_on(&self, date: NaiveDate) -> Option<&Vec<TimeRange>> {
+        if self.exceptions.is_empty() {
+            return None;
+        }
+        match key_bytes(date) {
+            Some(bytes) => std::str::from_utf8(&bytes)
+                .ok()
+                .and_then(|key| self.exceptions.get(key)),
+            None => self.exceptions.get(&date_key(date)),
+        }
     }
 
     pub fn set_day_off(&mut self, date: NaiveDate) {
@@ -213,32 +225,43 @@ impl Calendar {
         }
         let (start_date, start_minute) = civil(start);
         let (end_date, end_minute) = civil(end);
-        let mut total = 0i64;
-        let mut date = start_date;
-        for _ in 0..3660 {
-            for range in self.ranges_on(date) {
-                let from = if date == start_date {
-                    start_minute.max(range.start_minute)
-                } else {
-                    range.start_minute
-                };
-                let to_limit = if date == end_date {
-                    end_minute
-                } else {
-                    24 * 60
-                };
-                let to = to_limit.min(range.end_minute);
-                if from < to && from < range.end_minute && to > range.start_minute {
-                    total += i64::from(to - from);
-                }
-            }
-            if date >= end_date {
-                break;
-            }
-            date = match date.succ_opt() {
-                Some(next) => next,
-                None => break,
+        if start_date == end_date {
+            return minutes_within(self.ranges_on(start_date), start_minute, end_minute);
+        }
+        let Some(first_full) = start_date.succ_opt() else {
+            return 0;
+        };
+        minutes_within(self.ranges_on(start_date), start_minute, 24 * 60)
+            + self.full_days_between(first_full, end_date)
+            + minutes_within(self.ranges_on(end_date), 0, end_minute)
+    }
+
+    /// Working minutes on the whole civil days in `[from, to)`: whole weeks by
+    /// arithmetic, then the exceptions that fall inside the span.
+    fn full_days_between(&self, from: NaiveDate, to: NaiveDate) -> i64 {
+        let days = (to - from).num_days();
+        if days <= 0 {
+            return 0;
+        }
+        let weekday_minutes: Vec<i64> = self.week.iter().map(|ranges| day_minutes(ranges)).collect();
+        let first = from.weekday().num_days_from_monday() as i64;
+        let mut total = days / 7 * weekday_minutes.iter().sum::<i64>();
+        for offset in 0..days % 7 {
+            total += weekday_minutes[((first + offset) % 7) as usize];
+        }
+        if self.exceptions.is_empty() {
+            return total;
+        }
+        for (key, ranges) in self.exceptions.range(date_key(from)..date_key(to)) {
+            // Only canonical keys ever match a day; `ranges_on` ignores the rest too.
+            let Some(date) = parse_date_key(key).filter(|date| date_key(*date) == *key) else {
+                continue;
             };
+            if date < from || date >= to {
+                continue;
+            }
+            total += day_minutes(ranges)
+                - weekday_minutes[date.weekday().num_days_from_monday() as usize];
         }
         total
     }
@@ -339,6 +362,41 @@ fn each_civil_day(from: NaiveDate, to: NaiveDate, mut visit: impl FnMut(NaiveDat
     false
 }
 
+/// Minutes of `ranges` that fall inside `[from, to)` of one civil day.
+fn minutes_within(ranges: &[TimeRange], from: u16, to: u16) -> i64 {
+    ranges
+        .iter()
+        .map(|range| {
+            let low = from.max(range.start_minute);
+            let high = to.min(range.end_minute);
+            i64::from(high.saturating_sub(low))
+        })
+        .sum()
+}
+
+fn day_minutes(ranges: &[TimeRange]) -> i64 {
+    minutes_within(ranges, 0, 24 * 60)
+}
+
+/// `date_key` written into a stack buffer, for years 0..=9999.
+fn key_bytes(date: NaiveDate) -> Option<[u8; 10]> {
+    let year = u32::try_from(date.year()).ok().filter(|year| *year <= 9999)?;
+    let digit = |value: u32| b'0' + (value % 10) as u8;
+    let (month, day) = (date.month(), date.day());
+    Some([
+        digit(year / 1000),
+        digit(year / 100),
+        digit(year / 10),
+        digit(year),
+        b'-',
+        digit(month / 10),
+        digit(month),
+        b'-',
+        digit(day / 10),
+        digit(day),
+    ])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -384,5 +442,66 @@ mod tests {
         let friday = timestamp(2026, 1, 2, 17, 0);
         assert_eq!(cal.working_between(friday, monday()), 0);
         assert_eq!(cal.working_between(timestamp(2026, 1, 2, 8, 0), monday()), 480);
+    }
+
+    /// Day-by-day count, the way `working_between` worked before it skipped whole weeks.
+    fn walk_between(cal: &Calendar, start: i64, end: i64) -> i64 {
+        let (start_date, start_minute) = civil(start);
+        let (end_date, end_minute) = civil(end);
+        let mut total = 0;
+        let mut date = start_date;
+        loop {
+            let from = if date == start_date { start_minute } else { 0 };
+            let to = if date == end_date { end_minute } else { 24 * 60 };
+            total += minutes_within(cal.ranges_on(date), from, to);
+            if date >= end_date {
+                return total;
+            }
+            date = date.succ_opt().unwrap();
+        }
+    }
+
+    #[test]
+    fn working_between_matches_a_day_walk() {
+        let mut cal = Calendar::standard();
+        cal.week[5] = vec![TimeRange::new(9 * 60, 11 * 60)];
+        let base = NaiveDate::from_ymd_opt(2026, 1, 1).unwrap();
+        cal.set_day_off(base + chrono::Days::new(10));
+        cal.set_day_off(base + chrono::Days::new(400));
+        cal.exceptions.insert(
+            date_key(base + chrono::Days::new(13)),
+            vec![TimeRange::new(10 * 60, 12 * 60)],
+        );
+        // Keys that never match a day must not count either.
+        cal.exceptions.insert("2026-1-20".into(), Vec::new());
+        let mut seed: u64 = 7;
+        let mut next = |limit: i64| {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            ((seed >> 33) as i64).rem_euclid(limit)
+        };
+        let origin = timestamp(2026, 1, 1, 0, 0);
+        for _ in 0..2000 {
+            let start = origin + next(700 * 1440) * 60_000;
+            let end = start + next(120 * 1440) * 60_000;
+            assert_eq!(
+                cal.working_between(start, end),
+                walk_between(&cal, start, end),
+                "{start} → {end}"
+            );
+        }
+    }
+
+    #[test]
+    fn exception_lookup_matches_date_key() {
+        for (year, month, day) in [(2026, 1, 5), (987, 12, 31), (9999, 2, 9)] {
+            let date = NaiveDate::from_ymd_opt(year, month, day).unwrap();
+            let bytes = super::key_bytes(date).unwrap();
+            assert_eq!(std::str::from_utf8(&bytes).unwrap(), date_key(date));
+        }
+        let mut cal = Calendar::standard();
+        let holiday = NaiveDate::from_ymd_opt(2026, 1, 5).unwrap();
+        cal.set_day_off(holiday);
+        assert!(cal.ranges_on(holiday).is_empty());
+        assert_eq!(cal.ranges_on(holiday.succ_opt().unwrap()).len(), 2);
     }
 }

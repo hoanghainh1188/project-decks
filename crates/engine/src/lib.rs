@@ -5,10 +5,12 @@
 //! The engine is the source of truth: the UI sends commands and renders the result.
 
 pub mod calendar;
+pub mod checkpoint;
 pub mod command;
 pub mod document;
 pub mod error;
 pub mod evm;
+mod graph;
 pub mod level;
 pub mod model;
 pub mod mspdi;

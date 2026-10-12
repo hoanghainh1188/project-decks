@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::model::{Accrual, Assignment, Project, TaskType, UsageDay, UsageRow};
 use crate::split;
 use crate::timeutil::{civil, compose, date_key};
@@ -409,11 +411,25 @@ fn spread_work(project: &mut Project, task_uid: u32, preserved_work: i64) {
 }
 
 pub fn publish_costs_and_usage(project: &mut Project) {
+    let by_task = assignments_by_task(project);
     // Leaf actuals and costs have to exist before summary rollup reads them.
-    refresh_tracking(project);
-    compute_costs(project);
+    refresh_tracking(project, &by_task);
+    compute_costs(project, &by_task);
     rollup_summary_work(project);
-    project.usage = build_usage(project);
+    project.usage = build_usage(project, &by_task);
+}
+
+/// Assignment positions per task UID, in assignment order.
+fn assignments_by_task(project: &Project) -> HashMap<u32, Vec<usize>> {
+    let mut by_task: HashMap<u32, Vec<usize>> = HashMap::new();
+    for (index, assignment) in project.assignments.iter().enumerate() {
+        by_task.entry(assignment.task_uid).or_default().push(index);
+    }
+    by_task
+}
+
+fn assignments_of(by_task: &HashMap<u32, Vec<usize>>, uid: u32) -> &[usize] {
+    by_task.get(&uid).map_or(&[], Vec::as_slice)
 }
 
 fn rollup_summary_work(project: &mut Project) {
@@ -476,43 +492,39 @@ fn rollup_summary_work(project: &mut Project) {
     }
 }
 
-fn refresh_tracking(project: &mut Project) {
-    let percents: Vec<(u32, f64, i64, i64)> = project
-        .tasks
-        .iter()
-        .filter(|t| !t.summary)
-        .map(|t| (t.uid, t.percent_complete.clamp(0.0, 100.0), t.duration, t.work))
-        .collect();
-    for (uid, pct, duration, work) in percents {
+fn refresh_tracking(project: &mut Project, by_task: &HashMap<u32, Vec<usize>>) {
+    for index in 0..project.tasks.len() {
+        if project.tasks[index].summary {
+            continue;
+        }
+        let uid = project.tasks[index].uid;
+        let pct = project.tasks[index].percent_complete.clamp(0.0, 100.0);
+        let (duration, work) = (project.tasks[index].duration, project.tasks[index].work);
         let fraction = pct / 100.0;
         let remaining_duration = (duration as f64 * (1.0 - fraction)).round().max(0.0) as i64;
         let actual_work = (work as f64 * fraction).round().max(0.0) as i64;
         let remaining_work = (work - actual_work).max(0);
-        if let Some(task) = project.task_mut(uid) {
-            task.percent_complete = pct;
-            task.remaining_duration = remaining_duration;
-            task.actual_work = actual_work;
-            task.remaining_work = remaining_work;
-            if pct <= 0.0 {
-                task.actual_start = None;
-                task.actual_finish = None;
-            } else if task.actual_start.is_none() {
-                task.actual_start = Some(task.start);
-            }
-            if pct >= 100.0 {
-                task.actual_finish = task.actual_finish.or(Some(task.finish));
-                task.remaining_duration = 0;
-                task.remaining_work = 0;
-                task.actual_work = work;
-            } else {
-                task.actual_finish = None;
-            }
+        let task = &mut project.tasks[index];
+        task.percent_complete = pct;
+        task.remaining_duration = remaining_duration;
+        task.actual_work = actual_work;
+        task.remaining_work = remaining_work;
+        if pct <= 0.0 {
+            task.actual_start = None;
+            task.actual_finish = None;
+        } else if task.actual_start.is_none() {
+            task.actual_start = Some(task.start);
         }
-        for assignment in project
-            .assignments
-            .iter_mut()
-            .filter(|a| a.task_uid == uid)
-        {
+        if pct >= 100.0 {
+            task.actual_finish = task.actual_finish.or(Some(task.finish));
+            task.remaining_duration = 0;
+            task.remaining_work = 0;
+            task.actual_work = work;
+        } else {
+            task.actual_finish = None;
+        }
+        for &position in assignments_of(by_task, uid) {
+            let assignment = &mut project.assignments[position];
             assignment.actual_work = (assignment.work as f64 * fraction).round().max(0.0) as i64;
             assignment.remaining_work = (assignment.work - assignment.actual_work).max(0);
             if pct >= 100.0 {
@@ -523,7 +535,7 @@ fn refresh_tracking(project: &mut Project) {
     }
 }
 
-fn compute_costs(project: &mut Project) {
+fn compute_costs(project: &mut Project, by_task: &HashMap<u32, Vec<usize>>) {
     let rates: Vec<(u32, f64, f64, f64)> = project
         .resources
         .iter()
@@ -541,20 +553,13 @@ fn compute_costs(project: &mut Project) {
             + overtime_work as f64 / 60.0 * overtime
             + per_use;
     }
-    let task_uids: Vec<u32> = project
-        .tasks
-        .iter()
-        .filter(|t| !t.summary)
-        .map(|t| t.uid)
-        .collect();
-    for uid in task_uids {
-        let labor: f64 = project
-            .assignments
-            .iter()
-            .filter(|a| a.task_uid == uid)
-            .map(|a| a.cost)
-            .sum();
-        let task = project.task(uid).unwrap();
+    for index in 0..project.tasks.len() {
+        if project.tasks[index].summary {
+            continue;
+        }
+        let own = assignments_of(by_task, project.tasks[index].uid);
+        let labor: f64 = own.iter().map(|&position| project.assignments[position].cost).sum();
+        let task = &project.tasks[index];
         let total = labor + task.fixed_cost;
         let pct = task.percent_complete.clamp(0.0, 100.0) / 100.0;
         let actual = match task.fixed_cost_accrual {
@@ -591,32 +596,33 @@ fn compute_costs(project: &mut Project) {
                 }
             }
         };
-        for assignment in project.assignments.iter_mut().filter(|a| a.task_uid == uid) {
+        for &position in own {
+            let assignment = &mut project.assignments[position];
             if labor > 0.0 {
                 assignment.actual_cost = actual_labor * (assignment.cost / labor);
             } else {
                 assignment.actual_cost = 0.0;
             }
         }
-        let task = project.task_mut(uid).unwrap();
+        let task = &mut project.tasks[index];
         task.cost = total;
         task.actual_cost = actual;
         task.remaining_cost = (total - actual).max(0.0);
     }
 }
 
-fn build_usage(project: &Project) -> Vec<UsageRow> {
+fn build_usage(project: &Project, by_task: &HashMap<u32, Vec<usize>>) -> Vec<UsageRow> {
     let mut rows = Vec::new();
     for task in &project.tasks {
         if task.summary {
             continue;
         }
         let cal = project.task_calendar(task);
-        let assignments: Vec<&Assignment> = project
-            .assignments
+        let assignments: Vec<&Assignment> = assignments_of(by_task, task.uid)
             .iter()
-            .filter(|a| a.task_uid == task.uid)
+            .map(|&position| &project.assignments[position])
             .collect();
+        let total_units: f64 = assignments.iter().map(|a| a.units).sum();
         let mut task_days: Vec<UsageDay> = Vec::new();
         // Split gaps carry no work, so only the segments are distributed.
         let intervals = split::work_intervals(task);
@@ -670,12 +676,6 @@ fn build_usage(project: &Project) -> Vec<UsageRow> {
                         // Rebuild from duration hours × units. Task row hours already include units,
                         // so recover duration hours by dividing back out when possible.
                         let duration_hours: f64 = {
-                            let total_units: f64 = project
-                                .assignments
-                                .iter()
-                                .filter(|a| a.task_uid == task.uid)
-                                .map(|a| a.units)
-                                .sum();
                             if total_units > 0.0 {
                                 day.hours / total_units
                             } else {

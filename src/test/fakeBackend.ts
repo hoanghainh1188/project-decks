@@ -16,6 +16,7 @@ class FakeBackend {
   metrics: ProjectMetrics = makeMetrics();
   network: NetworkLayout = emptyNetwork();
   private failures = new Map<string, unknown>();
+  private holds = new Map<string, Promise<void>>();
 
   reset(snapshot: Snapshot = makeSnapshot(), metrics: ProjectMetrics = makeMetrics()): void {
     this.calls = [];
@@ -23,6 +24,14 @@ class FakeBackend {
     this.metrics = structuredClone(metrics);
     this.network = emptyNetwork();
     this.failures.clear();
+    this.holds.clear();
+  }
+
+  /** The next call to `cmd` waits until the returned function runs, like a slow Rust command. */
+  holdNext(cmd: string): () => void {
+    let release = (): void => {};
+    this.holds.set(cmd, new Promise<void>((resolve) => (release = resolve)));
+    return () => release();
   }
 
   /** The next call to `cmd` rejects with `error`, like a Rust `Err(String)`. */
@@ -38,6 +47,11 @@ class FakeBackend {
 
   async invoke(cmd: string, args?: Record<string, unknown>): Promise<unknown> {
     this.calls.push({ cmd, args });
+    const hold = this.holds.get(cmd);
+    if (hold) {
+      this.holds.delete(cmd);
+      await hold;
+    }
     if (this.failures.has(cmd)) {
       const error = this.failures.get(cmd);
       this.failures.delete(cmd);

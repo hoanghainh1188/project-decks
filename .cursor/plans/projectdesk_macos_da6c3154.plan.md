@@ -1,6 +1,6 @@
 ---
 name: ProjectDesk macOS
-overview: "ProjectDesk là ứng dụng desktop Tauri (Rust + React) quản lý dự án theo hướng Microsoft Project. Pha 1–10 đã xong. Sau pha 10 đã thêm: bản cài đa nền tảng (PR #17), test frontend (PR #18), phần còn lại của pha 9–10 (PR #19), sơ đồ mạng (PR #20), tách công việc (PR #21), CLAUDE.md (PR #22) và an toàn dữ liệu (PR #23). Việc tiếp theo là Pha 11–17 ở mục Lộ trình."
+overview: "ProjectDesk là ứng dụng desktop Tauri (Rust + React) quản lý dự án theo hướng Microsoft Project. Pha 1–11 đã xong, Pha 12 đang làm (phần 1 xong). Sau pha 10 đã thêm: bản cài đa nền tảng (PR #17), test frontend (PR #18), phần còn lại của pha 9–10 (PR #19), sơ đồ mạng (PR #20), tách công việc (PR #21), CLAUDE.md (PR #22) và an toàn dữ liệu (PR #23). Việc tiếp theo là Pha 12–17 ở mục Lộ trình."
 todos:
   - id: scaffold
     content: Tauri 2 + React + crate engine
@@ -60,8 +60,8 @@ todos:
     content: "Bản v0.1.0: draft release, chưa ký số, macOS chỉ arm64"
     status: in_progress
   - id: file-performance
-    content: "Pha 12: nền tệp và hiệu năng (checkpoint, lệnh bất đồng bộ, khôi phục, autosave)"
-    status: pending
+    content: "Pha 12: nền tệp và hiệu năng. Phần 1 (hiệu năng, checkpoint, lệnh bất đồng bộ) xong; còn khôi phục tệp hỏng, autosave, gộp lịch sử, báo đổi ngày khi đổi engine"
+    status: in_progress
   - id: actuals-drive-schedule
     content: "Pha 13: theo dõi tiến độ (ngày thực tế điều khiển lịch, trễ hạn theo MS Project)"
     status: pending
@@ -305,19 +305,38 @@ Mục tiêu: màn hình chính đọc đúng và đủ thông tin mà không ph�
 
 Nghiệm thu: test Vitest cho định dạng thời lượng, nhãn ngày và cột mới; chụp màn hình dự án mẫu trước và sau.
 
-### Pha 12 — nền tệp và hiệu năng (L)
+### Pha 12 — nền tệp và hiệu năng (L) — đang làm
 
 Mục tiêu: undo, mở tệp và sửa không làm đứng UI ở dự án lớn, và tệp hỏng một phần vẫn mở được.
 
+Chia 3 PR: (1) hiệu năng và checkpoint, (2) tệp hỏng một phần và báo đổi ngày khi đổi engine, (3) autosave, khôi phục sau crash, gộp lịch sử.
+
+**Phần 1 — đã xong.** Bench `crates/engine/benches/large_project.rs` (1.000 task, 10.000 lệnh, máy phát triển):
+
+| | Trước | Sau |
+|---|---|---|
+| Undo / Redo | 14,5 giây | 40 ms |
+| Mở tệp | 14,4 giây | 8 ms |
+| Undo ngay sau khi mở (chậm nhất trong 50 lần) | — | 37 ms |
+| Một lệnh sửa (chậm nhất) | 25 ms | 4 ms |
+
+- `Calendar::ranges_on` trả về slice, tra ngày ngoại lệ không cấp phát chuỗi; `working_between` tính theo tuần rồi cộng ngoại lệ trong khoảng, bỏ giới hạn 3.660 ngày. Hai thay đổi này chiếm phần lớn thời gian trước đây.
+- `graph.rs`: chỉ mục UID → vị trí, cây con, liên kết theo task và thứ tự topo dựng một lần cho mỗi lần `schedule()`. Liên kết giữa hai summary đi qua một node ảo, không bung thành tích chéo các task lá. `work.rs` gom phân công theo task một lần thay vì lọc cho từng task.
+- `checkpoint.rs`: checkpoint `Project` trong bộ nhớ mỗi 25 lệnh, tối đa 24 mốc (dày ở gần hiện tại, thưa mỗi 500 lệnh ở xa). Tệp có bảng `checkpoint`, lưu mốc tại cursor và ba mốc ngay dưới, gắn nhãn engine (`engine_tag()` = phiên bản crate + `ENGINE_REVISION`). Nhãn khác, JSON hỏng hoặc bảng hỏng thì bỏ qua và replay. Không tăng `FORMAT_VERSION`: bảng chỉ là bộ đệm, app cũ bỏ qua nó và vẫn mở đúng. JSON đọc lại số thực chính xác (`float_roundtrip`). Lệch so với dự kiến "mỗi 50 lệnh": một mốc khoảng 1 MB ở 1.000 task, lưu mỗi 50 lệnh sẽ thêm khoảng 200 MB cho 10.000 lệnh.
+- `apply_command`, `undo`, `redo`, `project_state`, `project_metrics`, `network_layout` chạy trên thread pool (`#[tauri::command(async)]`). `src/api.ts` xếp hàng các lệnh này để giữ đúng thứ tự phím bấm; lệnh tệp chờ hàng đợi xong nhưng không chặn lệnh sau trong lúc hộp thoại mở.
+- Đối chiếu engine cũ và mới trên dự án 120 task có summary, FF/SS, ALAP, FNET, ngày nghỉ, phân công và leveling: JSON ra giống hệt.
+
+Còn lại của phần 1: undo sâu hơn khoảng 100 bước ngay sau khi mở tệp dài vẫn phải replay từ `base` một lần (khoảng 14 giây ở 10.000 lệnh); gộp lịch sử ở phần 3 sẽ rút ngắn. Vòng lặp `n+2` lượt cho ràng buộc kết thúc của summary vẫn giữ (chỉ lặp khi có ràng buộc đó), chuyển sang phần 2.
+
 - Hiện trạng đo được: dự án 600 task, 1.800 lệnh thì mỗi lần Undo mất khoảng 3,7 giây, mở tệp tương tự; thời gian tăng gần bậc hai (100 task 71 ms, 300 task 0,72 giây). `apply_command`, `undo`, `redo` là lệnh Tauri đồng bộ nên chạy trên luồng chính.
-- Checkpoint `Project` trong bộ nhớ (khoảng 32 mốc) và trong tệp (bảng `checkpoint`, mỗi 50 lệnh và tại cursor khi lưu). `base` và log vẫn là nguồn sự thật; checkpoint chỉ là bộ đệm, bỏ qua khi khác phiên bản engine. Thêm bảng nên tăng `FORMAT_VERSION`.
-- Lệnh Tauri sửa và hoàn tác chạy bất đồng bộ, ngoài luồng chính.
-- Chỉ mục UID → vị trí; `collect_bounds` không quét toàn bộ phụ thuộc cho mỗi task lá.
+- Checkpoint `Project` trong bộ nhớ (khoảng 32 mốc) và trong tệp (bảng `checkpoint`, mỗi 50 lệnh và tại cursor khi lưu). `base` và log vẫn là nguồn sự thật; checkpoint chỉ là bộ đệm, bỏ qua khi khác phiên bản engine. Xong ở phần 1 (số mốc khác, xem trên).
+- Lệnh Tauri sửa và hoàn tác chạy bất đồng bộ, ngoài luồng chính. Xong ở phần 1.
+- Chỉ mục UID → vị trí; `collect_bounds` không quét toàn bộ phụ thuộc cho mỗi task lá. Xong ở phần 1.
 - Một lệnh lỗi khi replay không làm mất cả tệp: mở ở checkpoint gần nhất, chỉ đọc, kèm cảnh báo.
 - Autosave và khôi phục sau crash vào tệp ẩn cạnh tệp thật.
 - Tùy chọn gộp lịch sử cũ để log không phình mãi.
 - Engine đổi logic thì tệp cũ có thể âm thầm ra ngày khác: khi mở tệp của phiên bản engine khác, so lịch replay với checkpoint đã lưu và báo người dùng những task đổi ngày.
-- `schedule()`: bỏ vòng lặp `n+2` lượt cho ràng buộc kết thúc của summary, và không bung liên kết giữa hai summary thành tích chéo các task lá.
+- `schedule()`: bỏ vòng lặp `n+2` lượt cho ràng buộc kết thúc của summary, và không bung liên kết giữa hai summary thành tích chéo các task lá. Phần sau xong ở phần 1; vòng lặp `n+2` còn lại.
 
 Nghiệm thu: bench trong `crates/engine/benches` với 1.000 task, 10.000 lệnh: Undo dưới 100 ms, mở dưới 1 giây; test tệp có lệnh hỏng; test tắt app giữa chừng rồi khôi phục.
 

@@ -221,39 +221,45 @@ async fn quit_if_confirmed<R: Runtime>(app: AppHandle<R>) {
     }
 }
 
-#[tauri::command]
+// Edits, undo, redo, and large reads run on Tauri's thread pool, not the main thread,
+// so scheduling a big project never freezes the window. `src/api.ts` sends them one at
+// a time, which keeps the order the user pressed the keys in.
+#[tauri::command(async)]
 fn project_state(state: State<'_, AppState>) -> Snapshot {
     lock(&state).snapshot()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn project_metrics(state: State<'_, AppState>) -> ProjectMetrics {
     lock(&state).metrics()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn network_layout(state: State<'_, AppState>, options: NetworkOptions) -> NetworkLayout {
     network::layout(&lock(&state).project, &options)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn apply_command(state: State<'_, AppState>, command: Command) -> Result<Snapshot, String> {
+    // Check under the lock: `confirm_discard` reads `dirty` under it after the dialog
+    // flag is set, so an edit either lands before that read or is refused.
+    let mut doc = lock(&state);
     ensure_no_dialog(&state)?;
-    lock(&state)
-        .apply(command)
-        .map_err(|err| err.to_string())
+    doc.apply(command).map_err(|err| err.to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn undo(state: State<'_, AppState>) -> Result<Snapshot, String> {
+    let mut doc = lock(&state);
     ensure_no_dialog(&state)?;
-    lock(&state).undo().map_err(|err| err.to_string())
+    doc.undo().map_err(|err| err.to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn redo(state: State<'_, AppState>) -> Result<Snapshot, String> {
+    let mut doc = lock(&state);
     ensure_no_dialog(&state)?;
-    lock(&state).redo().map_err(|err| err.to_string())
+    doc.redo().map_err(|err| err.to_string())
 }
 
 #[tauri::command]

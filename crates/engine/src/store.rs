@@ -4,15 +4,22 @@ use std::path::{Path, PathBuf};
 
 use rusqlite::{params, Connection, OptionalExtension};
 
+use crate::checkpoint::{self, Checkpoints};
 use crate::command::Command;
-use crate::document::{self, Document};
+use crate::document::Document;
 use crate::error::EngineError;
 use crate::evm::BurndownSnapshot;
 use crate::model::Project;
 
-/// File format version. Bump it when a new `Command` variant or table is added, so an
-/// older app refuses the file with a clear message instead of failing halfway through.
+/// File format version. Bump it when a new `Command` variant or a table an older app must
+/// read is added, so that app refuses the file with a clear message instead of failing
+/// halfway through. The `checkpoint` table needs no bump: it is only a cache, and an app
+/// that does not know it ignores it and replays the log.
 pub const FORMAT_VERSION: u32 = 1;
+
+/// Checkpoints a file keeps below the cursor, besides the one at the cursor. Each is
+/// a whole scheduled project (about 1 MB for 1,000 tasks), so only a few nearby ones.
+const FILE_CHECKPOINTS_BEFORE_CURSOR: usize = 3;
 
 fn store_err(err: impl ToString) -> EngineError {
     EngineError::Store(err.to_string())
@@ -101,9 +108,23 @@ fn write_file(document: &Document, path: &Path) -> Result<(), EngineError> {
             remaining_work INTEGER NOT NULL,
             ev REAL NOT NULL,
             ac REAL NOT NULL
+        );
+        CREATE TABLE checkpoint (
+            applied INTEGER PRIMARY KEY,
+            engine TEXT NOT NULL,
+            project TEXT NOT NULL
         );",
     )
     .map_err(save_err)?;
+    let engine = checkpoint::engine_tag();
+    for (applied, project) in file_checkpoints(document) {
+        let payload = serde_json::to_string(project).map_err(save_err)?;
+        tx.execute(
+            "INSERT INTO checkpoint(applied, engine, project) VALUES(?1, ?2, ?3)",
+            params![applied as i64, engine, payload],
+        )
+        .map_err(save_err)?;
+    }
     let base = serde_json::to_string(&document.base).map_err(save_err)?;
     let meta = [
         ("version", FORMAT_VERSION.to_string()),
@@ -132,6 +153,67 @@ fn write_file(document: &Document, path: &Path) -> Result<(), EngineError> {
     tx.commit().map_err(save_err)?;
     // Close before the rename so no handle still points at the temp file.
     connection.close().map_err(|(_, err)| save_err(err))
+}
+
+/// The open project at the cursor, so opening needs no replay, plus a few states just
+/// below it, so the first undos after opening stay fast.
+fn file_checkpoints(document: &Document) -> Vec<(usize, &Project)> {
+    let mut chosen: Vec<(usize, &Project)> = document
+        .checkpoints
+        .iter()
+        .rev()
+        .filter(|(applied, _)| *applied < document.cursor)
+        .take(FILE_CHECKPOINTS_BEFORE_CURSOR)
+        .collect();
+    if document.cursor > 0 {
+        chosen.push((document.cursor, &document.project));
+    }
+    chosen
+}
+
+/// Checkpoints this engine wrote. Any other engine's, one that does not parse, or a
+/// damaged table is skipped: the log replays instead.
+fn load_checkpoints(connection: &Connection, commands: usize) -> Checkpoints {
+    read_checkpoints(connection, commands).unwrap_or_default()
+}
+
+fn read_checkpoints(connection: &Connection, commands: usize) -> Result<Checkpoints, EngineError> {
+    let mut checkpoints = Checkpoints::default();
+    if !table_exists(connection, "checkpoint")? {
+        return Ok(checkpoints);
+    }
+    let mut statement = connection
+        .prepare("SELECT applied, project FROM checkpoint WHERE engine = ?1 ORDER BY applied")
+        .map_err(store_err)?;
+    let rows = statement
+        .query_map([checkpoint::engine_tag()], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        })
+        .map_err(store_err)?;
+    for row in rows {
+        let (applied, payload) = row.map_err(store_err)?;
+        let Ok(applied) = usize::try_from(applied) else {
+            continue;
+        };
+        if applied == 0 || applied > commands {
+            continue;
+        }
+        if let Ok(project) = serde_json::from_str::<Project>(&payload) {
+            checkpoints.insert(applied, project);
+        }
+    }
+    Ok(checkpoints)
+}
+
+fn table_exists(connection: &Connection, name: &str) -> Result<bool, EngineError> {
+    let count: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?1",
+            [name],
+            |row| row.get(0),
+        )
+        .map_err(store_err)?;
+    Ok(count > 0)
 }
 
 /// Refuse files written by a newer app. Files from before the version row open as version 1.
@@ -186,17 +268,20 @@ pub fn load(path: &str) -> Result<Document, EngineError> {
         commands.push(command);
     }
     let cursor = cursor.min(commands.len());
-    let project = document::replay(&base, &commands[..cursor])?;
     let burndown = load_burndown(&connection)?;
-    Ok(Document {
+    let checkpoints = load_checkpoints(&connection, commands.len());
+    let mut document = Document {
+        project: base.clone(),
         base,
-        project,
         commands,
         cursor,
         path: Some(path.to_string()),
         dirty: false,
         burndown,
-    })
+        checkpoints,
+    };
+    document.project = document.project_at(cursor)?;
+    Ok(document)
 }
 
 /// User save: sample burn-down for today (or the status date day), then write the file.
@@ -207,14 +292,7 @@ pub fn save_with_snapshot(document: &mut Document, path: &str, now: i64) -> Resu
 
 fn load_burndown(connection: &Connection) -> Result<Vec<BurndownSnapshot>, EngineError> {
     // Files written before phase 10 have no burn-down table.
-    let exists: i64 = connection
-        .query_row(
-            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'burndown'",
-            [],
-            |row| row.get(0),
-        )
-        .map_err(|err| EngineError::Store(err.to_string()))?;
-    if exists == 0 {
+    if !table_exists(connection, "burndown")? {
         return Ok(Vec::new());
     }
     let mut statement = connection
