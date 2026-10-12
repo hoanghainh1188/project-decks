@@ -11,6 +11,8 @@ describe("Root", () => {
     // inTauri() looks for this; the fake backend answers the commands.
     (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {
       metadata: { currentWindow: { label: "main" }, currentWebview: { label: "main" } },
+      // The window plugin (setTitle) calls this directly rather than the mocked core invoke.
+      invoke: (cmd: string, args?: Record<string, unknown>) => fakeBackend.invoke(cmd, args),
     };
   });
   afterEach(() => {
@@ -82,11 +84,21 @@ describe("Root", () => {
     expect(order.indexOf("check_autosave")).toBeLessThan(order.indexOf("open_pending"));
   });
 
+  it("still opens a queued file when the autosave cannot be restored", async () => {
+    vi.spyOn(navigator, "languages", "get").mockReturnValue(["vi-VN"]);
+    fakeBackend.failNext("check_autosave", "Không khôi phục được bản tự lưu");
+    render(<Root />);
+    await waitFor(() => expect(fakeBackend.calls.some((call) => call.cmd === "open_pending")).toBe(true));
+    expect(await screen.findByText("Không khôi phục được bản tự lưu")).toBeInTheDocument();
+  });
+
   it("opens a recent file from the menu and a file the system sends", async () => {
     vi.spyOn(navigator, "languages", "get").mockReturnValue(["vi-VN"]);
     render(<Root />);
     await screen.findByRole("button", { name: "Hoàn tác" });
     await waitFor(() => expect(fakeBackend.calls.some((call) => call.cmd === "open_pending")).toBe(true));
+    // Wait until the startup dialog work has finished, or the menu click is ignored as busy.
+    await waitFor(() => expect(screen.getByRole("button", { name: /Xuất PDF/ })).toBeEnabled());
     const menu = await menuHandler();
     await act(async () => menu("recent:2"));
     await waitFor(() => expect(fakeBackend.calls).toContainEqual({ cmd: "open_recent", args: { index: 2 } }));

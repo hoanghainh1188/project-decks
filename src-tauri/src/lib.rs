@@ -2,6 +2,7 @@ mod i18n;
 mod settings;
 
 use std::fs;
+use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -43,7 +44,9 @@ struct AppState {
     settings: Option<PathBuf>,
     /// A project the system asked to open (a double-clicked file) that the frontend has
     /// not opened yet: it waits until no dialog is up, after any autosave offer.
-    pending_open: Mutex<Option<String>>,
+    pending_open: Mutex<VecDeque<String>>,
+    /// `settings.json` is read, changed and replaced from several threads; one at a time.
+    settings_lock: Mutex<()>,
 }
 
 impl AppState {
@@ -60,7 +63,8 @@ impl AppState {
             slot_checked: AtomicBool::new(false),
             lang: Mutex::new(lang),
             settings,
-            pending_open: Mutex::new(None),
+            pending_open: Mutex::new(VecDeque::new()),
+            settings_lock: Mutex::new(()),
         }
     }
 }
@@ -214,15 +218,29 @@ fn is_project_file(path: &str) -> bool {
 
 /// The project file in a command line: how Windows and Linux open a double-clicked file,
 /// and what the single-instance plugin forwards from a second launch.
-fn project_path_arg<I: IntoIterator<Item = String>>(args: I) -> Option<String> {
-    args.into_iter().skip(1).find(|arg| is_project_file(arg))
+/// A relative path is taken from `cwd`, the folder the launch came from.
+fn project_path_arg<I: IntoIterator<Item = String>>(args: I, cwd: &std::path::Path) -> Option<String> {
+    let arg = args.into_iter().skip(1).find(|arg| is_project_file(arg))?;
+    let path = std::path::Path::new(&arg);
+    Some(if path.is_absolute() { arg } else { cwd.join(path).to_string_lossy().into_owned() })
+}
+
+/// Arguments as text; a non-UTF-8 argument cannot be a path we could open anyway.
+fn command_line() -> Vec<String> {
+    std::env::args_os().map(|arg| arg.to_string_lossy().into_owned()).collect()
+}
+
+fn current_dir() -> PathBuf {
+    std::env::current_dir().unwrap_or_default()
 }
 
 /// Queue a file the system asked to open and tell the frontend, which opens it when no
 /// dialog is up (`open_pending`).
 fn queue_open(app: &AppHandle, path: String) {
     if let Some(state) = app.try_state::<AppState>() {
-        *state.pending_open.lock().unwrap_or_else(|err| err.into_inner()) = Some(path);
+        state.pending_open.lock().unwrap_or_else(|err| err.into_inner()).push_back(path);
+    } else {
+        eprintln!("Sheafly: nhận tệp {path} trước khi app sẵn sàng; bỏ qua");
     }
     let _ = app.emit("open-file", ());
 }
@@ -234,6 +252,7 @@ fn recent_files(state: &AppState) -> Vec<String> {
 /// Put a just opened or saved file first in File → Open Recent. A settings file that
 /// cannot be written only costs the list, so it is logged, not shown.
 fn remember_recent(state: &AppState, path: &str) {
+    let _guard = state.settings_lock.lock().unwrap_or_else(|err| err.into_inner());
     if let Some(settings) = &state.settings
         && let Err(err) = settings::remember_recent(settings, path)
     {
@@ -447,7 +466,10 @@ async fn new_project(app: AppHandle, state: State<'_, AppState>) -> Result<Snaps
     let Some(_permit) = begin_dialog(&state) else {
         return Ok(lock(&state).snapshot());
     };
-    if !confirm_discard(&app, &state).await? {
+    let go_on = confirm_discard(&app, &state).await?;
+    // Saving inside the prompt reorders the recent files.
+    refresh_menu(&app);
+    if !go_on {
         return Ok(lock(&state).snapshot());
     }
     let current = lang(&state);
@@ -463,7 +485,10 @@ async fn open_project(app: tauri::AppHandle, state: State<'_, AppState>) -> Resu
     let Some(_permit) = begin_dialog(&state) else {
         return Ok(lock(&state).snapshot());
     };
-    if !confirm_discard(&app, &state).await? {
+    let go_on = confirm_discard(&app, &state).await?;
+    // Saving inside the prompt reorders the recent files.
+    refresh_menu(&app);
+    if !go_on {
         return Ok(lock(&state).snapshot());
     }
     let picked = await_pick(
@@ -507,18 +532,19 @@ fn open_path_held(app: &AppHandle, state: &AppState, path: String) -> Result<Sna
 
 /// Open a file we already know the path of (Open Recent, or one the system sent): ask
 /// about unsaved changes first, and drop a file that is gone from the recent list.
+/// The caller holds the dialog permit.
 async fn open_known_path(app: &AppHandle, state: &AppState, path: String) -> Result<Snapshot, String> {
-    let Some(_permit) = begin_dialog(state) else {
-        return Ok(lock(state).snapshot());
-    };
     if !std::path::Path::new(&path).exists() {
         if let Some(settings) = &state.settings {
+            let _guard = state.settings_lock.lock().unwrap_or_else(|err| err.into_inner());
             let _ = settings::forget_recent(settings, &path);
         }
         refresh_menu(app);
         return Err(i18n::file_missing(lang(state), &path));
     }
-    if !confirm_discard(app, state).await? {
+    let go_on = confirm_discard(app, state).await?;
+    refresh_menu(app);
+    if !go_on {
         return Ok(lock(state).snapshot());
     }
     open_path_held(app, state, path)
@@ -527,24 +553,29 @@ async fn open_known_path(app: &AppHandle, state: &AppState, path: String) -> Res
 /// File → Open Recent → the file at `index` (0 is the most recent).
 #[tauri::command]
 async fn open_recent(app: AppHandle, state: State<'_, AppState>, index: usize) -> Result<Snapshot, String> {
+    let Some(_permit) = begin_dialog(&state) else {
+        return Ok(lock(&state).snapshot());
+    };
     let Some(path) = recent_files(&state).get(index).cloned() else {
         return Ok(lock(&state).snapshot());
     };
     open_known_path(&app, &state, path).await
 }
 
-/// Open the file the system asked to open, if any. While a dialog is up it stays queued;
-/// the frontend asks again when the dialog closes.
+/// Open the next file the system asked to open. `None` when nothing is queued or a
+/// dialog is up; the file then stays queued and the frontend asks again later. The
+/// permit is taken before the file, so a file is never dropped by a dialog that opens
+/// in between.
 #[tauri::command]
-async fn open_pending(app: AppHandle, state: State<'_, AppState>) -> Result<Snapshot, String> {
-    if state.dialog_open.load(Ordering::Acquire) {
-        return Ok(lock(&state).snapshot());
-    }
-    let taken = state.pending_open.lock().unwrap_or_else(|err| err.into_inner()).take();
-    let Some(path) = taken else {
-        return Ok(lock(&state).snapshot());
+async fn open_pending(app: AppHandle, state: State<'_, AppState>) -> Result<Option<Snapshot>, String> {
+    let Some(_permit) = begin_dialog(&state) else {
+        return Ok(None);
     };
-    open_known_path(&app, &state, path).await
+    let taken = state.pending_open.lock().unwrap_or_else(|err| err.into_inner()).pop_front();
+    let Some(path) = taken else {
+        return Ok(None);
+    };
+    open_known_path(&app, &state, path).await.map(Some)
 }
 
 #[tauri::command]
@@ -584,7 +615,10 @@ async fn import_mspdi(app: tauri::AppHandle, state: State<'_, AppState>) -> Resu
     let Some(_permit) = begin_dialog(&state) else {
         return Ok(lock(&state).snapshot());
     };
-    if !confirm_discard(&app, &state).await? {
+    let go_on = confirm_discard(&app, &state).await?;
+    // Saving inside the prompt reorders the recent files.
+    refresh_menu(&app);
+    if !go_on {
         return Ok(lock(&state).snapshot());
     }
     let picked = await_pick(
@@ -848,7 +882,9 @@ fn recent_menu(app: &tauri::AppHandle, lang: Lang, recent: &[String]) -> tauri::
         let path = std::path::Path::new(file);
         let name = path.file_name().map(|name| name.to_string_lossy()).unwrap_or_default();
         let folder = path.parent().map(|dir| dir.to_string_lossy()).unwrap_or_default();
-        let label = format!("{name} — {folder}");
+        let label = if folder.is_empty() { name.to_string() } else { format!("{name} — {folder}") };
+        // `&` marks a keyboard shortcut in menu labels on Windows and Linux.
+        let label = label.replace('&', "&&");
         menu.append(&MenuItem::with_id(app, format!("recent:{index}"), label, true, None::<&str>)?)?;
     }
     menu.append(&PredefinedMenuItem::separator(app)?)?;
@@ -921,6 +957,7 @@ fn set_language(
             *doc = Document::new_in(chosen);
         }
     }
+    let _guard = state.settings_lock.lock().unwrap_or_else(|err| err.into_inner());
     match (&state.settings, remember) {
         (Some(path), true) => settings::write_language(path, chosen)
             .map_err(|err| i18n::settings_not_saved(chosen, &err.to_string())),
@@ -959,12 +996,12 @@ pub fn run() {
         // First, so a second launch (a file double-clicked while Sheafly runs, on Windows
         // and Linux) hands its file to this window instead of starting another app, which
         // would also share the autosave slot.
-        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+        .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.unminimize();
                 let _ = window.set_focus();
             }
-            if let Some(path) = project_path_arg(argv) {
+            if let Some(path) = project_path_arg(argv, std::path::Path::new(&cwd)) {
                 queue_open(app, path);
             }
         }))
@@ -987,8 +1024,9 @@ pub fn run() {
             };
             let state = AppState::new(slot, settings);
             // Windows and Linux pass a double-clicked file on the command line.
-            *state.pending_open.lock().unwrap_or_else(|err| err.into_inner()) =
-                project_path_arg(std::env::args());
+            if let Some(path) = project_path_arg(command_line(), &current_dir()) {
+                state.pending_open.lock().unwrap_or_else(|err| err.into_inner()).push_back(path);
+            }
             let menu = build_menu(app.handle(), lang(&state), &recent_files(&state))?;
             app.manage(state);
             app.set_menu(menu)?;
@@ -1009,7 +1047,9 @@ pub fn run() {
                 return;
             }
             if event.id().as_ref() == "recent-clear" {
-                if let Some(settings) = &app.state::<AppState>().settings {
+                let state = app.state::<AppState>();
+                if let Some(settings) = &state.settings {
+                    let _guard = state.settings_lock.lock().unwrap_or_else(|err| err.into_inner());
                     let _ = settings::clear_recent(settings);
                 }
                 refresh_menu(app);
@@ -1084,12 +1124,14 @@ mod tests {
     #[test]
     fn finds_a_project_file_on_the_command_line() {
         let args = |list: &[&str]| list.iter().map(|arg| arg.to_string()).collect::<Vec<_>>();
-        assert_eq!(project_path_arg(args(&["sheafly"])), None);
-        assert_eq!(project_path_arg(args(&["sheafly", "--flag", "C:\\Plans\\Cầu.SHEAFLY"])).as_deref(), Some("C:\\Plans\\Cầu.SHEAFLY"));
-        assert_eq!(project_path_arg(args(&["sheafly", "/home/an/old.pdproj"])).as_deref(), Some("/home/an/old.pdproj"));
-        assert_eq!(project_path_arg(args(&["sheafly", "/home/an/notes.txt"])), None);
+        let cwd = std::path::Path::new("/work");
+        assert_eq!(project_path_arg(args(&["sheafly", "plan.sheafly"]), cwd).as_deref(), Some("/work/plan.sheafly"));
+        assert_eq!(project_path_arg(args(&["sheafly"]), cwd), None);
+        assert_eq!(project_path_arg(args(&["sheafly", "--flag", "/Plans/Cầu.SHEAFLY"]), cwd).as_deref(), Some("/Plans/Cầu.SHEAFLY"));
+        assert_eq!(project_path_arg(args(&["sheafly", "/home/an/old.pdproj"]), cwd).as_deref(), Some("/home/an/old.pdproj"));
+        assert_eq!(project_path_arg(args(&["sheafly", "/home/an/notes.txt"]), cwd), None);
         // The program itself is never taken, even if its path looked like a project.
-        assert_eq!(project_path_arg(args(&["/opt/x.sheafly"])), None);
+        assert_eq!(project_path_arg(args(&["/opt/x.sheafly"]), cwd), None);
     }
 
     #[test]

@@ -108,13 +108,16 @@ export default function App() {
   const fileDialogBusyRef = useRef(false);
   const [fileDialogBusy, setFileDialogBusy] = useState(false);
 
-  const run = useCallback(async (work: () => Promise<Snapshot | void>): Promise<Snapshot | void> => {
+  // `null` from `work` means nothing happened (no queued file to open): the last error
+  // stays on screen instead of being cleared by a call the user did not make.
+  const run = useCallback(async (work: () => Promise<Snapshot | void | null>): Promise<Snapshot | void> => {
     if (!inTauri()) {
       setError(pick(appMessages).needsTauri);
       return;
     }
     try {
       const next = await work();
+      if (next === null) return;
       if (next) setSnap(next);
       setError(null);
       return next;
@@ -130,7 +133,7 @@ export default function App() {
   // A file the system asked to open while a dialog was up; opened when it closes.
   const openWhenFreeRef = useRef(false);
 
-  const startFileDialog = useCallback((work: () => Promise<Snapshot | void>) => {
+  const startFileDialog = useCallback((work: () => Promise<Snapshot | void | null>) => {
     if (fileDialogBusyRef.current) return;
     if (!inTauri()) {
       setError(pick(appMessages).needsTauri);
@@ -285,8 +288,12 @@ export default function App() {
     // then a project the app was launched to open (a double-clicked file) opens.
     void run(() => loadState()).then(() =>
       startFileDialog(async () => {
-        await checkAutosave();
-        return openPending();
+        // A slot that cannot be restored must not keep the double-clicked file closed.
+        const restored = await checkAutosave().catch((err: unknown) => {
+          setError(errorMessage(err));
+          return null;
+        });
+        return (await openPending()) ?? restored;
       }),
     );
     const stops: (() => void)[] = [];
