@@ -4,7 +4,7 @@ Cùng một nội dung, hai bản theo cú pháp của từng trang:
 
 - `qiita.md`: front matter của Qiita CLI, khung ghi chú `:::note`.
 - `zenn.md`: front matter của Zenn (`emoji`, `type: "tech"`, `topics`, `published: false`), khung ghi chú `:::message`.
-- `images/sheafly-gantt.jpg`: ảnh chụp màn hình dùng trong bài.
+- `images/sheafly-gantt.jpg` (`projectdesk-gantt.jpg` là cùng ảnh, giữ lại vì bài Qiita đã đăng đang trỏ tới nó; xóa được sau khi đăng lại bài): ảnh chụp màn hình dùng trong bài.
 
 Chỉ đăng sau khi release v1.0.0 đã publish, vì bài dẫn tới trang Releases.
 
