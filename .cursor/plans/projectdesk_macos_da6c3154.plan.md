@@ -1,6 +1,6 @@
 ---
 name: ProjectDesk macOS
-overview: "ProjectDesk là ứng dụng desktop Tauri (Rust + React) quản lý dự án theo hướng Microsoft Project. Pha 1–12 đã xong. Sau pha 10 đã thêm: bản cài đa nền tảng (PR #17), test frontend (PR #18), phần còn lại của pha 9–10 (PR #19), sơ đồ mạng (PR #20), tách công việc (PR #21), CLAUDE.md (PR #22) và an toàn dữ liệu (PR #23). Việc tiếp theo là Pha 13–17 ở mục Lộ trình."
+overview: "ProjectDesk là ứng dụng desktop Tauri (Rust + React) quản lý dự án theo hướng Microsoft Project. Pha 1–13 đã xong. Sau pha 10 đã thêm: bản cài đa nền tảng (PR #17), test frontend (PR #18), phần còn lại của pha 9–10 (PR #19), sơ đồ mạng (PR #20), tách công việc (PR #21), CLAUDE.md (PR #22) và an toàn dữ liệu (PR #23). Việc tiếp theo là Pha 14–17 ở mục Lộ trình."
 todos:
   - id: scaffold
     content: Tauri 2 + React + crate engine
@@ -63,8 +63,8 @@ todos:
     content: "Pha 12: nền tệp và hiệu năng (checkpoint, lệnh bất đồng bộ, tệp hỏng, báo đổi ngày, tự lưu, gộp lịch sử; PR #28, #29 và phần 3)"
     status: completed
   - id: actuals-drive-schedule
-    content: "Pha 13: theo dõi tiến độ. Phần 1 (ngày thực tế điều khiển lịch, trễ hạn theo MS Project) xong; còn dời phần chưa xong, AC/EV task tách, chuỗi lặp"
-    status: in_progress
+    content: "Pha 13: theo dõi tiến độ (ngày thực tế điều khiển lịch, trễ hạn theo MS Project, dời phần chưa xong, AC/EV task tách, chuỗi lặp; PR #31 và phần 2)"
+    status: completed
   - id: macos-release
     content: "Pha 14: phát hành macOS (ký số, notarize, universal, kiểu tệp .pdproj, CSP)"
     status: pending
@@ -354,13 +354,13 @@ Còn lại của phần 1: undo sâu hơn khoảng 100 bước ngay sau khi mở
 
 Nghiệm thu: bench trong `crates/engine/benches` với 1.000 task, 10.000 lệnh: Undo dưới 100 ms, mở dưới 1 giây; test tệp có lệnh hỏng; test tắt app giữa chừng rồi khôi phục.
 
-### Pha 13 — theo dõi tiến độ (L, cần Pha 12) — đang làm
+### Pha 13 — theo dõi tiến độ (L, cần Pha 12) — đã xong (PR #31, phần 2)
 
 Mục tiêu: nhập tiến độ thực tế làm lịch thay đổi như MS Project.
 
 Chia 2 PR: (1) lõi lịch theo ngày thực tế, (2) lệnh dời phần chưa xong, AC/EV task tách, chuỗi lặp.
 
-**Phần 1 — đã xong.** Module `tracking.rs`:
+**Phần 1 — đã xong (PR #31).** Module `tracking.rs`:
 
 - Ngày bắt đầu thực tế ghim start, thắng phụ thuộc, ràng buộc, độ trễ cân bằng và ngày ghim tay của task lên lịch tay. Ngày kết thúc thực tế ghim finish. Chưa có ngày kết thúc thì phần còn lại nối liền từ ngày bắt đầu thực tế (task tách giữ khoảng nghỉ).
 - Task xong (có ngày kết thúc thực tế hoặc 100 %) và nhóm mà mọi task con đều xong không nằm trên đường găng. Task đã bắt đầu tính slack ở đầu kết thúc. ALAP và leveling bỏ qua task đã bắt đầu.
@@ -370,6 +370,15 @@ Chia 2 PR: (1) lõi lịch theo ngày thực tế, (2) lệnh dời phần chưa
 - Nhập MSPDI: task có % hoàn thành mà thiếu `ActualStart`/`ActualFinish` lấy ngày đã lên lịch làm ngày thực tế (trước đây `work.rs` làm việc này khi tính lịch).
 - `FORMAT_VERSION` = 2 (nghĩa lệnh đổi, app cũ sẽ replay ra ngày khác) và `ENGINE_REVISION` = 2: tệp cũ có ngày thực tế mở ra sẽ báo các task đổi ngày (Pha 12 phần 2).
 - `tests/tracking.rs`: 17 test bằng số tính tay. Bench không đổi.
+
+**Phần 2 — đã xong.**
+
+- Lệnh mới `RescheduleUncompleted`, menu "Dự án → Dời phần chưa xong sau ngày trạng thái", cho cả dự án như Project. Task đã bắt đầu mà phần còn lại lẽ ra đã làm: thêm một lần tách tại điểm tiến độ (dùng `split.rs`), phần còn lại tiếp tục từ ngày trạng thái. Task lẽ ra đã bắt đầu mà chưa: ràng buộc SNET tại ngày trạng thái (chỉ khi đang ASAP hoặc SNET sớm hơn). Bỏ qua task xong, task lên lịch tay, ràng buộc chặt hơn và lần chưa bắt đầu của chuỗi lặp. Lệnh đọc ngày trạng thái trong dự án nên replay ra đúng các lần tách; chưa có ngày trạng thái thì báo lỗi.
+- AC và EV của task tách trải theo các đoạn làm việc (`evm::progress_intervals`), khoảng nghỉ không phát sinh chi phí. Task không tách cho kết quả như trước.
+- Nhập tiến độ (%, ngày thực tế; còn lại khi đã có tiến độ) trên một lần của chuỗi lặp không tách nó khỏi chuỗi. Sửa còn lại khi chưa có tiến độ vẫn là sửa riêng. Sinh lại chuỗi giữ nguyên các lần đã có tiến độ; xóa chuỗi giữ chúng lại như các lần đã sửa riêng.
+- Chuỗi nền (`RecurrenceSpec::background`, ô "Chuỗi nền" trong hộp thoại công việc lặp): không tính vào mốc kết thúc khi tính ngược, không nằm trên đường găng, không làm nhóm chứa nó thành găng, và thanh trạng thái không lấy nó làm ngày kết thúc dự án (trừ khi chỉ còn nó).
+- `FORMAT_VERSION` = 3 (lệnh mới, trường mới), `ENGINE_REVISION` = 3 (sinh lại chuỗi đổi). `tests/progress.rs`: 10 test.
+- Chưa làm: đối chiếu một tệp MSPDI mẫu xuất từ Project (cần tệp thật); ghi/đọc tiến độ đầy đủ qua MSPDI thuộc Pha 15.
 
 - Ngày bắt đầu thực tế ghim start, bỏ qua phụ thuộc và ràng buộc; ngày kết thúc thực tế ghim finish. Phần còn lại nối liền sau phần đã làm.
 - Lệnh "Dời phần chưa xong sau ngày trạng thái" dùng `split.rs` để tạo khoảng nghỉ, nên tất định và hoàn tác được.

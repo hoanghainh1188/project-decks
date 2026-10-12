@@ -90,6 +90,7 @@ export function RecurringDialog({ project, initial, defaultStart, onClose, onSub
     initial?.end.kind === "until" ? initial.end.date : start0 + 30 * DAY_MS,
   );
   const [calendarId, setCalendarId] = useState<number | null>(initial?.calendar_id ?? null);
+  const [background, setBackground] = useState(initial?.background ?? false);
   // Units text per selected resource UID; series saved before units existed read as 1.
   const [resourceUnits, setResourceUnits] = useState<Record<number, string>>(() => {
     const entries: Record<number, string> = {};
@@ -147,6 +148,7 @@ export function RecurringDialog({ project, initial, defaultStart, onClose, onSub
       end,
       calendar_id: calendarId,
       resources,
+      background,
     };
   }
 
@@ -338,6 +340,11 @@ export function RecurringDialog({ project, initial, defaultStart, onClose, onSub
             <option key={calendar.id} value={calendar.id}>{calendar.name}</option>
           ))}
         </select>
+        <label>Đường găng</label>
+        <label className="check" title="Ví dụ họp hằng tuần kéo dài sau mốc phát hành">
+          <input type="checkbox" checked={background} onChange={() => setBackground((value) => !value)} />
+          Chuỗi nền: không quyết định ngày kết thúc dự án và đường găng
+        </label>
         <label>Nguồn lực</label>
         {project.resources.length === 0 ? (
           <span className="meta">Chưa có nguồn lực</span>

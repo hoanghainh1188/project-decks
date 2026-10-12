@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -70,6 +70,7 @@ describe("RecurringDialog defaults", () => {
       end: { kind: "count", count: 5 },
       calendar_id: null,
       resources: [],
+      background: false,
     });
     expect(onClose).toHaveBeenCalledOnce();
   });
@@ -249,6 +250,7 @@ describe("RecurringDialog payload", () => {
       end: { kind: "until", date: at(2026, 12, 31) },
       calendar_id: 2,
       resources: [{ uid: 10, units: 0.5 }],
+      background: false,
     };
     const { user, onSubmit } = renderDialog({ initial });
     expect(screen.getByLabelText("Đơn vị của An")).toHaveValue("0.5");
@@ -275,9 +277,25 @@ describe("RecurringDialog payload", () => {
     const { user, onSubmit } = renderDialog({ initial });
     expect(screen.getByLabelText("An")).toBeChecked();
     expect(screen.getByLabelText("Đơn vị của An")).toHaveValue("1");
+    expect(screen.getByLabelText(/Chuỗi nền/)).not.toBeChecked();
     await user.click(screen.getByRole("button", { name: "Cập nhật chuỗi" }));
     expect(lastSpec(onSubmit).resources).toEqual([{ uid: 10, units: 1 }]);
     expect(lastSpec(onSubmit)).not.toHaveProperty("resource_uids");
+  });
+
+  it("marks a series as background and keeps the choice when editing", async () => {
+    const { user, onSubmit } = renderDialog();
+    const box = screen.getByLabelText(/Chuỗi nền/);
+    expect(box).not.toBeChecked();
+    await user.click(box);
+    await user.click(screen.getByRole("button", { name: "Tạo chuỗi" }));
+    expect(lastSpec(onSubmit).background).toBe(true);
+
+    cleanup();
+    const edited = renderDialog({ initial: { ...lastSpec(onSubmit) } });
+    expect(screen.getByLabelText(/Chuỗi nền/)).toBeChecked();
+    await edited.user.click(screen.getByRole("button", { name: "Cập nhật chuỗi" }));
+    expect(lastSpec(edited.onSubmit).background).toBe(true);
   });
 
   it("shows a note when there are no resources", () => {

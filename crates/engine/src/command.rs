@@ -200,6 +200,8 @@ pub enum Command {
     },
     LevelResources,
     ClearLeveling,
+    /// Move work that should be done by the status date but is not to after it.
+    RescheduleUncompleted,
     SetLevelingDelay {
         uid: u32,
         minutes: i64,
@@ -241,6 +243,7 @@ pub fn apply_one(project: &mut Project, command: &Command) -> Result<(), EngineE
 }
 
 /// The single task a command edits, so an edited occurrence can leave its series.
+/// Recording progress is not an edit: a meeting that took place stays in its series.
 fn edited_task(project: &Project, command: &Command) -> Option<u32> {
     match command {
         Command::RenameTask { uid, .. }
@@ -254,17 +257,17 @@ fn edited_task(project: &Project, command: &Command) -> Option<u32> {
         | Command::ResizeTask { uid, .. }
         | Command::SetTaskType { uid, .. }
         | Command::SetWork { uid, .. }
-        | Command::SetPercentComplete { uid, .. }
-        | Command::SetActualStart { uid, .. }
-        | Command::SetActualFinish { uid, .. }
-        | Command::SetRemainingDuration { uid, .. }
-        | Command::SetRemainingWork { uid, .. }
         | Command::SetOvertimeWork { uid, .. }
         | Command::SetFixedCost { uid, .. }
         | Command::SetLevelingDelay { uid, .. }
         | Command::SetDeadline { uid, .. }
         | Command::SplitTask { uid, .. }
         | Command::RemoveSplit { uid, .. } => Some(*uid),
+        // Before any progress these set the duration or work: that is an edit.
+        Command::SetRemainingDuration { uid, .. } | Command::SetRemainingWork { uid, .. } => project
+            .task(*uid)
+            .filter(|task| !recurrence::has_progress(task))
+            .map(|task| task.uid),
         Command::AssignResource { task_uid, .. } => Some(*task_uid),
         Command::UpdateAssignment { uid, .. } | Command::RemoveAssignment { uid } => project
             .assignments
@@ -634,6 +637,7 @@ fn apply_inner(project: &mut Project, command: &Command) -> Result<(), EngineErr
         Command::SetRemainingWork { uid, minutes } => {
             tracking::set_remaining_work(project, *uid, *minutes, set_work)?
         }
+        Command::RescheduleUncompleted => tracking::reschedule_uncompleted(project)?,
         Command::SetOvertimeWork { uid, minutes } => {
             set_overtime_work(project, *uid, *minutes)?;
         }

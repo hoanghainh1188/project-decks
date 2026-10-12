@@ -67,6 +67,10 @@ pub struct RecurrenceSpec {
     pub resource_uids: Vec<u32>,
     #[serde(default)]
     pub resources: Vec<SeriesResource>,
+    /// A background series (a weekly meeting, say) never sets the project finish and
+    /// is never on the critical path.
+    #[serde(default)]
+    pub background: bool,
 }
 
 /// A resource assigned to every attached occurrence. Units are 1.0 for 100 %.
@@ -413,7 +417,8 @@ pub fn regenerate(project: &mut Project, summary_uid: u32) -> Result<(), EngineE
     let mut others = Vec::new();
     for task in region {
         if task.series_uid == Some(summary_uid) {
-            if task.detached {
+            // An occurrence with recorded progress happened; regenerating keeps it as is.
+            if task.detached || has_progress(&task) {
                 detached.push(task);
             } else {
                 attached.push(task);
@@ -496,8 +501,15 @@ pub fn regenerate(project: &mut Project, summary_uid: u32) -> Result<(), EngineE
     Ok(())
 }
 
+/// An occurrence with recorded progress took place: regenerating and deleting the
+/// series keep it, like an occurrence edited on its own.
+pub fn has_progress(task: &Task) -> bool {
+    task.actual_start.is_some() || task.percent_complete > 0.0
+}
+
 /// Delete a series: the summary and its attached occurrences go, everything
-/// else under it (detached occurrences, hand-added tasks) moves up one level.
+/// else under it (detached occurrences, occurrences with progress, hand-added tasks)
+/// moves up one level.
 pub fn delete_series(project: &mut Project, summary_uid: u32) -> Result<(), EngineError> {
     normalize_outline(project);
     let index = project.index_of(summary_uid).ok_or(EngineError::TaskNotFound)?;
@@ -505,7 +517,7 @@ pub fn delete_series(project: &mut Project, summary_uid: u32) -> Result<(), Engi
     let mut removed = vec![summary_uid];
     let mut kept = Vec::new();
     for mut task in project.tasks.drain(index..end).skip(1) {
-        if task.series_uid == Some(summary_uid) && !task.detached {
+        if task.series_uid == Some(summary_uid) && !task.detached && !has_progress(&task) {
             removed.push(task.uid);
             continue;
         }

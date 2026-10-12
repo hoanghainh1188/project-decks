@@ -170,6 +170,7 @@ export default function App() {
       if (id === "baseline") setBaselineOpen(true);
       if (id === "level") void send({ type: "level_resources" });
       if (id === "clear-level") void send({ type: "clear_leveling" });
+      if (id === "reschedule-uncompleted") void send({ type: "reschedule_uncompleted" });
       if (id === "compact-history") startFileDialog(compactHistory);
       if (id === "recurring") setSeriesDialog(0);
       if (!task) return;
