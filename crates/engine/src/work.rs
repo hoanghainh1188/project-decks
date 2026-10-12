@@ -505,23 +505,16 @@ fn refresh_tracking(project: &mut Project, by_task: &HashMap<u32, Vec<usize>>) {
         let actual_work = (work as f64 * fraction).round().max(0.0) as i64;
         let remaining_work = (work - actual_work).max(0);
         let task = &mut project.tasks[index];
+        // Actual dates are the user's input: commands keep them in step with the
+        // percent, and scheduling must not rewrite them from derived dates.
         task.percent_complete = pct;
         task.remaining_duration = remaining_duration;
         task.actual_work = actual_work;
         task.remaining_work = remaining_work;
-        if pct <= 0.0 {
-            task.actual_start = None;
-            task.actual_finish = None;
-        } else if task.actual_start.is_none() {
-            task.actual_start = Some(task.start);
-        }
         if pct >= 100.0 {
-            task.actual_finish = task.actual_finish.or(Some(task.finish));
             task.remaining_duration = 0;
             task.remaining_work = 0;
             task.actual_work = work;
-        } else {
-            task.actual_finish = None;
         }
         for &position in assignments_of(by_task, uid) {
             let assignment = &mut project.assignments[position];

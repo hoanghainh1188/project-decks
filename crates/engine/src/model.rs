@@ -229,18 +229,25 @@ impl Task {
         }
     }
 
-    /// A task is late when any one of these is true:
-    /// the unfinished finish is after the status date, the finish is after baseline 0,
-    /// or the finish is after a deadline. Equality is on time, not late.
-    pub fn is_late(&self, status_date: Option<i64>) -> bool {
-        let after_status =
-            status_date.is_some_and(|status| self.percent_complete < 100.0 && self.finish > status);
+    /// A task is late when any one of these is true: less is done than the schedule says
+    /// should be by the status date (see `tracking::behind_schedule`), the finish is
+    /// after baseline 0, or the finish is after a deadline. Equality is on time.
+    /// A summary is never behind on its own; `schedule::mark_late` takes that from its
+    /// children.
+    pub fn is_late(&self, status_date: Option<i64>, calendar: &Calendar) -> bool {
+        let after_status = status_date
+            .is_some_and(|status| crate::tracking::behind_schedule(self, calendar, status));
+        after_status || self.misses_planned_dates()
+    }
+
+    /// The finish is after baseline 0 or after the deadline.
+    pub fn misses_planned_dates(&self) -> bool {
         let after_baseline = self
             .baselines
             .iter()
             .any(|baseline| baseline.number == 0 && self.finish > baseline.finish);
         let after_deadline = self.deadline.is_some_and(|deadline| self.finish > deadline);
-        after_status || after_baseline || after_deadline
+        after_baseline || after_deadline
     }
 }
 

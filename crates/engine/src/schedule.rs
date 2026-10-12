@@ -5,6 +5,7 @@ use crate::graph::Graph;
 use crate::level::publish_overallocations;
 use crate::model::{ConstraintType, DepKind, Project};
 use crate::split;
+use crate::tracking;
 use crate::work::publish_costs_and_usage;
 
 /// Recompute WBS, early/late dates, slack, critical path, costs, usage, and the late flag.
@@ -54,9 +55,25 @@ pub fn schedule(project: &mut Project) -> Result<(), EngineError> {
 
 /// Recompute the derived late flag from the status date, baseline 0, and deadline.
 pub fn mark_late(project: &mut Project) {
-    let status_date = project.status_date;
-    for task in &mut project.tasks {
-        task.late = task.is_late(status_date);
+    let mut behind: Vec<bool> = match project.status_date {
+        Some(status) => project
+            .tasks
+            .iter()
+            .map(|task| tracking::behind_schedule(task, project.task_calendar(task), status))
+            .collect(),
+        None => vec![false; project.tasks.len()],
+    };
+    // A group is behind when any task in it is; children come after their summary.
+    for index in (0..project.tasks.len()).rev() {
+        if project.tasks[index].summary {
+            let level = project.tasks[index].outline_level;
+            behind[index] = (index + 1..project.tasks.len())
+                .take_while(|&child| project.tasks[child].outline_level > level)
+                .any(|child| behind[child]);
+        }
+    }
+    for (task, behind) in project.tasks.iter_mut().zip(behind) {
+        task.late = behind || task.misses_planned_dates();
     }
 }
 
@@ -220,6 +237,10 @@ fn schedule_leaf(
 ) -> (i64, i64, bool) {
     let task = &project.tasks[index];
     let cal = project.task_calendar(task);
+    // Actual dates beat links, constraints, leveling, and manual dates.
+    if let Some((start, finish)) = tracking::pinned_dates(task, cal) {
+        return (start, finish, false);
+    }
     if task.manual {
         let start = task.start;
         let finish = task.finish.max(start);
@@ -477,14 +498,19 @@ fn backward(project: &mut Project, graph: &Graph) {
         let (ls, lf) = late_leaf(project, graph, index, horizon, &late);
         late[index] = Some((ls, lf));
         let task = &project.tasks[index];
-        let slack = project
-            .task_calendar(task)
-            .working_between(task.early_start, ls);
+        let cal = project.task_calendar(task);
+        // A started task cannot move its start; only its finish has room to slip.
+        let slack = if task.actual_start.is_some() {
+            cal.working_between(task.early_finish, lf)
+        } else {
+            cal.working_between(task.early_start, ls)
+        };
+        let complete = tracking::is_complete(task);
         let task = &mut project.tasks[index];
         task.late_start = ls;
         task.late_finish = lf;
         task.total_slack = slack;
-        task.critical = slack <= 0;
+        task.critical = slack <= 0 && !complete;
     }
     // ALAP consumes only the slack that does not push a successor which is
     // neither ALAP nor held by its own date constraint.
@@ -501,7 +527,7 @@ fn late_leaf(
     let task = &project.tasks[index];
     let cal = project.task_calendar(task);
     let duration = split::span(task);
-    if task.manual {
+    if task.manual || tracking::is_complete(task) {
         return (task.early_start, task.early_finish);
     }
 
@@ -605,7 +631,11 @@ fn schedule_alap(project: &mut Project, graph: &Graph) {
     let mut placed: Dates = vec![None; project.tasks.len()];
     for &index in graph.order().iter().rev() {
         let task = &project.tasks[index];
-        if task.summary || task.manual || task.constraint_type != ConstraintType::Alap {
+        if task.summary
+            || task.manual
+            || task.actual_start.is_some()
+            || task.constraint_type != ConstraintType::Alap
+        {
             continue;
         }
         let (ls, lf) = alap_dates(project, graph, index, horizon, &placed);
@@ -739,6 +769,8 @@ fn calendar_for(project: &Project, calendar_id: Option<u32>) -> &crate::calendar
 
 fn rollup(project: &mut Project) {
     let cal = project.calendar().clone();
+    // A summary is done when every child is; a done group is never critical.
+    let mut done: Vec<bool> = project.tasks.iter().map(tracking::is_complete).collect();
     for index in (0..project.tasks.len()).rev() {
         if !project.tasks[index].summary {
             continue;
@@ -787,6 +819,7 @@ fn rollup(project: &mut Project) {
             .max()
             .unwrap();
         let critical = child_indexes.iter().any(|j| project.tasks[*j].critical);
+        done[index] = child_indexes.iter().all(|j| done[*j]);
         let task = &mut project.tasks[index];
         task.start = start;
         task.finish = finish;
@@ -796,7 +829,7 @@ fn rollup(project: &mut Project) {
         task.late_finish = late_finish;
         task.duration = cal.working_between(start, finish).max(0);
         task.total_slack = cal.working_between(early_start, late_start);
-        task.critical = critical || task.total_slack <= 0;
+        task.critical = (critical || task.total_slack <= 0) && !done[index];
         task.milestone = false;
     }
 }

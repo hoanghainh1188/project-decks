@@ -11,6 +11,7 @@ use crate::recurrence::{self, Recurrence, RecurrenceSpec};
 use crate::schedule::normalize_outline;
 use crate::split;
 use crate::timeutil::{parse_date_key, MINUTES_PER_DAY, MINUTES_PER_HOUR};
+use crate::tracking;
 use crate::work::{self, Changed};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -621,75 +622,17 @@ fn apply_inner(project: &mut Project, command: &Command) -> Result<(), EngineErr
         }
         Command::SetWork { uid, minutes } => set_work(project, *uid, *minutes)?,
         Command::SetPercentComplete { uid, percent } => {
-            let task = project.task_mut(*uid).ok_or(EngineError::TaskNotFound)?;
-            if task.summary {
-                return Ok(());
-            }
-            let percent = percent.clamp(0.0, 100.0);
-            task.percent_complete = percent;
-            if percent <= 0.0 {
-                task.actual_start = None;
-                task.actual_finish = None;
-            } else if task.actual_start.is_none() {
-                task.actual_start = Some(task.start);
-            }
-            if percent >= 100.0 {
-                task.actual_finish = Some(task.finish);
-            } else {
-                task.actual_finish = None;
-            }
+            tracking::set_percent_complete(project, *uid, *percent)?
         }
-        Command::SetActualStart { uid, start } => {
-            let task = project.task_mut(*uid).ok_or(EngineError::TaskNotFound)?;
-            task.actual_start = *start;
-            if start.is_some() && task.percent_complete <= 0.0 {
-                task.percent_complete = 1.0;
-            }
-            if start.is_none() {
-                task.percent_complete = 0.0;
-                task.actual_finish = None;
-            }
-        }
+        Command::SetActualStart { uid, start } => tracking::set_actual_start(project, *uid, *start)?,
         Command::SetActualFinish { uid, finish } => {
-            let task = project.task_mut(*uid).ok_or(EngineError::TaskNotFound)?;
-            task.actual_finish = *finish;
-            if finish.is_some() {
-                task.percent_complete = 100.0;
-                if task.actual_start.is_none() {
-                    task.actual_start = Some(task.start);
-                }
-            } else if task.percent_complete >= 100.0 {
-                task.percent_complete = 0.0;
-            }
+            tracking::set_actual_finish(project, *uid, *finish)?
         }
         Command::SetRemainingDuration { uid, minutes } => {
-            let task = project.task_mut(*uid).ok_or(EngineError::TaskNotFound)?;
-            if task.summary {
-                return Ok(());
-            }
-            let remaining = (*minutes).max(0);
-            if task.duration <= 0 {
-                task.duration = remaining;
-                task.percent_complete = 0.0;
-            } else if remaining >= task.duration {
-                task.duration = remaining;
-                task.percent_complete = 0.0;
-                task.actual_start = None;
-                task.actual_finish = None;
-            } else {
-                task.percent_complete =
-                    (task.duration - remaining) as f64 / task.duration as f64 * 100.0;
-                if task.percent_complete >= 100.0 {
-                    task.actual_finish = Some(task.finish);
-                } else {
-                    task.actual_finish = None;
-                }
-            }
-            task.milestone = task.duration == 0;
-            work::apply_change(project, *uid, Changed::Duration);
+            tracking::set_remaining_duration(project, *uid, *minutes)?
         }
         Command::SetRemainingWork { uid, minutes } => {
-            set_remaining_work(project, *uid, *minutes)?;
+            tracking::set_remaining_work(project, *uid, *minutes, set_work)?
         }
         Command::SetOvertimeWork { uid, minutes } => {
             set_overtime_work(project, *uid, *minutes)?;
@@ -976,39 +919,6 @@ fn set_overtime_work(project: &mut Project, uid: u32, minutes: i64) -> Result<()
         let work = project.assignments[index].work.max(0);
         if project.assignments[index].overtime_work > work {
             project.assignments[index].overtime_work = work;
-        }
-    }
-    Ok(())
-}
-
-fn set_remaining_work(project: &mut Project, uid: u32, minutes: i64) -> Result<(), EngineError> {
-    let task = project.task(uid).ok_or(EngineError::TaskNotFound)?;
-    if task.summary {
-        return Ok(());
-    }
-    let remaining = minutes.max(0);
-    if task.work <= 0 {
-        set_work(project, uid, remaining)?;
-        if let Some(task) = project.task_mut(uid) {
-            task.percent_complete = 0.0;
-        }
-        return Ok(());
-    }
-    if remaining >= task.work {
-        set_work(project, uid, remaining)?;
-        if let Some(task) = project.task_mut(uid) {
-            task.percent_complete = 0.0;
-            task.actual_start = None;
-            task.actual_finish = None;
-        }
-    } else {
-        let work = task.work;
-        let task = project.task_mut(uid).unwrap();
-        task.percent_complete = (work - remaining) as f64 / work as f64 * 100.0;
-        if task.percent_complete >= 100.0 {
-            task.actual_finish = Some(task.finish);
-        } else {
-            task.actual_finish = None;
         }
     }
     Ok(())
