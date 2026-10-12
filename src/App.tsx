@@ -26,7 +26,7 @@ import { DateTimeField } from "./components/DateTimeField";
 import { EvmPanel } from "./components/EvmPanel";
 import { GanttChart } from "./components/GanttChart";
 import { Inspector } from "./components/inspector/Inspector";
-import { canSplit } from "./components/inspector/SplitSection";
+import { Modal } from "./components/Modal";
 import { NetworkDiagram } from "./components/NetworkDiagram";
 import { RecurringDialog, recurringCommand } from "./components/RecurringDialog";
 import { ResourceSheet } from "./components/ResourceSheet";
@@ -34,11 +34,14 @@ import { SplitDialog } from "./components/SplitDialog";
 import { TaskEditDialog } from "./components/TaskEditDialog";
 import { TaskSheet } from "./components/TaskSheet";
 import { TaskUsage } from "./components/TaskUsage";
+import { Toolbar } from "./components/Toolbar";
+import { ViewBar } from "./components/ViewBar";
 import { formatInstant } from "./format";
 import { buildGanttPdf, pdfSuggestedName } from "./ganttPdf";
 import { buildNetworkPdf } from "./networkPdf";
 import type {
   Command,
+  DepKind,
   NetworkLayout,
   Project,
   ProjectMetrics,
@@ -49,7 +52,15 @@ import type {
   ViewId,
 } from "./types";
 import { projectFinish } from "./projectFinish";
-import { isEditableTarget, runFieldAction, shortcutId, shouldRunAction, trackCommittedText } from "./shortcuts";
+import {
+  commitFocusedField,
+  isEditableTarget,
+  runFieldAction,
+  shortcutId,
+  shouldRunAction,
+  trackCommittedText,
+} from "./shortcuts";
+import { linkFromAbove, taskAbove, toolbarStates } from "./toolbarState";
 import { buildViewRows, type FilterMode, type GroupMode, type HighlightMode } from "./viewRows";
 import { fileName, windowTitle } from "./windowTitle";
 import "./styles.css";
@@ -147,8 +158,10 @@ export default function App() {
     (id: string) => {
       if (id === "new") startFileDialog(newProject);
       if (id === "open") startFileDialog(openProject);
-      if (id === "save") startFileDialog(saveProject);
-      if (id === "save-as") startFileDialog(saveProjectAs);
+      if (id === "save" || id === "save-as") {
+        commitFocusedField();
+        startFileDialog(id === "save" ? saveProject : saveProjectAs);
+      }
       if (id === "import-xml") startFileDialog(importMspdi);
       if (id === "export-xml") startFileDialog(async () => {
         await exportMspdi();
@@ -176,12 +189,14 @@ export default function App() {
       if (id === "compact-history") startFileDialog(compactHistory);
       if (id === "recurring") setSeriesDialog(0);
       if (!task) return;
-      if (id === "split-task" && canSplit(task)) setSplitDialog(task.uid);
-      if (id === "indent") void send({ type: "indent", uid: task.uid });
-      if (id === "outdent") void send({ type: "outdent", uid: task.uid });
-      if (id === "delete") void send({ type: "delete_task", uid: task.uid });
+      // Shortcuts follow the same rules as the toolbar buttons.
+      const states = toolbarStates({ snap, task, view, fileDialogBusy });
+      if (id === "split-task" && states.split.enabled) setSplitDialog(task.uid);
+      if (id === "indent" && states.indent.enabled) void send({ type: "indent", uid: task.uid });
+      if (id === "outdent" && states.outdent.enabled) void send({ type: "outdent", uid: task.uid });
+      if (id === "delete" && states.remove.enabled) void send({ type: "delete_task", uid: task.uid });
     },
-    [run, send, startFileDialog, task],
+    [run, send, startFileDialog, task, snap, view, fileDialogBusy],
   );
   menuRef.current = handleMenu;
 
@@ -345,126 +360,48 @@ export default function App() {
 
   return (
     <div className="app">
-      <header className="toolbar">
-        <strong>ProjectDesk</strong>
-        <button type="button" onClick={() => send({ type: "add_task", name: "", after_uid: selected })}>Thêm việc</button>
-        <button type="button" onClick={() => send({ type: "add_milestone", name: "Mốc", after_uid: selected })}>Mốc</button>
-        <button type="button" disabled={!project} onClick={() => setSeriesDialog(0)}>Công việc lặp</button>
-        <button
-          type="button"
-          disabled={!canSplit(task)}
-          title="Ngắt công việc đang chọn thành nhiều đoạn"
-          onClick={() => task && setSplitDialog(task.uid)}
-        >
-          Tách công việc
-        </button>
-        <button type="button" disabled={!task} onClick={() => task && send({ type: "indent", uid: task.uid })}>Thụt vào</button>
-        <button type="button" disabled={!task} onClick={() => task && send({ type: "outdent", uid: task.uid })}>Thụt ra</button>
-        <button type="button" disabled={!task} onClick={() => task && send({ type: "delete_task", uid: task.uid })}>Xóa</button>
-        <button type="button" disabled={!task} onClick={() => linkAbove(project, task, send)}>Nối FS</button>
-        <button type="button" onClick={() => setInfoOpen(true)}>Lịch</button>
-        <button type="button" disabled={!project || fileDialogBusy} onClick={() => exportPdfRef.current()}>Xuất PDF</button>
-        <button
-          type="button"
-          className={evmOpen ? "on" : ""}
-          disabled={!project}
-          title="Chỉ số EVM và burn-down"
-          onClick={() => {
-            if (!evmOpen && view !== "gantt" && view !== "tracking") setView("gantt");
-            setEvmOpen((open) => !open);
-          }}
-        >
-          EVM
-        </button>
-        <span className="spacer" />
-        <div className="segmented">
-          <button type="button" className={view === "gantt" ? "on" : ""} onClick={() => setView("gantt")}>Gantt</button>
-          <button type="button" className={view === "tracking" ? "on" : ""} onClick={() => setView("tracking")}>Theo dõi</button>
-          <button type="button" className={view === "resources" ? "on" : ""} onClick={() => setView("resources")}>Nguồn lực</button>
-          <button type="button" className={view === "usage" ? "on" : ""} onClick={() => setView("usage")}>Sử dụng</button>
-          <button type="button" className={view === "network" ? "on" : ""} onClick={() => setView("network")}>Sơ đồ mạng</button>
-        </div>
-        {(view === "gantt" || view === "tracking") && (
-          <div className="segmented">
-            <button type="button" className={scale === "day" ? "on" : ""} onClick={() => setScale("day")}>Ngày</button>
-            <button type="button" className={scale === "week" ? "on" : ""} onClick={() => setScale("week")}>Tuần</button>
-            <button type="button" className={scale === "month" ? "on" : ""} onClick={() => setScale("month")}>Tháng</button>
-          </div>
-        )}
-      </header>
+      <Toolbar
+        states={toolbarStates({ snap, task, view, fileDialogBusy })}
+        evmOpen={evmOpen}
+        onUndo={() => void run(undo)}
+        onRedo={() => void run(redo)}
+        onAddTask={() => void send({ type: "add_task", name: "", after_uid: selected })}
+        onAddMilestone={() => void send({ type: "add_milestone", name: "Mốc", after_uid: selected })}
+        onAddRecurring={() => setSeriesDialog(0)}
+        onIndent={() => task && void send({ type: "indent", uid: task.uid })}
+        onOutdent={() => task && void send({ type: "outdent", uid: task.uid })}
+        onLink={(kind) => linkAbove(project, task, kind, send)}
+        onUnlink={() => {
+          const link = linkFromAbove(snap, task);
+          if (link) void send({ type: "remove_dependency", uid: link.uid });
+        }}
+        onSplit={() => task && setSplitDialog(task.uid)}
+        onDelete={() => task && void send({ type: "delete_task", uid: task.uid })}
+        onProjectInfo={() => setInfoOpen(true)}
+        onToggleEvm={() => {
+          if (!evmOpen && view !== "gantt" && view !== "tracking") setView("gantt");
+          setEvmOpen((open) => !open);
+        }}
+        onExportPdf={() => exportPdfRef.current()}
+      />
+      <ViewBar
+        project={project}
+        view={view}
+        onView={setView}
+        scale={scale}
+        onScale={setScale}
+        filter={rowFilter}
+        onFilter={setRowFilter}
+        filterResource={filterResource}
+        onFilterResource={setFilterResource}
+        group={rowGroup}
+        onGroup={setRowGroup}
+        highlight={rowHighlight}
+        onHighlight={setRowHighlight}
+        networkSummaries={networkSummaries}
+        onNetworkSummaries={setNetworkSummaries}
+      />
       {error && <div className="banner">{error}</div>}
-      {project && (view === "gantt" || view === "tracking" || view === "network") && (
-        <div className="viewbar">
-          <label className="view-control">
-            Lọc
-            <select
-              aria-label="Lọc"
-              value={rowFilter}
-              onChange={(event) => {
-                const next = event.target.value as FilterMode;
-                setRowFilter(next);
-                if (next === "resource" && filterResource == null) {
-                  setFilterResource(project.resources[0]?.uid ?? null);
-                }
-              }}
-            >
-              <option value="none">Không lọc</option>
-              <option value="critical">Đường găng</option>
-              <option value="resource">Theo người</option>
-              <option value="late">Trễ hạn</option>
-            </select>
-          </label>
-          {rowFilter === "resource" && (
-            <select
-              aria-label="Người"
-              value={filterResource ?? ""}
-              onChange={(event) => setFilterResource(event.target.value ? Number(event.target.value) : null)}
-            >
-              {project.resources.length === 0 && <option value="">Chưa có nguồn lực</option>}
-              {project.resources.map((resource) => (
-                <option key={resource.uid} value={resource.uid}>
-                  {resource.name.trim() || `NL ${resource.uid}`}
-                </option>
-              ))}
-            </select>
-          )}
-          {view === "network" ? (
-            <label className="view-control">
-              <input
-                type="checkbox"
-                checked={networkSummaries}
-                onChange={(event) => setNetworkSummaries(event.target.checked)}
-              />
-              Hiện công việc tóm tắt
-            </label>
-          ) : (
-            <label className="view-control">
-              Nhóm
-              <select
-                aria-label="Nhóm"
-                value={rowGroup}
-                onChange={(event) => setRowGroup(event.target.value as GroupMode)}
-              >
-                <option value="none">Không nhóm</option>
-                <option value="resource">Theo người</option>
-                <option value="summary">Theo summary</option>
-              </select>
-            </label>
-          )}
-          <label className="view-control">
-            Tô sáng
-            <select
-              aria-label="Tô sáng"
-              value={rowHighlight}
-              onChange={(event) => setRowHighlight(event.target.value as HighlightMode)}
-            >
-              <option value="none">Không</option>
-              <option value="critical">Đường găng</option>
-              <option value="late">Trễ hạn</option>
-            </select>
-          </label>
-        </div>
-      )}
       {/* EVM sits beside the Gantt and the inspector so its burn-down chart keeps the full height. */}
       <div className="work-area">
         <div className="work-column">
@@ -508,6 +445,7 @@ export default function App() {
                   onMove={(uid, start) => send({ type: "move_task", uid, start })}
                   onResize={(uid, finish) => send({ type: "resize_task", uid, finish })}
                   onLink={(from, to) => send({ type: "add_dependency", predecessor_uid: from, successor_uid: to, kind: "fs", lag: 0 })}
+                  onEdit={setEditUid}
                   onScroll={() => syncScroll("gantt")}
                 />
               </>
@@ -585,13 +523,10 @@ export default function App() {
         />
       )}
       {editingCalendar && (
-        <div className="modal">
-          <div className="dialog wide">
-            <h2>Sửa lịch</h2>
-            <CalendarEditor calendar={editingCalendar} send={send} />
-            <button type="button" onClick={() => setCalendarEditId(null)}>Đóng</button>
-          </div>
-        </div>
+        <Modal title="Sửa lịch" className="wide" onClose={() => setCalendarEditId(null)}>
+          <CalendarEditor calendar={editingCalendar} send={send} />
+          <button type="button" onClick={() => setCalendarEditId(null)}>Đóng</button>
+        </Modal>
       )}
       {seriesDialog != null && project && (
         <RecurringDialog
@@ -626,18 +561,12 @@ export default function App() {
 function linkAbove(
   project: Project | undefined,
   task: Task | null,
+  kind: DepKind,
   send: (command: Command) => void,
 ) {
-  if (!project || !task) return;
-  const index = project.tasks.findIndex((item) => item.uid === task.uid);
-  if (index <= 0) return;
-  send({
-    type: "add_dependency",
-    predecessor_uid: project.tasks[index - 1].uid,
-    successor_uid: task.uid,
-    kind: "fs",
-    lag: 0,
-  });
+  const above = project ? taskAbove(project.tasks, task) : null;
+  if (!above || !task) return;
+  send({ type: "add_dependency", predecessor_uid: above.uid, successor_uid: task.uid, kind, lag: 0 });
 }
 
 function resourceCommand(resource: Resource): Command {
@@ -671,58 +600,55 @@ function ProjectDialog({
     project.calendars.find((item) => item.id === project.calendar_id) ??
     project.calendars[0];
   return (
-    <div className="modal">
-      <div className="dialog wide">
-        <h2>Thông tin dự án</h2>
-        <label>Tên</label>
-        <input
-          defaultValue={project.name}
-          onBlur={(event) => send({ type: "rename_project", name: event.target.value })}
-        />
-        <label>Ngày bắt đầu</label>
-        <DateTimeField
-          ariaLabel="Ngày bắt đầu dự án"
-          value={project.start}
-          onCommit={(start) => {
-            if (start != null) void send({ type: "set_project_start", start });
-          }}
-        />
-        <label>Ngày trạng thái</label>
-        <DateTimeField
-          optional
-          ariaLabel="Ngày trạng thái"
-          value={project.status_date}
-          onCommit={(date) => void send({ type: "set_status_date", date })}
-        />
-        {calendar && (
-          <>
-            <label>Lịch đang sửa</label>
-            <div className="row">
-              <select value={calendar.id} onChange={(event) => setEditingId(Number(event.target.value))}>
-                {project.calendars.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                    {item.id === project.calendar_id ? " (dự án)" : ""}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                onClick={() => {
-                  void onCreateCalendar().then((id) => {
-                    if (id != null) setEditingId(id);
-                  });
-                }}
-              >
-                Tạo lịch
-              </button>
-            </div>
-            <CalendarEditor calendar={calendar} send={send} />
-          </>
-        )}
-        <button type="button" onClick={onClose}>Đóng</button>
-      </div>
-    </div>
+    <Modal title="Thông tin dự án" className="wide" onClose={onClose}>
+      <label>Tên</label>
+      <input
+        defaultValue={project.name}
+        onBlur={(event) => send({ type: "rename_project", name: event.target.value })}
+      />
+      <label>Ngày bắt đầu</label>
+      <DateTimeField
+        ariaLabel="Ngày bắt đầu dự án"
+        value={project.start}
+        onCommit={(start) => {
+          if (start != null) void send({ type: "set_project_start", start });
+        }}
+      />
+      <label>Ngày trạng thái</label>
+      <DateTimeField
+        optional
+        ariaLabel="Ngày trạng thái"
+        value={project.status_date}
+        onCommit={(date) => void send({ type: "set_status_date", date })}
+      />
+      {calendar && (
+        <>
+          <label>Lịch đang sửa</label>
+          <div className="row">
+            <select value={calendar.id} onChange={(event) => setEditingId(Number(event.target.value))}>
+              {project.calendars.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                  {item.id === project.calendar_id ? " (dự án)" : ""}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => {
+                void onCreateCalendar().then((id) => {
+                  if (id != null) setEditingId(id);
+                });
+              }}
+            >
+              Tạo lịch
+            </button>
+          </div>
+          <CalendarEditor calendar={calendar} send={send} />
+        </>
+      )}
+      <button type="button" onClick={onClose}>Đóng</button>
+    </Modal>
   );
 }
 
@@ -737,17 +663,14 @@ function BaselineDialog({
 }) {
   const [number, setNumber] = useState(0);
   return (
-    <div className="modal">
-      <div className="dialog">
-        <h2>Đường cơ sở</h2>
-        <label>Mốc 0–10</label>
-        <input type="number" min={0} max={10} value={number} onChange={(event) => setNumber(Number(event.target.value))} />
-        <div className="row">
-          <button type="button" onClick={() => onSet(Math.min(10, Math.max(0, number)))}>Đặt</button>
-          <button type="button" onClick={() => onClear(Math.min(10, Math.max(0, number)))}>Xóa</button>
-          <button type="button" onClick={onClose}>Đóng</button>
-        </div>
+    <Modal title="Đường cơ sở" onClose={onClose}>
+      <label>Mốc 0–10</label>
+      <input type="number" min={0} max={10} value={number} onChange={(event) => setNumber(Number(event.target.value))} />
+      <div className="row">
+        <button type="button" onClick={() => onSet(Math.min(10, Math.max(0, number)))}>Đặt</button>
+        <button type="button" onClick={() => onClear(Math.min(10, Math.max(0, number)))}>Xóa</button>
+        <button type="button" onClick={onClose}>Đóng</button>
       </div>
-    </div>
+    </Modal>
   );
 }

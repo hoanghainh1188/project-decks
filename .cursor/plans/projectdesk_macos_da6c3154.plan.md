@@ -75,7 +75,7 @@ todos:
     content: "Pha 16: quá tải theo giờ trùng nhau, leveling tuần tự, lưu độ trễ vào log"
     status: completed
   - id: project-parity-ux
-    content: "Pha 17: UX ngang MS Project (copy/paste, tách App.tsx, bàn phím, giao diện còn lại). PR A (dọn dẹp, tiêu đề, EVM, README) và B (sơ đồ mạng) xong"
+    content: "Pha 17: UX ngang MS Project (copy/paste, tách App.tsx, bàn phím, giao diện còn lại). PR A (dọn dẹp, tiêu đề, EVM, README), B (sơ đồ mạng) và C (thanh công cụ, focus, bàn phím Gantt, EVM phóng to) xong"
     status: in_progress
 isProject: false
 ---
@@ -454,12 +454,14 @@ Chia 5 PR: (A) dọn dẹp và chỉnh nhỏ, (B) sơ đồ mạng, (C) thanh c�
 
 **PR B — đã xong (gộp chung PR với A):** sơ đồ mạng vẽ mỗi chuỗi lặp thành một ô (summary của chuỗi, nhãn "Lặp · N lần"), hiện khi summary hoặc bất kỳ lần nào qua bộ lọc; dự án mẫu từ 20 ô còn 11. Khi ẩn summary, liên kết của summary chuyển xuống task con: từ các task kết thúc nhóm (không có task sau trong nhóm) và tới các task bắt đầu nhóm (không có task trước trong nhóm). `NetworkEdge.from_uid`/`to_uid` là ô được nối; khóa React của cạnh gồm cả hai đầu. Xuất PDF dùng cùng nhãn.
 
+**PR C — đã xong:** thanh công cụ (`Toolbar.tsx`) chia nhóm Lịch sử / Tạo công việc / Công việc đang chọn / Dự án / Báo cáo, có vạch ngăn. "Thêm việc ▾" gộp công việc, mốc và công việc lặp; "Liên kết ▾" chọn FS/SS/FF/SF với việc liền trước trong dàn ý, hoặc gỡ liên kết đó. Nút menu theo mẫu WAI-ARIA (`MenuButton.tsx`: mũi tên, Home/End, Esc trả focus về nút, Tab hoặc bấm ra ngoài thì đóng). Trạng thái bật/tắt và lý do (chú thích) của từng lệnh tính ở `toolbarState.ts`, dùng chung cho nút và menu macOS (tách, thụt vào/ra, xóa); không liên kết task với nhóm chứa nó, không tạo liên kết trùng. Hàng view riêng (`ViewBar.tsx`): các view là thanh điều hướng, thang ngày/tuần/tháng là nhóm nút, lọc/người/nhóm/tô sáng là điều khiển theo view. Mọi nút, ô nhập và vùng có `tabIndex` có viền `:focus-visible`; nút có kiểu hover/active, Xóa màu đỏ. Gantt nhận focus: ↑ ↓ Home End chọn dòng (cuộn tới), Enter mở task, Alt+← → dời task một ngày làm việc theo lịch, Alt+Shift+← → đổi ngày kết thúc (`ganttKeys.ts`; giữ phím không lặp lệnh). Bảng EVM có nút "Phóng to" mở burn-down và đường cong S cỡ lớn trong hộp thoại. Mọi hộp thoại (Thông tin dự án, Đường cơ sở, Sửa lịch, Tách, Công việc lặp, Sửa công việc, EVM phóng to) dùng chung `Modal.tsx`: `role="dialog"` + `aria-modal`, focus vào hộp khi mở và trả lại khi đóng, Tab chỉ đi vòng trong hộp, Esc hoặc bấm nền để đóng (ô đang sửa được ghi trước khi đóng; Esc trong lịch chọn ngày chỉ đóng lịch). Khi hộp thoại mở, phím tắt và menu chỉ còn Hoàn tác, Làm lại, Lưu, Lưu thành; Xóa, Thụt, đổi view, mở tệp… chờ đến khi đóng. Hộp thoại nằm trên tiêu đề dính của panel thuộc tính (`z-index`).
+
 - Copy/paste và điền xuống (fill-down) task.
 - Tách `App.tsx` tiếp (PR #25 đã giảm còn 730 dòng); thêm test cho `GanttChart`, `ganttPdf`, `networkPdf`, `App`, `ResourceSheet`, `CalendarEditor`, `SplitDialog`, `TaskUsage`.
-- Gantt dùng được bằng bàn phím; nút có kiểu focus.
+- Gantt dùng được bằng bàn phím; nút có kiểu focus. (PR C; kéo/sửa bằng chuột vẫn như cũ)
 - Kéo riêng từng đoạn của task tách.
 - Sơ đồ mạng giữ liên kết gắn vào summary khi ẩn summary (chuyển xuống task con); các lần của chuỗi lặp không chen vào cột đầu cạnh việc chính (gom lại hoặc tùy chọn ẩn). (PR B: gom chuỗi thành một ô)
-- Thiết kế lại điều hướng và thanh công cụ theo luồng làm việc:
+- Thiết kế lại điều hướng và thanh công cụ theo luồng làm việc (PR C):
   - Menu macOS giữ các thao tác hệ thống và phím tắt (`Tệp`, `Sửa`, `Xem`, `Dự án`); thanh công cụ ưu tiên thao tác hằng ngày.
   - Chia thanh công cụ thành nhóm rõ ràng: Hoàn tác/Làm lại; tạo task; sửa task đang chọn; điều khiển dự án; xuất/báo cáo. Có vạch ngăn hoặc khoảng cách giữa các nhóm.
   - Gộp “Thêm việc”, mốc và công việc lặp vào nút “Thêm việc ▾”. Đổi “Nối FS” thành “Liên kết”, có chọn FS/SS/FF/SF và gỡ liên kết. “Tách”, thụt vào/ra và xóa chỉ nằm trong nhóm thao tác task, với trạng thái vô hiệu hóa và chú thích theo ngữ cảnh.

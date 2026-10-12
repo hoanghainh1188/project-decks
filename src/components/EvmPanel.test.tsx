@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -52,6 +52,52 @@ describe("EvmPanel states", () => {
     const { user, onClose } = renderPanel(makeMetrics());
     await user.click(screen.getByRole("button", { name: "Đóng bảng EVM" }));
     expect(onClose).toHaveBeenCalledOnce();
+  });
+});
+
+describe("EvmPanel enlarged charts", () => {
+  it("opens burn-down and S-curve in a dialog and returns focus on Escape", async () => {
+    const { user } = renderPanel(
+      makeMetrics(
+        {},
+        {
+          baseline_work: 4800,
+          current_remaining_work: 2400,
+          ideal: [
+            { date: at(2026, 1, 5), remaining_work: 4800 },
+            { date: at(2026, 1, 16), remaining_work: 0 },
+          ],
+        },
+      ),
+    );
+    const zoom = screen.getByRole("button", { name: "Phóng to" });
+    await user.click(zoom);
+    const dialog = screen.getByRole("dialog", { name: "Burn-down và đường cong S" });
+    expect(within(dialog).getByRole("button", { name: "Đóng" })).toHaveFocus();
+    expect(within(dialog).getByRole("img", { name: /Biểu đồ burn-down/ })).toHaveAttribute("viewBox", "0 0 880 340");
+    const close = within(dialog).getByRole("button", { name: "Đóng" });
+    await user.tab();
+    expect(close).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(close).toHaveFocus();
+    await user.click(within(dialog).getByRole("img", { name: /Biểu đồ burn-down/ }));
+    expect(dialog).toHaveFocus();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(zoom).toHaveFocus();
+  });
+
+  it("closes from a click on the backdrop", async () => {
+    const { user } = renderPanel(makeMetrics());
+    await user.click(screen.getByRole("button", { name: "Phóng to" }));
+    const backdrop = screen.getByRole("dialog").parentElement as HTMLElement;
+    fireEvent.mouseDown(backdrop);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("is off until metrics arrive", () => {
+    renderPanel(null);
+    expect(screen.getByRole("button", { name: "Phóng to" })).toBeDisabled();
   });
 });
 

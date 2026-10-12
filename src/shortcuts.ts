@@ -58,15 +58,32 @@ export function hasUncommittedText(field: HTMLElement): boolean {
 }
 
 /**
+ * Actions still allowed while a modal dialog covers the window: dialogs edit live, so
+ * undo and redo show their effect there, and saving changes nothing on screen. Anything
+ * else (delete, indent, a view switch, opening a file, another dialog) waits.
+ */
+const MODAL_ACTIONS = new Set(["undo", "redo", "save", "save-as"]);
+
+/**
  * Whether a menu or shortcut action should act on the project. While a text field has
  * uncommitted typing, undo and redo belong to that field; Cmd+Backspace inside a field
  * always edits the text and never deletes the selected task.
  */
 export function shouldRunAction(id: string, focused: EventTarget | null): boolean {
+  if (!MODAL_ACTIONS.has(id) && document.querySelector('[aria-modal="true"]')) return false;
   if (!isEditableTarget(focused)) return true;
   if (id === "delete") return false;
   if (id === "undo" || id === "redo") return !hasUncommittedText(focused);
   return true;
+}
+
+/**
+ * Fields commit their text on blur. Saving first blurs the focused field, so its
+ * command joins the queue before the save, which waits for queued edits.
+ */
+export function commitFocusedField(): void {
+  const active = document.activeElement;
+  if (isEditableTarget(active)) active.blur();
 }
 
 /** Range Cmd+Backspace removes: the selection, or back to the start of the line. */

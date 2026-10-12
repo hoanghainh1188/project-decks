@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { DateTimeField } from "./DateTimeField";
+import { Modal } from "./Modal";
 import { formatDuration, formatInstant, parseDuration } from "../format";
 import type { Task } from "../types";
 
@@ -41,31 +42,28 @@ export function SplitDialog({ task, onClose, onSubmit }: SplitDialogProps) {
   }
 
   return (
-    <div className="modal">
-      <div className="dialog split-dialog">
-        <h2>Tách công việc</h2>
-        <p className="meta">
-          {task.name} · {formatInstant(task.start)} – {formatInstant(task.finish)} · thời lượng {formatDuration(task.duration)}
-        </p>
-        <label>Tách tại</label>
-        <DateTimeField
-          ariaLabel="Thời điểm tách"
-          value={at}
-          onCommit={(ms) => {
-            if (ms != null) setAt(ms);
-          }}
-        />
-        <label>Khoảng ngắt (giờ làm việc)</label>
-        <input aria-label="Khoảng ngắt" value={gapText} onChange={(event) => setGapText(event.target.value)} />
-        <p className="meta">
-          Thời lượng giữ nguyên. Phần việc sau điểm tách dời muộn hơn đúng bằng khoảng ngắt, nên ngày kết thúc cũng lùi theo.
-        </p>
-        {problem && <p className="meta bad">{problem}</p>}
-        <div className="row">
-          <button type="button" onClick={() => void submit()}>Tách</button>
-          <button type="button" onClick={onClose}>Hủy</button>
-        </div>
+    <Modal title="Tách công việc" className="split-dialog" onClose={onClose}>
+      <p className="meta">
+        {task.name} · {formatInstant(task.start)} – {formatInstant(task.finish)} · thời lượng {formatDuration(task.duration)}
+      </p>
+      <label>Tách tại</label>
+      <DateTimeField
+        ariaLabel="Thời điểm tách"
+        value={at}
+        onCommit={(ms) => {
+          if (ms != null) setAt(ms);
+        }}
+      />
+      <label>Khoảng ngắt (giờ làm việc)</label>
+      <input aria-label="Khoảng ngắt" value={gapText} onChange={(event) => setGapText(event.target.value)} />
+      <p className="meta">
+        Thời lượng giữ nguyên. Phần việc sau điểm tách dời muộn hơn đúng bằng khoảng ngắt, nên ngày kết thúc cũng lùi theo.
+      </p>
+      {problem && <p className="meta bad">{problem}</p>}
+      <div className="row">
+        <button type="button" onClick={() => void submit()}>Tách</button>
+        <button type="button" onClick={onClose}>Hủy</button>
       </div>
-    </div>
+    </Modal>
   );
 }

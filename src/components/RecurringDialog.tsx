@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { DateTimeField } from "./DateTimeField";
+import { Modal } from "./Modal";
 import { formatDuration, parseDuration } from "../format";
 import type { Command, Project, RecurrenceEnd, RecurrencePattern, RecurrenceSpec, Task } from "../types";
 
@@ -203,186 +204,183 @@ export function RecurringDialog({ project, initial, defaultStart, onClose, onSub
   );
 
   return (
-    <div className="modal">
-      <div className="dialog wide recurring-dialog">
-        <h2>{initial ? "Sửa công việc lặp" : "Công việc lặp"}</h2>
-        <label>Tên</label>
-        <input aria-label="Tên chuỗi lặp" value={name} onChange={(event) => setName(event.target.value)} />
-        <label>Thời lượng mỗi lần</label>
-        <input
-          aria-label="Thời lượng mỗi lần"
-          value={durationText}
-          onChange={(event) => setDurationText(event.target.value)}
-        />
-        <label>Lặp theo</label>
-        <div className="row recurring-kinds">
-          {(["daily", "weekly", "monthly", "yearly"] as const).map((item) => (
-            <label key={item} className="check">
-              <input type="radio" name="recurring-kind" checked={group === item} onChange={() => setGroup(item)} />
-              {item === "daily" ? "Ngày" : item === "weekly" ? "Tuần" : item === "monthly" ? "Tháng" : "Năm"}
-            </label>
-          ))}
+    <Modal title={initial ? "Sửa công việc lặp" : "Công việc lặp"} className="wide recurring-dialog" onClose={onClose}>
+      <label>Tên</label>
+      <input aria-label="Tên chuỗi lặp" value={name} onChange={(event) => setName(event.target.value)} />
+      <label>Thời lượng mỗi lần</label>
+      <input
+        aria-label="Thời lượng mỗi lần"
+        value={durationText}
+        onChange={(event) => setDurationText(event.target.value)}
+      />
+      <label>Lặp theo</label>
+      <div className="row recurring-kinds">
+        {(["daily", "weekly", "monthly", "yearly"] as const).map((item) => (
+          <label key={item} className="check">
+            <input type="radio" name="recurring-kind" checked={group === item} onChange={() => setGroup(item)} />
+            {item === "daily" ? "Ngày" : item === "weekly" ? "Tuần" : item === "monthly" ? "Tháng" : "Năm"}
+          </label>
+        ))}
+      </div>
+      {group === "daily" && (
+        <div className="row recurring-inline">
+          <label className="check">
+            <input type="radio" name="recurring-days" checked={!calendarDays} onChange={() => setCalendarDays(false)} />
+            Ngày làm việc
+          </label>
+          <label className="check">
+            <input type="radio" name="recurring-days" checked={calendarDays} onChange={() => setCalendarDays(true)} />
+            Ngày lịch (ngày nghỉ dời sang giờ làm việc kế tiếp)
+          </label>
         </div>
-        {group === "daily" && (
+      )}
+      <label>Mỗi</label>
+      <div className="row recurring-inline">
+        <input aria-label="Chu kỳ lặp" value={every} onChange={(event) => setEvery(event.target.value)} />
+        <span>{unit}</span>
+      </div>
+      {group === "weekly" && (
+        <>
+          <label>Vào các thứ</label>
+          <div className="row recurring-weekdays">
+            {WEEKDAYS.map((label, index) => (
+              <label key={label} className="check">
+                <input
+                  type="checkbox"
+                  checked={weekdays.includes(index)}
+                  onChange={() => setWeekdays((current) => toggle(current, index))}
+                />
+                {label}
+              </label>
+            ))}
+          </div>
+        </>
+      )}
+      {(group === "monthly" || group === "yearly") && (
+        <>
+          {group === "yearly" && (
+            <>
+              <label>Vào tháng</label>
+              <select aria-label="Tháng trong năm" value={month} onChange={(event) => setMonth(Number(event.target.value))}>
+                {Array.from({ length: 12 }, (_, index) => (
+                  <option key={index} value={index + 1}>Tháng {index + 1}</option>
+                ))}
+              </select>
+            </>
+          )}
+          <label>Vào</label>
           <div className="row recurring-inline">
             <label className="check">
-              <input type="radio" name="recurring-days" checked={!calendarDays} onChange={() => setCalendarDays(false)} />
-              Ngày làm việc
+              <input type="radio" name="recurring-on" checked={!byNth} onChange={() => setByNth(false)} />
+              Theo ngày
             </label>
-            <label className="check">
-              <input type="radio" name="recurring-days" checked={calendarDays} onChange={() => setCalendarDays(true)} />
-              Ngày lịch (ngày nghỉ dời sang giờ làm việc kế tiếp)
-            </label>
+            <input
+              aria-label="Ngày trong tháng"
+              disabled={byNth}
+              value={monthDay}
+              onChange={(event) => setMonthDay(event.target.value)}
+            />
+            <span>(lớn hơn số ngày của tháng thì rơi vào ngày cuối tháng)</span>
           </div>
-        )}
-        <label>Mỗi</label>
-        <div className="row recurring-inline">
-          <input aria-label="Chu kỳ lặp" value={every} onChange={(event) => setEvery(event.target.value)} />
-          <span>{unit}</span>
-        </div>
-        {group === "weekly" && (
-          <>
-            <label>Vào các thứ</label>
-            <div className="row recurring-weekdays">
-              {WEEKDAYS.map((label, index) => (
-                <label key={label} className="check">
-                  <input
-                    type="checkbox"
-                    checked={weekdays.includes(index)}
-                    onChange={() => setWeekdays((current) => toggle(current, index))}
-                  />
-                  {label}
-                </label>
-              ))}
-            </div>
-          </>
-        )}
-        {(group === "monthly" || group === "yearly") && (
-          <>
-            {group === "yearly" && (
-              <>
-                <label>Vào tháng</label>
-                <select aria-label="Tháng trong năm" value={month} onChange={(event) => setMonth(Number(event.target.value))}>
-                  {Array.from({ length: 12 }, (_, index) => (
-                    <option key={index} value={index + 1}>Tháng {index + 1}</option>
-                  ))}
-                </select>
-              </>
-            )}
-            <label>Vào</label>
-            <div className="row recurring-inline">
-              <label className="check">
-                <input type="radio" name="recurring-on" checked={!byNth} onChange={() => setByNth(false)} />
-                Theo ngày
-              </label>
-              <input
-                aria-label="Ngày trong tháng"
-                disabled={byNth}
-                value={monthDay}
-                onChange={(event) => setMonthDay(event.target.value)}
-              />
-              <span>(lớn hơn số ngày của tháng thì rơi vào ngày cuối tháng)</span>
-            </div>
-            <div className="row recurring-inline">
-              <label className="check">
-                <input type="radio" name="recurring-on" checked={byNth} onChange={() => setByNth(true)} />
-                Theo thứ
-              </label>
-              {nthFields}
-              <span>của tháng</span>
-            </div>
-          </>
-        )}
-        <label>Bắt đầu từ</label>
+          <div className="row recurring-inline">
+            <label className="check">
+              <input type="radio" name="recurring-on" checked={byNth} onChange={() => setByNth(true)} />
+              Theo thứ
+            </label>
+            {nthFields}
+            <span>của tháng</span>
+          </div>
+        </>
+      )}
+      <label>Bắt đầu từ</label>
+      <DateTimeField
+        ariaLabel="Bắt đầu chuỗi lặp"
+        value={start}
+        onCommit={(ms) => {
+          if (ms != null) setStart(ms);
+        }}
+      />
+      <label>Kết thúc</label>
+      <div className="row recurring-inline">
+        <label className="check">
+          <input type="radio" name="recurring-end" checked={endKind === "count"} onChange={() => setEndKind("count")} />
+          Sau
+        </label>
+        <input
+          aria-label="Số lần lặp"
+          disabled={endKind !== "count"}
+          value={count}
+          onChange={(event) => setCount(event.target.value)}
+        />
+        <span>lần</span>
+      </div>
+      <div className="row recurring-inline">
+        <label className="check">
+          <input type="radio" name="recurring-end" checked={endKind === "until"} onChange={() => setEndKind("until")} />
+          Đến ngày
+        </label>
         <DateTimeField
-          ariaLabel="Bắt đầu chuỗi lặp"
-          value={start}
+          ariaLabel="Ngày kết thúc chuỗi"
+          disabled={endKind !== "until"}
+          value={until}
           onCommit={(ms) => {
-            if (ms != null) setStart(ms);
+            if (ms != null) setUntil(ms);
           }}
         />
-        <label>Kết thúc</label>
-        <div className="row recurring-inline">
-          <label className="check">
-            <input type="radio" name="recurring-end" checked={endKind === "count"} onChange={() => setEndKind("count")} />
-            Sau
-          </label>
-          <input
-            aria-label="Số lần lặp"
-            disabled={endKind !== "count"}
-            value={count}
-            onChange={(event) => setCount(event.target.value)}
-          />
-          <span>lần</span>
-        </div>
-        <div className="row recurring-inline">
-          <label className="check">
-            <input type="radio" name="recurring-end" checked={endKind === "until"} onChange={() => setEndKind("until")} />
-            Đến ngày
-          </label>
-          <DateTimeField
-            ariaLabel="Ngày kết thúc chuỗi"
-            disabled={endKind !== "until"}
-            value={until}
-            onCommit={(ms) => {
-              if (ms != null) setUntil(ms);
-            }}
-          />
-        </div>
-        <label>Lịch</label>
-        <select
-          aria-label="Lịch chuỗi lặp"
-          value={calendarId ?? ""}
-          onChange={(event) => setCalendarId(event.target.value ? Number(event.target.value) : null)}
-        >
-          <option value="">Lịch dự án</option>
-          {project.calendars.map((calendar) => (
-            <option key={calendar.id} value={calendar.id}>{calendar.name}</option>
-          ))}
-        </select>
-        <label>Đường găng</label>
-        <label className="check" title="Ví dụ họp hằng tuần kéo dài sau mốc phát hành">
-          <input type="checkbox" checked={background} onChange={() => setBackground((value) => !value)} />
-          Chuỗi nền: không quyết định ngày kết thúc dự án và đường găng
-        </label>
-        <label>Nguồn lực</label>
-        {project.resources.length === 0 ? (
-          <span className="meta">Chưa có nguồn lực</span>
-        ) : (
-          <div className="row recurring-resources">
-            {project.resources.map((resource) => {
-              const label = resource.name.trim() || `NL ${resource.uid}`;
-              const selected = resource.uid in resourceUnits;
-              return (
-                <span key={resource.uid} className="recurring-resource">
-                  <label className="check">
-                    <input type="checkbox" checked={selected} onChange={() => toggleResource(resource.uid)} />
-                    {label}
-                  </label>
-                  {selected && (
-                    <input
-                      aria-label={`Đơn vị của ${label}`}
-                      title="Đơn vị: 1 = 100%"
-                      value={resourceUnits[resource.uid]}
-                      onChange={(event) =>
-                        setResourceUnits((current) => ({ ...current, [resource.uid]: event.target.value }))
-                      }
-                    />
-                  )}
-                </span>
-              );
-            })}
-          </div>
-        )}
-        {initial && (
-          <p className="meta">Các lần đã sửa riêng được giữ nguyên khi sinh lại chuỗi.</p>
-        )}
-        {problem && <p className="meta bad">{problem}</p>}
-        <div className="row">
-          <button type="button" onClick={() => void submit()}>{initial ? "Cập nhật chuỗi" : "Tạo chuỗi"}</button>
-          <button type="button" onClick={onClose}>Hủy</button>
-        </div>
       </div>
-    </div>
+      <label>Lịch</label>
+      <select
+        aria-label="Lịch chuỗi lặp"
+        value={calendarId ?? ""}
+        onChange={(event) => setCalendarId(event.target.value ? Number(event.target.value) : null)}
+      >
+        <option value="">Lịch dự án</option>
+        {project.calendars.map((calendar) => (
+          <option key={calendar.id} value={calendar.id}>{calendar.name}</option>
+        ))}
+      </select>
+      <label>Đường găng</label>
+      <label className="check" title="Ví dụ họp hằng tuần kéo dài sau mốc phát hành">
+        <input type="checkbox" checked={background} onChange={() => setBackground((value) => !value)} />
+        Chuỗi nền: không quyết định ngày kết thúc dự án và đường găng
+      </label>
+      <label>Nguồn lực</label>
+      {project.resources.length === 0 ? (
+        <span className="meta">Chưa có nguồn lực</span>
+      ) : (
+        <div className="row recurring-resources">
+          {project.resources.map((resource) => {
+            const label = resource.name.trim() || `NL ${resource.uid}`;
+            const selected = resource.uid in resourceUnits;
+            return (
+              <span key={resource.uid} className="recurring-resource">
+                <label className="check">
+                  <input type="checkbox" checked={selected} onChange={() => toggleResource(resource.uid)} />
+                  {label}
+                </label>
+                {selected && (
+                  <input
+                    aria-label={`Đơn vị của ${label}`}
+                    title="Đơn vị: 1 = 100%"
+                    value={resourceUnits[resource.uid]}
+                    onChange={(event) =>
+                      setResourceUnits((current) => ({ ...current, [resource.uid]: event.target.value }))
+                    }
+                  />
+                )}
+              </span>
+            );
+          })}
+        </div>
+      )}
+      {initial && (
+        <p className="meta">Các lần đã sửa riêng được giữ nguyên khi sinh lại chuỗi.</p>
+      )}
+      {problem && <p className="meta bad">{problem}</p>}
+      <div className="row">
+        <button type="button" onClick={() => void submit()}>{initial ? "Cập nhật chuỗi" : "Tạo chuỗi"}</button>
+        <button type="button" onClick={onClose}>Hủy</button>
+      </div>
+    </Modal>
   );
 }
