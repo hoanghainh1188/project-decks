@@ -15,6 +15,7 @@ pub mod level;
 pub mod model;
 pub mod mspdi;
 pub mod network;
+pub mod recovery;
 pub mod recurrence;
 pub mod schedule;
 pub mod split;

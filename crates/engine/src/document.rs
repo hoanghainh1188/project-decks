@@ -17,6 +17,16 @@ pub struct Snapshot {
     pub can_redo: bool,
 }
 
+/// Outcome of replaying part of the log.
+#[derive(Debug)]
+pub struct Replayed {
+    /// The state after the first `applied` commands.
+    pub project: Project,
+    pub applied: usize,
+    /// Why command `applied` (0-based) could not be replayed, if one failed.
+    pub error: Option<EngineError>,
+}
+
 #[derive(Clone, Debug)]
 pub struct Document {
     pub base: Project,
@@ -135,6 +145,16 @@ impl Document {
     /// The scheduled project after the first `applied` commands, replayed from the
     /// nearest checkpoint. States passed on the way are kept for the next undo.
     pub fn project_at(&mut self, applied: usize) -> Result<Project, EngineError> {
+        let replayed = self.replay_to(applied);
+        match replayed.error {
+            Some(err) => Err(err),
+            None => Ok(replayed.project),
+        }
+    }
+
+    /// Like `project_at`, but a command that fails keeps the state before it, so an
+    /// opened file can still show everything up to the damage.
+    pub fn replay_to(&mut self, applied: usize) -> Replayed {
         let applied = applied.min(self.commands.len());
         let (from, mut project) = match self.checkpoints.nearest(applied) {
             Some((from, project)) => (from, project.clone()),
@@ -145,11 +165,17 @@ impl Document {
             mark_late(&mut project);
         }
         for step in from..applied {
-            command::apply_one(&mut project, &self.commands[step])?;
-            schedule(&mut project)?;
+            let result = command::apply_one(&mut project, &self.commands[step])
+                .and_then(|()| schedule(&mut project));
+            if let Err(error) = result {
+                // The failed command may have half-changed `project`. Rebuild the state
+                // before it; those commands just replayed, so this cannot fail again.
+                let before = self.replay_to(step);
+                return Replayed { error: Some(error), ..before };
+            }
             self.checkpoints.record(step + 1, &project);
         }
-        Ok(project)
+        Replayed { project, applied, error: None }
     }
 }
 
