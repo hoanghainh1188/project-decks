@@ -40,7 +40,7 @@ import { TaskUsage } from "./components/TaskUsage";
 import { Toolbar } from "./components/Toolbar";
 import { VIEW_PANEL_ID, ViewBar, viewTabId } from "./components/ViewBar";
 import { formatInstant } from "./format";
-import { pick, useMessages, useSetLang } from "./i18n";
+import { pick, useLang, useMessages, useSetLang } from "./i18n";
 import { buildGanttPdf, pdfSuggestedName } from "./ganttPdf";
 import { buildNetworkPdf } from "./networkPdf";
 import type {
@@ -73,6 +73,7 @@ import "./styles.css";
 export default function App() {
   const m = useMessages(appMessages);
   const setLang = useSetLang();
+  const lang = useLang();
   const [snap, setSnap] = useState<Snapshot | null>(null);
   const [view, setView] = useState<ViewId>("gantt");
   const [scale, setScale] = useState<Scale>("day");
@@ -317,12 +318,13 @@ export default function App() {
   );
   const rows = useMemo(
     () => (project ? buildViewRows(project, rowFilter, filterResource, rowGroup, rowHighlight) : []),
-    [project, rowFilter, filterResource, rowGroup, rowHighlight],
+    // Group headers ("Chưa gán" / "Unassigned") are text, so they follow the language.
+    [project, rowFilter, filterResource, rowGroup, rowHighlight, lang],
   );
   // The network diagram ignores grouping; filters choose the boxes and highlight tints them.
   const networkRows = useMemo(
     () => (project && view === "network" ? buildViewRows(project, rowFilter, filterResource, "none", rowHighlight) : []),
-    [project, view, rowFilter, filterResource, rowHighlight],
+    [project, view, rowFilter, filterResource, rowHighlight, lang],
   );
   const networkVisible = useMemo(
     () => (rowFilter === "none" ? null : networkRows.flatMap((row) => (row.kind === "task" ? [row.task.uid] : []))),
