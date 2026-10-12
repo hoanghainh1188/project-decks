@@ -24,7 +24,7 @@ A Microsoft Project–style scheduler that runs on your own computer (macOS, Win
 
 ## Install
 
-Download an installer from [Releases](https://github.com/hoanghainh1188/sheafly/releases): `.dmg` for macOS (Apple Silicon), `.msi` or `-setup.exe` for Windows, `.AppImage`, `.deb` or `.rpm` for Linux.
+Download an installer from [Releases](https://github.com/hoanghainh1188/sheafly/releases): `.dmg` for macOS (Apple Silicon and Intel, from 1.2.0; earlier releases are Apple Silicon only), `.msi` or `-setup.exe` for Windows, `.AppImage`, `.deb` or `.rpm` for Linux.
 
 The installers are not code-signed yet. On macOS, try to open Sheafly once, then go to **System Settings → Privacy & Security** and click **Open Anyway** near the bottom (since macOS 15, right-click → Open no longer works for unsigned apps). If macOS says the app is damaged, run:
 
@@ -68,7 +68,7 @@ cargo bench -p sheafly-engine --bench large_project -- leveling  # leveling 500 
 ## Known limitations
 
 - `.mpp` files cannot be read; use MSPDI (`.xml`) to exchange projects with Project.
-- The installers are not signed or notarized yet; macOS builds are Apple Silicon only.
+- The installers are not signed or notarized yet.
 - One user, one window; no dark mode yet.
 - English and Vietnamese only.
 

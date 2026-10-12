@@ -20,7 +20,7 @@ cargo bench -p sheafly-engine --bench large_project -- 300 1200  # same with <ta
 cargo bench -p sheafly-engine --bench large_project -- leveling   # leveling 500 tasks on 10 people
 ```
 
-CI (`.github/workflows/ci.yml`) runs the engine tests, the typecheck, and `pnpm test`. `.github/workflows/build.yml` builds unsigned installers for macOS, Windows, and Linux. It runs on `v*` tags, which also create a draft release, on manual dispatch, and on PRs that touch the Rust code, `package.json`, or the lockfiles. The real UI only works inside Tauri: `inTauri()` guards every `invoke`, so a plain browser at `localhost:1420` can't load project state.
+The webview runs under a CSP (`app.security.csp` in `tauri.conf.json`): scripts only from the app, inline styles allowed (components use `style={…}`), images and fonts also from `data:`/`blob:` (canvas and jsPDF). A new feature that loads anything else (a remote font, `eval`, a worker) needs the policy widened, and checked against the production build. CI (`.github/workflows/ci.yml`) runs the engine tests, the typecheck, and `pnpm test`. `.github/workflows/build.yml` builds unsigned installers for macOS (universal: Apple Silicon and Intel), Windows, and Linux. It runs on `v*` tags, which also create a draft release, on manual dispatch, and on PRs that touch the Rust code, `package.json`, or the lockfiles. The real UI only works inside Tauri: `inTauri()` guards every `invoke`, so a plain browser at `localhost:1420` can't load project state.
 
 ## Architecture
 
