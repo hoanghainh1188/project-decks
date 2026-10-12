@@ -21,8 +21,19 @@ button {
   padding: 4px 8px;
   cursor: pointer;
 }
+button:hover:not(:disabled):not(.on) { background: #f4f4f7; }
+button:active:not(:disabled) { background: #e9e9ee; }
 button:disabled { opacity: 0.45; cursor: default; }
 button.on { background: #0a84ff; color: white; border-color: #0a84ff; }
+button.danger:not(:disabled) { color: #b3261e; }
+/* Keyboard focus is always visible; a mouse click does not draw the ring. */
+button:focus-visible,
+select:focus-visible,
+input:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid #0a84ff;
+  outline-offset: 1px;
+}
 
 .app { height: 100%; display: flex; flex-direction: column; min-height: 0; }
 .toolbar {
@@ -34,6 +45,28 @@ button.on { background: #0a84ff; color: white; border-color: #0a84ff; }
   border-bottom: 1px solid #d8d8de;
 }
 .toolbar .spacer { flex: 1; }
+.toolbar-brand { margin-right: 4px; }
+/* Groups of related commands, set apart by a thin rule. */
+.toolbar-group { display: flex; gap: 4px; align-items: center; padding-left: 10px; border-left: 1px solid #d0d0d5; }
+.toolbar .spacer + .toolbar-group { border-left: none; }
+.menu-button { position: relative; display: flex; }
+.menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 20;
+  min-width: 220px;
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  background: white;
+  border: 1px solid #d0d0d5;
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.14);
+}
+.menu [role="menuitem"] { border: none; border-radius: 5px; text-align: left; padding: 5px 8px; background: transparent; }
+.menu [role="menuitem"]:hover:not(:disabled),
+.menu [role="menuitem"]:focus-visible { background: #0a84ff; color: white; outline: none; }
 .viewbar {
   display: flex;
   flex-wrap: wrap;
@@ -43,6 +76,11 @@ button.on { background: #0a84ff; color: white; border-color: #0a84ff; }
   background: #f7f7f9;
   border-bottom: 1px solid #e4e4e8;
 }
+.viewbar .spacer { flex: 1; }
+.view-tabs { display: flex; gap: 2px; }
+.view-tabs button { border-color: transparent; background: transparent; }
+.view-tabs button.on { background: #0a84ff; color: white; }
+.view-controls { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
 .view-control { display: flex; gap: 6px; align-items: center; color: #3a3a3c; }
 .viewbar select {
   border: 1px solid #d0d0d5;
@@ -193,7 +231,8 @@ button.on { background: #0a84ff; color: white; border-color: #0a84ff; }
   flex-direction: column;
   gap: 8px;
 }
-.evm-head { display: flex; align-items: center; justify-content: space-between; }
+.evm-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.evm-head-actions { display: flex; gap: 4px; }
 .evm-note { margin: 0; color: #6e6e73; }
 .evm-note:empty { display: none; }
 .evm-empty {
@@ -213,6 +252,8 @@ button.on { background: #0a84ff; color: white; border-color: #0a84ff; }
 .burndown-figure { margin: 0; }
 .burndown-figure svg { display: block; background: white; border: 1px solid #ececf0; border-radius: 6px; }
 .burndown-legend { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 4px; color: #3a3a3c; font-size: 11px; }
+/* Keep each swatch on the line of its label. */
+.burndown-legend > span { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
 .swatch { display: inline-block; width: 14px; height: 0; vertical-align: middle; border-top: 2px solid; }
 .swatch.ideal { border-top: 2px dashed #8e8e93; }
 .swatch.actual { border-color: #0a84ff; }
@@ -327,6 +368,8 @@ tr.child td:first-child { padding-left: 22px; color: #3a3a3c; }
 .modal {
   position: fixed;
   inset: 0;
+  /* Above sticky headers and toolbar menus; date pickers (1000) still open on top. */
+  z-index: 100;
   background: rgba(0, 0, 0, 0.25);
   display: grid;
   place-items: center;
@@ -466,3 +509,11 @@ tr.child td:first-child { padding-left: 22px; color: #3a3a3c; }
   stroke-width: 3px;
 }
 .status-finish { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* EVM charts enlarged over the window. */
+.dialog.charts-dialog { width: min(940px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow: auto; }
+.dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.dialog-head h2 { margin: 0; }
+.dialog:focus { outline: none; }
+.charts-dialog .burndown-figure svg { width: 100%; height: auto; max-height: 46vh; }
+.charts-dialog .burndown-legend { font-size: 12px; }

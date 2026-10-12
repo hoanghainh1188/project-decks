@@ -1,5 +1,8 @@
+import { useEffect, useRef, useState } from "react";
+
 import { formatDateOnly, formatMoney } from "../format";
 import type { BurndownReport, EvmMetrics, ProjectMetrics, SCurveReport } from "../types";
+import { Modal } from "./Modal";
 
 interface EvmPanelProps {
   metrics: ProjectMetrics | null;
@@ -37,12 +40,34 @@ function formatWorkHours(minutes: number): string {
 
 export function EvmPanel({ metrics, onOpenProjectInfo, onOpenBaseline, onClose }: EvmPanelProps) {
   const evm = metrics?.evm;
+  const [large, setLarge] = useState(false);
+  // A dialog hidden because metrics went away must not come back on its own.
+  useEffect(() => {
+    if (!metrics) setLarge(false);
+  }, [metrics]);
   return (
     <aside className="evm-panel" aria-label="Chỉ số EVM và burn-down">
       <div className="evm-head">
         <strong>Chỉ số EVM</strong>
-        <button type="button" onClick={onClose} aria-label="Đóng bảng EVM">Đóng</button>
+        <span className="evm-head-actions">
+          <button
+            type="button"
+            disabled={!metrics}
+            aria-haspopup="dialog"
+            title="Xem burn-down và đường cong S cỡ lớn"
+            onClick={() => setLarge(true)}
+          >
+            Phóng to
+          </button>
+          <button type="button" onClick={onClose} aria-label="Đóng bảng EVM">Đóng</button>
+        </span>
       </div>
+      {large && metrics && (
+        <ChartsDialog
+          metrics={metrics}
+          onClose={() => setLarge(false)}
+        />
+      )}
       {!metrics && <p className="evm-note">Đang tải số liệu…</p>}
       {evm && (
         <>
@@ -70,6 +95,27 @@ export function EvmPanel({ metrics, onOpenProjectInfo, onOpenBaseline, onClose }
   );
 }
 
+/** Burn-down and S-curve at a readable size, over the window. */
+function ChartsDialog({ metrics, onClose }: { metrics: ProjectMetrics; onClose: () => void }) {
+  const closeRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    closeRef.current?.focus();
+  }, []);
+  const status = metrics.evm.status_date;
+  return (
+    <Modal
+      title="Burn-down và đường cong S"
+      className="charts-dialog"
+      onClose={onClose}
+      headerAction={<button ref={closeRef} type="button" onClick={onClose}>Đóng</button>}
+    >
+      {status != null && <p className="evm-note">Tính đến ngày trạng thái {formatDateOnly(status)}.</p>}
+      <BurndownSection report={metrics.burndown} box={LARGE_CHART} />
+      <SCurveSection report={metrics.s_curve} box={LARGE_CHART} />
+    </Modal>
+  );
+}
+
 function MetricTable({ metrics }: { metrics: EvmMetrics }) {
   return (
     <table className="evm-table">
@@ -91,9 +137,21 @@ function MetricTable({ metrics }: { metrics: EvmMetrics }) {
   );
 }
 
-const CHART = { width: 280, height: 180, left: 44, right: 10, top: 10, bottom: 30 };
+interface ChartBox {
+  width: number;
+  height: number;
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
 
-function BurndownSection({ report }: { report: BurndownReport }) {
+/** The small charts in the side panel. */
+const CHART: ChartBox = { width: 280, height: 180, left: 44, right: 10, top: 10, bottom: 30 };
+/** The same charts enlarged in their own window. */
+const LARGE_CHART: ChartBox = { width: 880, height: 340, left: 56, right: 16, top: 14, bottom: 30 };
+
+function BurndownSection({ report, box }: { report: BurndownReport; box?: ChartBox }) {
   const hasIdeal = report.ideal.length >= 2;
   const hasActual = report.actual.length > 0;
   return (
@@ -108,7 +166,7 @@ function BurndownSection({ report }: { report: BurndownReport }) {
           Chưa có dữ liệu. Đặt đường cơ sở 0 để có đường lý tưởng; đường thực tế thêm một điểm mỗi lần lưu tệp hoặc đổi ngày trạng thái.
         </div>
       ) : (
-        <BurndownChart report={report} />
+        <BurndownChart report={report} box={box} />
       )}
       {hasIdeal && !hasActual && (
         <p className="evm-note">Chưa có điểm thực tế. Lưu tệp hoặc đổi ngày trạng thái để ghi điểm đầu tiên.</p>
@@ -117,7 +175,7 @@ function BurndownSection({ report }: { report: BurndownReport }) {
   );
 }
 
-function BurndownChart({ report }: { report: BurndownReport }) {
+function BurndownChart({ report, box = CHART }: { report: BurndownReport; box?: ChartBox }) {
   const dates = [
     ...report.ideal.map((point) => point.date),
     ...report.actual.map((point) => point.date),
@@ -130,10 +188,10 @@ function BurndownChart({ report }: { report: BurndownReport }) {
     ...report.ideal.map((point) => point.remaining_work),
     ...report.actual.map((point) => point.remaining_work),
   );
-  const plotW = CHART.width - CHART.left - CHART.right;
-  const plotH = CHART.height - CHART.top - CHART.bottom;
-  const x = (date: number) => CHART.left + ((date - minX) / (maxX - minX)) * plotW;
-  const y = (minutes: number) => CHART.top + plotH - (minutes / maxY) * plotH;
+  const plotW = box.width - box.left - box.right;
+  const plotH = box.height - box.top - box.bottom;
+  const x = (date: number) => box.left + ((date - minX) / (maxX - minX)) * plotW;
+  const y = (minutes: number) => box.top + plotH - (minutes / maxY) * plotH;
   const path = (points: { date: number; remaining_work: number }[]) =>
     points.map((point, index) => `${index === 0 ? "M" : "L"}${x(point.date).toFixed(1)},${y(point.remaining_work).toFixed(1)}`).join(" ");
   const xTicks = [minX, minX + (maxX - minX) / 2, maxX];
@@ -141,17 +199,17 @@ function BurndownChart({ report }: { report: BurndownReport }) {
   return (
     <figure className="burndown-figure">
       <svg
-        width={CHART.width}
-        height={CHART.height}
-        viewBox={`0 0 ${CHART.width} ${CHART.height}`}
+        width={box.width}
+        height={box.height}
+        viewBox={`0 0 ${box.width} ${box.height}`}
         role="img"
         aria-label="Biểu đồ burn-down: việc còn lại theo ngày"
       >
-        <rect x={CHART.left} y={CHART.top} width={plotW} height={plotH} fill="#fafafa" stroke="#e4e4e8" />
+        <rect x={box.left} y={box.top} width={plotW} height={plotH} fill="#fafafa" stroke="#e4e4e8" />
         {yTicks.map((tick) => (
           <g key={`y-${tick}`}>
-            <line x1={CHART.left} x2={CHART.left + plotW} y1={y(tick)} y2={y(tick)} stroke="#ececf0" />
-            <text x={CHART.left - 4} y={y(tick) + 3} textAnchor="end" fontSize="10" fill="#6e6e73">
+            <line x1={box.left} x2={box.left + plotW} y1={y(tick)} y2={y(tick)} stroke="#ececf0" />
+            <text x={box.left - 4} y={y(tick) + 3} textAnchor="end" fontSize="10" fill="#6e6e73">
               {Math.round(tick / 60)}
             </text>
           </g>
@@ -160,7 +218,7 @@ function BurndownChart({ report }: { report: BurndownReport }) {
           <text
             key={`x-${tick}`}
             x={x(tick)}
-            y={CHART.height - CHART.bottom + 14}
+            y={box.height - box.bottom + 14}
             textAnchor={index === 0 ? "start" : index === xTicks.length - 1 ? "end" : "middle"}
             fontSize="10"
             fill="#6e6e73"
@@ -168,13 +226,13 @@ function BurndownChart({ report }: { report: BurndownReport }) {
             {formatDateOnly(tick).slice(0, 5)}
           </text>
         ))}
-        <text x={4} y={CHART.top + 8} fontSize="10" fill="#6e6e73">giờ</text>
+        <text x={4} y={box.top + 8} fontSize="10" fill="#6e6e73">giờ</text>
         {report.status_date != null && (
           <line
             x1={x(report.status_date)}
             x2={x(report.status_date)}
-            y1={CHART.top}
-            y2={CHART.top + plotH}
+            y1={box.top}
+            y2={box.top + plotH}
             stroke="#c23b3b"
             strokeDasharray="3 3"
           />
@@ -214,7 +272,7 @@ function formatCompactMoney(value: number): string {
   return new Intl.NumberFormat("vi-VN", { notation: "compact", maximumFractionDigits: 1 }).format(value);
 }
 
-function SCurveSection({ report }: { report: SCurveReport }) {
+function SCurveSection({ report, box }: { report: SCurveReport; box?: ChartBox }) {
   return (
     <section className="burndown">
       <strong>Đường cong S</strong>
@@ -225,7 +283,7 @@ function SCurveSection({ report }: { report: SCurveReport }) {
           <p className="evm-note">
             Giá trị cộng dồn theo {report.step === "day" ? "ngày" : "tuần"}. EV và AC tính đến ngày trạng thái.
           </p>
-          <SCurveChart report={report} />
+          <SCurveChart report={report} box={box} />
         </>
       )}
     </section>
@@ -240,15 +298,15 @@ const CURVES: { key: CurveKey; label: string; color: string; dash?: string }[] =
   { key: "ac", label: "AC (thực tế)", color: "#e8890c" },
 ];
 
-function SCurveChart({ report }: { report: SCurveReport }) {
+function SCurveChart({ report, box = CHART }: { report: SCurveReport; box?: ChartBox }) {
   const points = report.points;
   const minX = points[0].date;
   const maxX = Math.max(points[points.length - 1].date, minX + 24 * 60 * 60 * 1000);
   const maxY = Math.max(1, ...points.flatMap((point) => [point.pv, point.ev ?? 0, point.ac ?? 0]));
-  const plotW = CHART.width - CHART.left - CHART.right;
-  const plotH = CHART.height - CHART.top - CHART.bottom;
-  const x = (date: number) => CHART.left + ((date - minX) / (maxX - minX)) * plotW;
-  const y = (value: number) => CHART.top + plotH - (value / maxY) * plotH;
+  const plotW = box.width - box.left - box.right;
+  const plotH = box.height - box.top - box.bottom;
+  const x = (date: number) => box.left + ((date - minX) / (maxX - minX)) * plotW;
+  const y = (value: number) => box.top + plotH - (value / maxY) * plotH;
   const path = (key: CurveKey) =>
     points
       .flatMap((point) => {
@@ -262,17 +320,17 @@ function SCurveChart({ report }: { report: SCurveReport }) {
   return (
     <figure className="burndown-figure">
       <svg
-        width={CHART.width}
-        height={CHART.height}
-        viewBox={`0 0 ${CHART.width} ${CHART.height}`}
+        width={box.width}
+        height={box.height}
+        viewBox={`0 0 ${box.width} ${box.height}`}
         role="img"
         aria-label="Đường cong S: PV, EV và AC cộng dồn theo thời gian"
       >
-        <rect x={CHART.left} y={CHART.top} width={plotW} height={plotH} fill="#fafafa" stroke="#e4e4e8" />
+        <rect x={box.left} y={box.top} width={plotW} height={plotH} fill="#fafafa" stroke="#e4e4e8" />
         {yTicks.map((tick) => (
           <g key={`y-${tick}`}>
-            <line x1={CHART.left} x2={CHART.left + plotW} y1={y(tick)} y2={y(tick)} stroke="#ececf0" />
-            <text x={CHART.left - 4} y={y(tick) + 3} textAnchor="end" fontSize="10" fill="#6e6e73">
+            <line x1={box.left} x2={box.left + plotW} y1={y(tick)} y2={y(tick)} stroke="#ececf0" />
+            <text x={box.left - 4} y={y(tick) + 3} textAnchor="end" fontSize="10" fill="#6e6e73">
               {formatCompactMoney(tick)}
             </text>
           </g>
@@ -281,7 +339,7 @@ function SCurveChart({ report }: { report: SCurveReport }) {
           <text
             key={`x-${tick}`}
             x={x(tick)}
-            y={CHART.height - CHART.bottom + 14}
+            y={box.height - box.bottom + 14}
             textAnchor={index === 0 ? "start" : index === xTicks.length - 1 ? "end" : "middle"}
             fontSize="10"
             fill="#6e6e73"
@@ -293,8 +351,8 @@ function SCurveChart({ report }: { report: SCurveReport }) {
           <line
             x1={x(report.status_date)}
             x2={x(report.status_date)}
-            y1={CHART.top}
-            y2={CHART.top + plotH}
+            y1={box.top}
+            y2={box.top + plotH}
             stroke="#c23b3b"
             strokeDasharray="3 3"
           />
@@ -313,7 +371,7 @@ function SCurveChart({ report }: { report: SCurveReport }) {
           <rect
             key={`hit-${point.date}`}
             x={x(point.date) - 3}
-            y={CHART.top}
+            y={box.top}
             width={6}
             height={plotH}
             fill="transparent"

@@ -20,6 +20,7 @@ import {
   timescaleBands,
   type Timescale,
 } from "../ganttLayout";
+import { ganttKeyAction } from "../ganttKeys";
 import { UI_FONT_FAMILY } from "../uiFont";
 import type { Project, Scale, Segment, Task } from "../types";
 import type { ViewRow } from "../viewRows";
@@ -48,6 +49,8 @@ interface Props {
   onMove: (uid: number, start: number) => void;
   onResize: (uid: number, finish: number) => void;
   onLink: (from: number, to: number) => void;
+  /** Enter on the focused chart opens the selected task. */
+  onEdit: (uid: number) => void;
   onScroll: () => void;
 }
 
@@ -62,6 +65,7 @@ export function GanttChart({
   onMove,
   onResize,
   onLink,
+  onEdit,
   onScroll,
 }: Props) {
   const headRef = useRef<HTMLDivElement>(null);
@@ -151,6 +155,23 @@ export function GanttChart({
       <div
         className="gantt-body"
         ref={bodyRef}
+        tabIndex={0}
+        role="group"
+        aria-label="Biểu đồ Gantt. Mũi tên lên, xuống chọn công việc; Alt và mũi tên trái, phải dời một ngày làm việc; thêm Shift để dời ngày kết thúc; Enter để sửa."
+        onKeyDown={(event) => {
+          // A held key would send the same edit again before the new dates arrive.
+          if (event.repeat && event.altKey) return;
+          const action = ganttKeyAction(event, rows, selected, project);
+          if (!action) return;
+          event.preventDefault();
+          event.stopPropagation();
+          if (action.kind === "select") {
+            onSelect(action.uid);
+            revealRow(event.currentTarget, rows, action.uid);
+          } else if (action.kind === "move") onMove(action.uid, action.start);
+          else if (action.kind === "resize") onResize(action.uid, action.finish);
+          else onEdit(action.uid);
+        }}
         onScroll={(event) => {
           if (headRef.current) headRef.current.scrollLeft = event.currentTarget.scrollLeft;
           const canvas = bodyCanvas.current;
@@ -521,4 +542,13 @@ function drawResourceLabels(
     ctx.fillStyle = "#3a3a3c";
     ctx.fillText(label.text, x, label.y);
   }
+}
+
+/** Scroll the chart so the row of `uid` is in view after a keyboard move. */
+function revealRow(body: HTMLDivElement, rows: ViewRow[], uid: number) {
+  const index = rows.findIndex((row) => row.kind === "task" && row.task.uid === uid);
+  if (index < 0) return;
+  const top = index * ROW;
+  if (top < body.scrollTop) body.scrollTop = top;
+  else if (top + ROW > body.scrollTop + body.clientHeight) body.scrollTop = top + ROW - body.clientHeight;
 }

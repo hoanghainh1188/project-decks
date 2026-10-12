@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
+  commitFocusedField,
   hasUncommittedText,
   isEditableTarget,
   lineStartRange,
@@ -168,5 +169,44 @@ describe("lineStartRange", () => {
 
   it("does nothing at the start of a line", () => {
     expect(lineStartRange("dòng một\ndòng hai", 9, 9)).toEqual([9, 9]);
+  });
+});
+
+describe("shouldRunAction behind a modal dialog", () => {
+  afterEach(() => document.body.replaceChildren());
+
+  it("keeps only undo, redo and save while a modal dialog is open", () => {
+    const button = document.createElement("button");
+    document.body.append(button);
+    expect(shouldRunAction("delete", button)).toBe(true);
+    const dialog = document.createElement("div");
+    dialog.setAttribute("aria-modal", "true");
+    document.body.append(dialog);
+    for (const id of ["delete", "indent", "open", "view-gantt", "project-info"]) {
+      expect(shouldRunAction(id, button)).toBe(false);
+    }
+    for (const id of ["undo", "redo", "save", "save-as"]) expect(shouldRunAction(id, button)).toBe(true);
+  });
+});
+
+describe("commitFocusedField", () => {
+  afterEach(() => document.body.replaceChildren());
+
+  it("blurs a text field so its onBlur commit runs, and leaves buttons alone", () => {
+    const input = document.createElement("input");
+    const committed: string[] = [];
+    input.addEventListener("blur", () => committed.push(input.value));
+    document.body.append(input);
+    input.focus();
+    input.value = "Tên mới";
+    commitFocusedField();
+    expect(committed).toEqual(["Tên mới"]);
+    expect(input).not.toHaveFocus();
+
+    const button = document.createElement("button");
+    document.body.append(button);
+    button.focus();
+    commitFocusedField();
+    expect(button).toHaveFocus();
   });
 });
