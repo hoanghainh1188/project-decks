@@ -1,9 +1,10 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { applyCommand } from "../api";
+import { I18nProvider, setCurrentLang } from "../i18n";
 import { fakeBackend } from "../test/fakeBackend";
 import {
   at,
@@ -397,5 +398,62 @@ describe("recurringCommand", () => {
     await user.click(screen.getByRole("button", { name: "Tạo chuỗi" }));
     expect(fakeBackend.calls).toHaveLength(1);
     expect(onClose).not.toHaveBeenCalled();
+  });
+});
+
+describe("RecurringDialog in English", () => {
+  afterEach(() => setCurrentLang("vi"));
+
+  function renderEnglish(onSubmit = vi.fn(async () => true)) {
+    render(
+      <I18nProvider lang="en">
+        <RecurringDialog project={project()} initial={null} defaultStart={START} onClose={() => {}} onSubmit={onSubmit} />
+      </I18nProvider>,
+    );
+    return { user: userEvent.setup(), onSubmit };
+  }
+
+  it("shows English labels, weekdays, plurals and defaults", async () => {
+    const { user, onSubmit } = renderEnglish();
+    expect(screen.getByRole("heading", { name: "Recurring Task" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Series name")).toHaveValue("Recurring meeting");
+    expect(screen.getByLabelText("Duration of each occurrence")).toHaveValue("1 hr");
+    expect(screen.getByLabelText("Weekly")).toBeChecked();
+    expect(screen.getByLabelText("Wed")).toBeChecked();
+    expect(screen.getByText("week")).toBeInTheDocument();
+    expect(screen.getByLabelText("End after")).toBeChecked();
+    expect(screen.getByText("occurrences")).toBeInTheDocument();
+    expect(screen.getByLabelText("Series start")).toHaveValue("2026-01-07 09:00");
+    expect(screen.getByRole("option", { name: "Project calendar" })).toBeInTheDocument();
+    expect(screen.getByText("Background series: does not set the project finish or the critical path")).toBeInTheDocument();
+    expect(screen.getByLabelText("Resource 11")).toBeInTheDocument();
+
+    await user.clear(screen.getByLabelText("Recurrence interval"));
+    await user.type(screen.getByLabelText("Recurrence interval"), "2");
+    expect(screen.getByText("weeks")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Create series" }));
+    expect(lastSpec(onSubmit).name).toBe("Recurring meeting");
+  });
+
+  it("puts the ordinal before the weekday and names months", async () => {
+    const { user } = renderEnglish();
+    await user.click(screen.getByLabelText("Yearly"));
+    expect(screen.getByRole("combobox", { name: "Month of the year" })).toHaveDisplayValue("January");
+    await user.click(screen.getByLabelText("The"));
+    const ordinal = screen.getByRole("combobox", { name: "Which one in the month" });
+    const weekday = screen.getByRole("combobox", { name: "Day of the week" });
+    expect(ordinal).toHaveDisplayValue("first");
+    expect(weekday).toHaveDisplayValue("Wednesday");
+    expect(ordinal.compareDocumentPosition(weekday) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByText("of the month")).toBeInTheDocument();
+  });
+
+  it("explains problems in English", async () => {
+    const { user, onSubmit } = renderEnglish();
+    await user.click(screen.getByLabelText("Wed"));
+    await user.click(screen.getByRole("button", { name: "Create series" }));
+    expect(screen.getByText("Select at least one day of the week")).toBeInTheDocument();
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 });

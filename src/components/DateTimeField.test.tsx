@@ -1,8 +1,9 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { I18nProvider, setCurrentLang } from "../i18n";
 import { at } from "../test/fixtures";
 import { DateKeyField, DateTimeField, TimeField } from "./DateTimeField";
 
@@ -269,5 +270,57 @@ describe("DateKeyField and TimeField", () => {
     await user.clear(input);
     await user.type(input, "13h30{Enter}");
     expect(onCommit).toHaveBeenCalledExactlyOnceWith(13 * 60 + 30);
+  });
+});
+
+describe("DateTimeField in English", () => {
+  afterEach(() => setCurrentLang("vi"));
+
+  it("shows English month, weekdays and buttons, and ISO dates", async () => {
+    const user = userEvent.setup();
+    render(
+      <I18nProvider lang="en">
+        <DateTimeField ariaLabel="Start" value={START} onCommit={() => {}} />
+      </I18nProvider>,
+    );
+    expect(screen.getByLabelText("Start")).toHaveValue("2026-01-05 08:30");
+    await user.click(screen.getByRole("button", { name: "Open date picker" }));
+    const dialog = screen.getByRole("dialog", { name: "Choose date" });
+    expect(within(dialog).getByText("January 2026")).toBeInTheDocument();
+    expect(within(dialog).getAllByRole("columnheader").map((cell) => cell.textContent)).toEqual([
+      "Mon",
+      "Tue",
+      "Wed",
+      "Thu",
+      "Fri",
+      "Sat",
+      "Sun",
+    ]);
+    expect(within(dialog).getByRole("gridcell", { name: "2026-01-05" })).toHaveAttribute("aria-selected", "true");
+    expect(within(dialog).getByRole("button", { name: "Today" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "OK" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("combobox", { name: "Hour" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("combobox", { name: "Minute" })).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "Previous month" }));
+    expect(within(dialog).getByText("December 2025")).toBeInTheDocument();
+  });
+
+  it("uses an ISO placeholder for date keys and English labels for times and clearing", () => {
+    render(
+      <I18nProvider lang="en">
+        <DateKeyField ariaLabel="Date" value="" onCommit={() => {}} />
+        <TimeField ariaLabel="Time" minute={480} onCommit={() => {}} />
+        <DateTimeField ariaLabel="Due" optional value={START} onCommit={() => {}} />
+      </I18nProvider>,
+    );
+    expect(screen.getByLabelText("Date")).toHaveAttribute("placeholder", "yyyy-mm-dd");
+    expect(screen.getByRole("button", { name: "Choose time" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Clear date" })).toBeInTheDocument();
+  });
+
+  it("keeps the Vietnamese placeholder in Vietnamese", () => {
+    render(<DateKeyField ariaLabel="Ngày" value="" onCommit={() => {}} />);
+    expect(screen.getByLabelText("Ngày")).toHaveAttribute("placeholder", "dd/mm/yyyy");
   });
 });

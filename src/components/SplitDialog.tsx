@@ -5,9 +5,12 @@ import { Button } from "./Button";
 import { DateTimeField } from "./DateTimeField";
 import { Modal } from "./Modal";
 import { formatDuration, formatInstant, parseDuration } from "../format";
+import { useMessages } from "../i18n";
 import type { Task } from "../types";
+import { splitDialogMessages } from "./SplitDialog.i18n";
 
 const HOUR_MS = 3_600_000;
+const DAY_MINUTES = 8 * 60;
 
 interface SplitDialogProps {
   task: Task;
@@ -24,18 +27,19 @@ function suggestedPoint(task: Task): number {
 }
 
 export function SplitDialog({ task, onClose, onSubmit }: SplitDialogProps) {
+  const m = useMessages(splitDialogMessages);
   const [at, setAt] = useState(() => suggestedPoint(task));
-  const [gapText, setGapText] = useState("1 ngày");
+  const [gapText, setGapText] = useState(() => formatDuration(DAY_MINUTES));
   const [problem, setProblem] = useState<string | null>(null);
 
   async function submit() {
     const gap = parseDuration(gapText);
     if (gap === null || gap <= 0) {
-      setProblem("Khoảng ngắt phải lớn hơn 0, ví dụ 1 ngày, 4 giờ, 30 phút");
+      setProblem(m.badGap);
       return;
     }
     if (at <= task.start || at >= task.finish) {
-      setProblem("Điểm tách phải nằm giữa ngày bắt đầu và ngày kết thúc của công việc");
+      setProblem(m.badPoint);
       return;
     }
     setProblem(null);
@@ -45,31 +49,31 @@ export function SplitDialog({ task, onClose, onSubmit }: SplitDialogProps) {
 
   return (
     <Modal
-      title="Tách công việc"
+      title={m.title}
       className="split-dialog"
       onClose={onClose}
       footer={
         <>
-          <Button Icon={X} onClick={onClose}>Hủy</Button>
-          <Button variant="primary" Icon={Scissors} onClick={() => void submit()}>Tách</Button>
+          <Button Icon={X} onClick={onClose}>{m.cancel}</Button>
+          <Button variant="primary" Icon={Scissors} onClick={() => void submit()}>{m.split}</Button>
         </>
       }
     >
       <p className="meta">
-        {task.name} · {formatInstant(task.start)} – {formatInstant(task.finish)} · thời lượng {formatDuration(task.duration)}
+        {m.summary(task.name, formatInstant(task.start), formatInstant(task.finish), formatDuration(task.duration))}
       </p>
-      <label>Tách tại</label>
+      <label>{m.splitAt}</label>
       <DateTimeField
-        ariaLabel="Thời điểm tách"
+        ariaLabel={m.splitAtLabel}
         value={at}
         onCommit={(ms) => {
           if (ms != null) setAt(ms);
         }}
       />
-      <label>Khoảng ngắt (giờ làm việc)</label>
-      <input aria-label="Khoảng ngắt" value={gapText} onChange={(event) => setGapText(event.target.value)} />
+      <label>{m.gap}</label>
+      <input aria-label={m.gapLabel} value={gapText} onChange={(event) => setGapText(event.target.value)} />
       <p className="meta">
-        Thời lượng giữ nguyên. Phần việc sau điểm tách dời muộn hơn đúng bằng khoảng ngắt, nên ngày kết thúc cũng lùi theo.
+        {m.explanation}
       </p>
       {problem && <p className="meta bad">{problem}</p>}
     </Modal>
