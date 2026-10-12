@@ -1,6 +1,6 @@
 [package]
 name = "sheafly"
-version = "1.1.0"
+version = "1.2.0"
 description = "Sheafly: Microsoft Project–style project scheduler, in English and Vietnamese"
 authors = ["Harry Nguyen"]
 license = "MIT"
