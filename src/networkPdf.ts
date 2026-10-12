@@ -3,7 +3,7 @@ import { jsPDF } from "jspdf";
 import { formatDuration, formatInstant } from "./format";
 import { barColor } from "./ganttLayout";
 import { embeddedFont } from "./ganttPdf";
-import { edgeLabel } from "./networkLabels";
+import { edgeLabel, nodeKind, occurrenceCounts } from "./networkLabels";
 import type { NetworkLayout, NetworkNode, NetworkPoint, Project, Task } from "./types";
 
 const FONT = "BeVietnamPro";
@@ -53,6 +53,7 @@ export function buildNetworkPdf(input: NetworkPdfInput): Uint8Array {
   const oy = MARGIN + TITLE_H;
   const at = (point: NetworkPoint) => ({ x: ox + point.x * scale, y: oy + point.y * scale });
   const tasks = new Map(project.tasks.map((task) => [task.uid, task]));
+  const occurrences = occurrenceCounts(project.tasks);
 
   for (const edge of layout.edges) {
     const critical = Boolean(tasks.get(edge.from_uid)?.critical && tasks.get(edge.to_uid)?.critical);
@@ -68,7 +69,7 @@ export function buildNetworkPdf(input: NetworkPdfInput): Uint8Array {
   }
   for (const node of layout.nodes) {
     const task = tasks.get(node.uid);
-    if (task) drawNode(doc, node, task, input.highlighted.has(node.uid), ox, oy, scale);
+    if (task) drawNode(doc, node, task, nodeKind(task, occurrences), input.highlighted.has(node.uid), ox, oy, scale);
   }
   return new Uint8Array(doc.output("arraybuffer"));
 }
@@ -96,6 +97,7 @@ function drawNode(
   doc: jsPDF,
   node: NetworkNode,
   task: Task,
+  kindLabel: string,
   highlighted: boolean,
   ox: number,
   oy: number,
@@ -138,7 +140,7 @@ function drawNode(
   doc.setLineWidth(0.15);
   doc.line(x + (task.milestone ? px(14) : 0), y + px(27), x + w - (task.milestone ? px(14) : 0), y + px(27));
   doc.setFontSize(fieldPt);
-  const kind = task.summary ? "Tóm tắt" : task.milestone ? "Mốc" : formatDuration(task.duration);
+  const kind = kindLabel || formatDuration(task.duration);
   doc.text(`ID ${task.id}${task.wbs ? ` · WBS ${task.wbs}` : ""}`, x + pad, y + px(43));
   doc.text(kind, x + w - pad, y + px(43), { align: "right" });
   const rows: [string, string, number][] = [

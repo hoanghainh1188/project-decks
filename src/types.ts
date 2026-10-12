@@ -309,7 +309,9 @@ export interface NetworkPoint {
 }
 
 export interface NetworkEdge {
+  /** The link drawn; a link to a hidden summary can be drawn as several edges. */
   uid: number;
+  /** Boxes joined: a task inside a hidden summary, or a recurring series' box. */
   from_uid: number;
   to_uid: number;
   kind: DepKind;

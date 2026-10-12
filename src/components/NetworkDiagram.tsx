@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { formatDuration, formatInstant } from "../format";
 import { barColor } from "../ganttLayout";
-import { edgeLabel } from "../networkLabels";
+import { edgeLabel, nodeKind, occurrenceCounts } from "../networkLabels";
 import type { NetworkEdge, NetworkLayout, NetworkNode, NetworkPoint, Project, Task } from "../types";
 
 const MIN_ZOOM = 0.2;
@@ -37,6 +37,7 @@ export function NetworkDiagram({ project, layout, selected, highlighted, onSelec
   // Content point kept under the cursor (or centre) while the zoom changes.
   const anchor = useRef<{ x: number; y: number; offsetX: number; offsetY: number } | null>(null);
   const tasks = useMemo(() => new Map(project.tasks.map((task) => [task.uid, task])), [project.tasks]);
+  const occurrences = useMemo(() => occurrenceCounts(project.tasks), [project.tasks]);
 
   function zoomTo(next: number, offsetX?: number, offsetY?: number) {
     const body = bodyRef.current;
@@ -174,7 +175,11 @@ export function NetworkDiagram({ project, layout, selected, highlighted, onSelec
               </marker>
             </defs>
             {layout.edges.map((edge) => (
-              <EdgePath key={edge.uid} edge={edge} critical={edgeCritical(edge, tasks)} />
+              <EdgePath
+                key={`${edge.uid}-${edge.from_uid}-${edge.to_uid}`}
+                edge={edge}
+                critical={edgeCritical(edge, tasks)}
+              />
             ))}
             {layout.nodes.map((node) => {
               const task = tasks.get(node.uid);
@@ -184,6 +189,7 @@ export function NetworkDiagram({ project, layout, selected, highlighted, onSelec
                   key={node.uid}
                   node={node}
                   task={task}
+                  kind={nodeKind(task, occurrences)}
                   selected={node.uid === selected}
                   highlighted={highlighted.has(node.uid)}
                   onSelect={onSelect}
@@ -244,6 +250,7 @@ function EdgePath({ edge, critical }: { edge: NetworkEdge; critical: boolean }) 
 function TaskBox({
   node,
   task,
+  kind,
   selected,
   highlighted,
   onSelect,
@@ -251,6 +258,8 @@ function TaskBox({
 }: {
   node: NetworkNode;
   task: Task;
+  /** "Lặp · 10 lần", "Tóm tắt", "Mốc", or empty for a plain task. */
+  kind: string;
   selected: boolean;
   highlighted: boolean;
   onSelect: (uid: number) => void;
@@ -261,7 +270,6 @@ function TaskBox({
   const fill = highlighted ? "#fff3c4" : task.summary ? "#f3f3f6" : "white";
   const percent = Math.max(0, Math.min(100, task.percent_complete));
   const name = task.name.trim() || `Công việc ${task.id}`;
-  const kind = task.summary ? "Tóm tắt" : task.milestone ? "Mốc" : "";
   // Keep text clear of the hexagon's slanted sides.
   const pad = task.milestone && !task.summary ? PAD + 12 : PAD;
   return (

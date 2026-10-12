@@ -39,7 +39,7 @@ pub fn parse_date_key(key: &str) -> Option<NaiveDate> {
 
 /// `2026-01-05T08:00:00` in project wall time.
 pub fn format_iso(ms: i64) -> String {
-    let dt = DateTime::<Utc>::from_timestamp_millis(ms).unwrap_or_else(|| DateTime::<Utc>::UNIX_EPOCH);
+    let dt = DateTime::<Utc>::from_timestamp_millis(ms).unwrap_or(DateTime::<Utc>::UNIX_EPOCH);
     format!(
         "{:04}-{:02}-{:02}T{:02}:{:02}:00",
         dt.year(),

@@ -75,8 +75,8 @@ todos:
     content: "Pha 16: quá tải theo giờ trùng nhau, leveling tuần tự, lưu độ trễ vào log"
     status: completed
   - id: project-parity-ux
-    content: "Pha 17: UX ngang MS Project (copy/paste, tách App.tsx, bàn phím, giao diện còn lại)"
-    status: pending
+    content: "Pha 17: UX ngang MS Project (copy/paste, tách App.tsx, bàn phím, giao diện còn lại). PR A (dọn dẹp, tiêu đề, EVM, README) và B (sơ đồ mạng) xong"
+    status: in_progress
 isProject: false
 ---
 
@@ -446,13 +446,19 @@ Dự kiến ban đầu:
 - Nghiệm thu: hai task cùng ngày nhưng khác giờ không bị báo quá tải; bench 500 task dưới 1 giây.
 - Ví dụ thấy khi chụp dự án mẫu: An bị báo quá tải ngày 15/10 dù chỉ 0,8 + 7,2 = 8 giờ, vì hai task nối tiếp nhau trong cùng ngày.
 
-### Pha 17 — UX ngang MS Project (L, tách 2–3 PR)
+### Pha 17 — UX ngang MS Project (L, tách 2–3 PR) — đang làm
+
+Chia 5 PR: (A) dọn dẹp và chỉnh nhỏ, (B) sơ đồ mạng, (C) thanh công cụ, focus và bàn phím, (D) copy/paste, điền xuống, kéo từng đoạn task tách, (E) token màu, giao diện tối, tách `App.tsx` và test còn thiếu.
+
+**PR A — đã xong:** dọn hết cảnh báo clippy của engine (derive `Default`, gom tham số `apply_text` của MSPDI vào một struct, vài chỗ nhỏ); xóa `src/App.css`; viết lại README; tiêu đề cửa sổ là tên dự án kèm "— Đã sửa" (quyền `core:window:allow-set-title`), thanh trạng thái chỉ hiện tên tệp (đường dẫn đầy đủ trong chú thích); bảng EVM nằm cạnh cột Gantt và panel thuộc tính nên cao hết cửa sổ; nút chọn ngày trong bảng task chỉ hiện ở dòng đang chọn, dòng di chuột qua hoặc ô đang focus.
+
+**PR B — đã xong (gộp chung PR với A):** sơ đồ mạng vẽ mỗi chuỗi lặp thành một ô (summary của chuỗi, nhãn "Lặp · N lần"), hiện khi summary hoặc bất kỳ lần nào qua bộ lọc; dự án mẫu từ 20 ô còn 11. Khi ẩn summary, liên kết của summary chuyển xuống task con: từ các task kết thúc nhóm (không có task sau trong nhóm) và tới các task bắt đầu nhóm (không có task trước trong nhóm). `NetworkEdge.from_uid`/`to_uid` là ô được nối; khóa React của cạnh gồm cả hai đầu. Xuất PDF dùng cùng nhãn.
 
 - Copy/paste và điền xuống (fill-down) task.
 - Tách `App.tsx` tiếp (PR #25 đã giảm còn 730 dòng); thêm test cho `GanttChart`, `ganttPdf`, `networkPdf`, `App`, `ResourceSheet`, `CalendarEditor`, `SplitDialog`, `TaskUsage`.
 - Gantt dùng được bằng bàn phím; nút có kiểu focus.
 - Kéo riêng từng đoạn của task tách.
-- Sơ đồ mạng giữ liên kết gắn vào summary khi ẩn summary (chuyển xuống task con); các lần của chuỗi lặp không chen vào cột đầu cạnh việc chính (gom lại hoặc tùy chọn ẩn).
+- Sơ đồ mạng giữ liên kết gắn vào summary khi ẩn summary (chuyển xuống task con); các lần của chuỗi lặp không chen vào cột đầu cạnh việc chính (gom lại hoặc tùy chọn ẩn). (PR B: gom chuỗi thành một ô)
 - Thiết kế lại điều hướng và thanh công cụ theo luồng làm việc:
   - Menu macOS giữ các thao tác hệ thống và phím tắt (`Tệp`, `Sửa`, `Xem`, `Dự án`); thanh công cụ ưu tiên thao tác hằng ngày.
   - Chia thanh công cụ thành nhóm rõ ràng: Hoàn tác/Làm lại; tạo task; sửa task đang chọn; điều khiển dự án; xuất/báo cáo. Có vạch ngăn hoặc khoảng cách giữa các nhóm.
@@ -460,12 +466,12 @@ Dự kiến ban đầu:
   - Đổi nhãn “Lịch” thành “Lịch dự án” hoặc chuyển vào nhóm Dự án. Đặt EVM trong nhóm Báo cáo/Xem thay vì cạnh các lệnh sửa task.
   - Đưa các view thành thanh điều hướng riêng; thang ngày/tuần/tháng, lọc, nhóm và tô sáng là điều khiển theo view ở hàng phụ.
   - Thêm test cho trạng thái bật/tắt của từng lệnh theo task được chọn và view hiện tại.
-- Tiêu đề cửa sổ là tên dự án kèm dấu đã sửa; thanh trạng thái chỉ hiện tên tệp.
-- View Sử dụng: bớt biểu tượng lịch lặp lại ở mỗi dòng. (Tô quá tải chỉ ở ô có giờ và dấu phẩy thập phân đã làm ở Pha 16.)
-- Bảng EVM: biểu đồ burn-down bị ép gần hết khi panel thuộc tính đang mở; cho bảng EVM chiếm đủ chiều cao hoặc thu panel lại khi mở EVM.
-- Màu thành token CSS rồi mới làm giao diện tối; xóa `src/App.css` thừa từ template.
-- Dọn 9 warning clippy của engine.
-- Viết lại README: tính năng, cách cài bản phát hành, cách build; bỏ đường dẫn cứng.
+- Tiêu đề cửa sổ là tên dự án kèm dấu đã sửa; thanh trạng thái chỉ hiện tên tệp. (PR A)
+- Bớt biểu tượng lịch lặp lại ở mỗi dòng của bảng task. (PR A; tô quá tải chỉ ở ô có giờ và dấu phẩy thập phân ở view Sử dụng đã làm ở Pha 16.)
+- Bảng EVM: biểu đồ burn-down bị ép gần hết khi panel thuộc tính đang mở; cho bảng EVM chiếm đủ chiều cao hoặc thu panel lại khi mở EVM. (PR A: bảng EVM cao hết cửa sổ)
+- Màu thành token CSS rồi mới làm giao diện tối; xóa `src/App.css` thừa từ template (đã xóa ở PR A).
+- Dọn 9 warning clippy của engine. (PR A)
+- Viết lại README: tính năng, cách cài bản phát hành, cách build; bỏ đường dẫn cứng. (PR A)
 
 ### Ngoài phạm vi
 
