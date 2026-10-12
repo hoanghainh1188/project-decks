@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-ProjectDesk is a Microsoft Project–style scheduling app for macOS built with Tauri 2, React 19, and Rust. The UI is in Vietnamese and English (see Languages below); the README and the plan doc are in Vietnamese.
+ProjectDesk is a Microsoft Project–style scheduling app for macOS, Windows and Linux, built with Tauri 2, React 19, and Rust. The UI is in Vietnamese and English (see Languages below). `README.md` is in English and `README.vi.md` in Vietnamese; keep them in step. The plan doc is in Vietnamese.
 
 ## Commands
 
