@@ -20,6 +20,7 @@ import {
   timescaleBands,
   type Timescale,
 } from "../ganttLayout";
+import { UI_FONT_FAMILY } from "../uiFont";
 import type { Project, Scale, Segment, Task } from "../types";
 import type { ViewRow } from "../viewRows";
 
@@ -281,7 +282,7 @@ function paintBody(
       ctx.fillStyle = "#ececf1";
       ctx.fillRect(0, y, width, ROW);
       ctx.fillStyle = "#1d1d1f";
-      ctx.font = "600 12px -apple-system, sans-serif";
+      ctx.font = `600 12px ${UI_FONT_FAMILY}`;
       ctx.textAlign = "left";
       ctx.textBaseline = "middle";
       ctx.fillText(item.label, scrollLeft + 8, y + ROW / 2);
@@ -509,7 +510,7 @@ function drawResourceLabels(
   labels: { text: string; left: number; right: number; y: number }[],
   width: number,
 ) {
-  ctx.font = "11px -apple-system, sans-serif";
+  ctx.font = `11px ${UI_FONT_FAMILY}`;
   ctx.textBaseline = "middle";
   ctx.lineJoin = "round";
   for (const label of labels) {

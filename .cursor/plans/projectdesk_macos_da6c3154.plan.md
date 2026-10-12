@@ -295,6 +295,8 @@ Theo đánh giá độc lập sau PR #23 (đối chiếu từng mục với code
 
 Còn lại: kiểm tra bằng mắt trên dự án mẫu (chưa chụp được màn hình khi merge).
 
+Sửa sau khi chụp màn hình dự án mẫu (sau Pha 13): tiêu đề ô sơ đồ mạng tách dấu của "ế" trên Chromium vì CSS chỉ khai `-apple-system`; mọi chỗ đặt phông giờ dùng `--font-ui` / `UI_FONT_FAMILY` (thêm `BlinkMacSystemFont`). Thang tuần của Gantt chỉ ghi ngày thứ Hai, vì cột 14 px không đủ chỗ cho mọi ngày hai chữ số.
+
 Mục tiêu: màn hình chính đọc đúng và đủ thông tin mà không phải đoán.
 
 - Thời lượng và việc còn lại hiện theo ngày như Project ("7,5 ngày", mốc "0 ngày"), không lẫn "60 giờ", "768 phút" trong cùng bảng.

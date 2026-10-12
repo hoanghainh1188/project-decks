@@ -75,6 +75,13 @@ describe("timescale bands and labels", () => {
     expect(dayLabelParts(monday, 14)).toEqual({ weekday: "", date: "5" });
     expect(dayLabelParts(monday, 5)).toEqual({ weekday: "", date: "" });
   });
+
+  it("labels only Mondays on the week scale, where two-digit dates would run together", () => {
+    const week = Array.from({ length: 8 }, (_, index) => at(2026, 9, 28) + index * 86_400_000);
+    const labels = week.map((day) => dayLabel(day, 14));
+    expect(labels).toEqual(["28", "", "", "", "", "", "", "5"]);
+    expect(dayLabelParts(at(2026, 10, 12), 14)).toEqual({ weekday: "", date: "12" });
+  });
 });
 
 describe("calendar helpers", () => {
