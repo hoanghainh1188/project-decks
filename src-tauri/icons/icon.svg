@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <radialGradient id="bg" cx="0.28" cy="0.18" r="1.05">
+      <stop offset="0" stop-color="#253c5a"/>
+      <stop offset="0.6" stop-color="#14202f"/>
+      <stop offset="1" stop-color="#0c131c"/>
+    </radialGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.16"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffe08a"/>
+      <stop offset="0.55" stop-color="#ffb52e"/>
+      <stop offset="1" stop-color="#ef8a0c"/>
+    </linearGradient>
+    <linearGradient id="blue" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#2f7cf6"/>
+      <stop offset="1" stop-color="#5aa5ff"/>
+    </linearGradient>
+    <linearGradient id="blue2" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#5b9dff"/>
+      <stop offset="1" stop-color="#8cc2ff"/>
+    </linearGradient>
+    <filter id="drop" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#000" flood-opacity="0.35"/>
+    </filter>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="26" result="blur"/>
+      <feFlood flood-color="#ffb52e" flood-opacity="0.55"/>
+      <feComposite in2="blur" operator="in" result="halo"/>
+      <feMerge><feMergeNode in="halo"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <clipPath id="sq"><rect x="100" y="100" width="824" height="824" rx="186"/></clipPath>
+  </defs>
+  <g filter="url(#drop)">
+    <rect x="100" y="100" width="824" height="824" rx="186" fill="url(#bg)"/>
+  </g>
+  <g clip-path="url(#sq)">
+    <rect x="100" y="100" width="824" height="824" rx="186" fill="url(#rim)"/>
+    <!-- timeline -->
+    <line x1="196" y1="742" x2="828" y2="742" stroke="#ffffff" stroke-opacity="0.16" stroke-width="10" stroke-linecap="round"/>
+    <g stroke="#ffffff" stroke-opacity="0.16" stroke-width="10" stroke-linecap="round">
+      <line x1="300" y1="724" x2="300" y2="760"/><line x1="460" y1="724" x2="460" y2="760"/><line x1="620" y1="724" x2="620" y2="760"/>
+    </g>
+  </g>
+  <!-- tasks stepping up to the milestone -->
+  <rect x="196" y="586" width="300" height="84" rx="42" fill="url(#blue)"/>
+  <rect x="356" y="462" width="230" height="84" rx="42" fill="url(#blue2)"/>
+  <!-- milestone -->
+  <rect x="580" y="270" width="236" height="236" rx="38" transform="rotate(45 698 388)" fill="url(#gold)" filter="url(#glow)"/>
+  <rect x="580" y="270" width="236" height="236" rx="38" transform="rotate(45 698 388)" fill="none" stroke="#fff3cf" stroke-opacity="0.5" stroke-width="6"/>
+</svg>
