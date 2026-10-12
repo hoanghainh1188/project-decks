@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { createRef } from "react";
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 
+import { I18nProvider, setCurrentLang, type Lang } from "../i18n";
 import { at, makeAssignment, makeResource, makeTask, outlineProject, standardCalendar } from "../test/fixtures";
 import type { Task } from "../types";
 import { buildViewRows, type ViewRow } from "../viewRows";
@@ -25,7 +26,7 @@ const HANDLERS = [
   "onScroll",
 ] as const;
 
-function renderSheet(rows: ViewRow[], options: { tracking?: boolean; selected?: number | null } = {}) {
+function renderSheet(rows: ViewRow[], options: { tracking?: boolean; selected?: number | null; lang?: Lang } = {}) {
   const handlers = Object.fromEntries(HANDLERS.map((name) => [name, vi.fn<(...args: unknown[]) => void>()])) as Record<
     (typeof HANDLERS)[number],
     Mock<(...args: unknown[]) => void>
@@ -45,6 +46,7 @@ function renderSheet(rows: ViewRow[], options: { tracking?: boolean; selected?: 
       bodyRef={bodyRef}
       {...handlers}
     />,
+    { wrapper: ({ children }) => <I18nProvider lang={options.lang ?? "vi"}>{children}</I18nProvider> },
   );
   const head = utils.container.querySelector<HTMLElement>(".sheet-head");
   if (!head) throw new Error("missing header");
@@ -314,5 +316,34 @@ describe("TaskSheet editing", () => {
     expect(actualFinish).toHaveValue("");
     await user.click(within(row).getByRole("button", { name: "Xóa ngày" }));
     expect(handlers.onActualStart).toHaveBeenCalledExactlyOnceWith(2, null);
+  });
+});
+
+describe("TaskSheet in English", () => {
+  afterEach(() => setCurrentLang("vi"));
+
+  it("labels the tracking columns with Project's English names", () => {
+    const { head } = renderSheet(flatRows(), { tracking: true, lang: "en" });
+    expect([...head.children].map((child) => child.textContent)).toEqual([
+      "ID", "WBS", "Name", "Duration", "%", "Remaining", "Start", "Finish",
+      "Actual start", "Actual finish", "Remaining work", "Overtime", "Calendar", "Predecessors", "Resource names", "Slack",
+    ]);
+    expect(screen.getAllByRole("option", { name: "Project calendar" }).length).toBeGreaterThan(0);
+    expect(screen.getAllByLabelText("Actual date").length).toBeGreaterThan(0);
+  });
+
+  it("names the series marker in English", () => {
+    const tasks = outlineProject().tasks;
+    tasks[0] = { ...tasks[0], recurrence: { spec: {} as never, skipped: [] } };
+    tasks[1] = { ...tasks[1], series_uid: 1 };
+    const { container } = renderSheet(flatRows(tasks), { lang: "en" });
+    expect(screen.getByRole("button", { name: "Edit recurring series" })).toHaveAttribute(
+      "title",
+      "Recurring task — click to edit the series",
+    );
+    expect(rowOf(container, 2).querySelector(".series-icon.occurrence")).toHaveAttribute(
+      "title",
+      "One occurrence of a recurring series",
+    );
   });
 });

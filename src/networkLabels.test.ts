@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { setCurrentLang } from "./i18n";
 import { edgeLabel, nodeKind, occurrenceCounts } from "./networkLabels";
 import { makeTask } from "./test/fixtures";
 
@@ -53,5 +54,24 @@ describe("nodeKind", () => {
     expect(nodeKind(tasks[3], counts)).toBe("Tóm tắt");
     expect(nodeKind(tasks[4], counts)).toBe("Mốc");
     expect(nodeKind(tasks[5], counts)).toBe("");
+  });
+
+  describe("in English", () => {
+    beforeEach(() => setCurrentLang("en"));
+    afterEach(() => setCurrentLang("vi"));
+
+    it("names series, summaries and milestones", () => {
+      const counts = occurrenceCounts(tasks);
+      expect(nodeKind(series, counts)).toBe("Recurring · 2 occurrences");
+      expect(nodeKind(series, new Map([[10, 1]]))).toBe("Recurring · 1 occurrence");
+      expect(nodeKind(tasks[3], counts)).toBe("Summary");
+      expect(nodeKind(tasks[4], counts)).toBe("Milestone");
+      expect(nodeKind(tasks[5], counts)).toBe("");
+    });
+
+    it("shows lag in English duration units", () => {
+      expect(edgeLabel({ kind: "ss", lag: 240 })).toBe("SS+0.5 days");
+      expect(edgeLabel({ kind: "ff", lag: -480 })).toBe("FF-1 day");
+    });
   });
 });

@@ -59,10 +59,11 @@ export function hasUncommittedText(field: HTMLElement): boolean {
 
 /**
  * Actions still allowed while a modal dialog covers the window: dialogs edit live, so
- * undo and redo show their effect there, and saving changes nothing on screen. Anything
- * else (delete, indent, a view switch, opening a file, another dialog) waits.
+ * undo and redo show their effect there, saving changes nothing on screen, and a language
+ * switch only relabels. Anything else (delete, indent, a view switch, opening a file,
+ * another dialog) waits.
  */
-const MODAL_ACTIONS = new Set(["undo", "redo", "save", "save-as"]);
+const MODAL_ACTIONS = new Set(["undo", "redo", "save", "save-as", "lang-vi", "lang-en"]);
 
 /**
  * Whether a menu or shortcut action should act on the project. While a text field has

@@ -1,15 +1,17 @@
 import { ChartGantt, ListChecks, Network, Table2, Users, type LucideIcon } from "lucide-react";
 import { useRef, type KeyboardEvent } from "react";
 
+import { useMessages } from "../i18n";
 import type { Project, Scale, ViewId } from "../types";
 import type { FilterMode, GroupMode, HighlightMode } from "../viewRows";
+import { viewBarMessages } from "./ViewBar.i18n";
 
-const VIEWS: { id: ViewId; label: string; Icon: LucideIcon }[] = [
-  { id: "gantt", label: "Gantt", Icon: ChartGantt },
-  { id: "tracking", label: "Theo dõi", Icon: ListChecks },
-  { id: "resources", label: "Nguồn lực", Icon: Users },
-  { id: "usage", label: "Sử dụng", Icon: Table2 },
-  { id: "network", label: "Sơ đồ mạng", Icon: Network },
+const VIEWS: { id: ViewId; Icon: LucideIcon }[] = [
+  { id: "gantt", Icon: ChartGantt },
+  { id: "tracking", Icon: ListChecks },
+  { id: "resources", Icon: Users },
+  { id: "usage", Icon: Table2 },
+  { id: "network", Icon: Network },
 ];
 
 /** The view area the tabs control; App puts this id on its main element. */
@@ -19,11 +21,7 @@ export function viewTabId(view: ViewId): string {
   return `view-tab-${view}`;
 }
 
-const SCALES: { id: Scale; label: string }[] = [
-  { id: "day", label: "Ngày" },
-  { id: "week", label: "Tuần" },
-  { id: "month", label: "Tháng" },
-];
+const SCALES: Scale[] = ["day", "week", "month"];
 
 interface Props {
   project: Project | undefined;
@@ -54,6 +52,7 @@ export function ViewBar(props: Props) {
   const chart = view === "gantt" || view === "tracking";
   const rowControls = project && (chart || view === "network");
   const tabsRef = useRef<HTMLDivElement>(null);
+  const m = useMessages(viewBarMessages);
 
   const onTabKey = (event: KeyboardEvent<HTMLDivElement>) => {
     const at = VIEWS.findIndex((item) => item.id === view);
@@ -75,8 +74,8 @@ export function ViewBar(props: Props) {
 
   return (
     <div className="viewbar">
-      <div ref={tabsRef} className="view-tabs" role="tablist" aria-label="View" onKeyDown={onTabKey}>
-        {VIEWS.map(({ id, label, Icon }) => (
+      <div ref={tabsRef} className="view-tabs" role="tablist" aria-label={m.views} onKeyDown={onTabKey}>
+        {VIEWS.map(({ id, Icon }) => (
           <button
             key={id}
             id={viewTabId(id)}
@@ -89,7 +88,7 @@ export function ViewBar(props: Props) {
             onClick={() => props.onView(id)}
           >
             <Icon aria-hidden="true" size={15} strokeWidth={1.9} />
-            <span>{label}</span>
+            <span>{m[id]}</span>
           </button>
         ))}
       </div>
@@ -98,24 +97,24 @@ export function ViewBar(props: Props) {
         <div className="view-controls">
           {chart && (
             // One control in three parts, not three separate buttons.
-            <div className="segmented" role="group" aria-label="Thang thời gian">
-              {SCALES.map((item) => (
+            <div className="segmented" role="group" aria-label={m.scale}>
+              {SCALES.map((scale) => (
                 <button
-                  key={item.id}
+                  key={scale}
                   type="button"
-                  className={props.scale === item.id ? "on" : ""}
-                  aria-pressed={props.scale === item.id}
-                  onClick={() => props.onScale(item.id)}
+                  className={props.scale === scale ? "on" : ""}
+                  aria-pressed={props.scale === scale}
+                  onClick={() => props.onScale(scale)}
                 >
-                  {item.label}
+                  {m[scale]}
                 </button>
               ))}
             </div>
           )}
           <label className="view-control">
-            Lọc
+            {m.filter}
             <select
-              aria-label="Lọc"
+              aria-label={m.filter}
               value={props.filter}
               onChange={(event) => {
                 const next = event.target.value as FilterMode;
@@ -125,22 +124,22 @@ export function ViewBar(props: Props) {
                 }
               }}
             >
-              <option value="none">Không lọc</option>
-              <option value="critical">Đường găng</option>
-              <option value="resource">Theo người</option>
-              <option value="late">Trễ hạn</option>
+              <option value="none">{m.filterNone}</option>
+              <option value="critical">{m.critical}</option>
+              <option value="resource">{m.byPerson}</option>
+              <option value="late">{m.late}</option>
             </select>
           </label>
           {props.filter === "resource" && (
             <select
-              aria-label="Người"
+              aria-label={m.person}
               value={props.filterResource ?? ""}
               onChange={(event) => props.onFilterResource(event.target.value ? Number(event.target.value) : null)}
             >
-              {project.resources.length === 0 && <option value="">Chưa có nguồn lực</option>}
+              {project.resources.length === 0 && <option value="">{m.noResources}</option>}
               {project.resources.map((resource) => (
                 <option key={resource.uid} value={resource.uid}>
-                  {resource.name.trim() || `NL ${resource.uid}`}
+                  {resource.name.trim() || m.resourceFallback(resource.uid)}
                 </option>
               ))}
             </select>
@@ -152,32 +151,32 @@ export function ViewBar(props: Props) {
                 checked={props.networkSummaries}
                 onChange={(event) => props.onNetworkSummaries(event.target.checked)}
               />
-              Hiện công việc tóm tắt
+              {m.showSummaries}
             </label>
           ) : (
             <label className="view-control">
-              Nhóm
+              {m.group}
               <select
-                aria-label="Nhóm"
+                aria-label={m.group}
                 value={props.group}
                 onChange={(event) => props.onGroup(event.target.value as GroupMode)}
               >
-                <option value="none">Không nhóm</option>
-                <option value="resource">Theo người</option>
-                <option value="summary">Theo summary</option>
+                <option value="none">{m.groupNone}</option>
+                <option value="resource">{m.byPerson}</option>
+                <option value="summary">{m.bySummary}</option>
               </select>
             </label>
           )}
           <label className="view-control">
-            Tô sáng
+            {m.highlight}
             <select
-              aria-label="Tô sáng"
+              aria-label={m.highlight}
               value={props.highlight}
               onChange={(event) => props.onHighlight(event.target.value as HighlightMode)}
             >
-              <option value="none">Không</option>
-              <option value="critical">Đường găng</option>
-              <option value="late">Trễ hạn</option>
+              <option value="none">{m.highlightNone}</option>
+              <option value="critical">{m.critical}</option>
+              <option value="late">{m.late}</option>
             </select>
           </label>
         </div>

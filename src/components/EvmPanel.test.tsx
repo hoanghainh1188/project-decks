@@ -1,10 +1,11 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { I18nProvider, setCurrentLang } from "../i18n";
 import { at, makeEvm, makeMetrics } from "../test/fixtures";
 import type { ProjectMetrics } from "../types";
-import { EvmPanel } from "./EvmPanel";
+import { EvmPanel, formatCompactMoney, formatTickDate, formatWorkHours } from "./EvmPanel";
 
 function renderPanel(metrics: ProjectMetrics | null) {
   const handlers = { onOpenProjectInfo: vi.fn(), onOpenBaseline: vi.fn(), onClose: vi.fn() };
@@ -252,5 +253,137 @@ describe("EvmPanel S-curve", () => {
     expect(tips[1]).toMatch(/EV .* · AC /);
     expect(screen.getByText("EV (đạt được)")).toBeInTheDocument();
     expect(screen.getAllByText("Ngày trạng thái")).toHaveLength(1);
+  });
+
+  it("abbreviates large axis money in Vietnamese", () => {
+    expect(formatCompactMoney(8_400_000)).toBe("8,4 Tr");
+  });
+});
+
+describe("EvmPanel in English", () => {
+  afterEach(() => setCurrentLang("vi"));
+
+  function renderEnglish(metrics: ProjectMetrics | null) {
+    const handlers = { onOpenProjectInfo: vi.fn(), onOpenBaseline: vi.fn(), onClose: vi.fn() };
+    const view = render(
+      <I18nProvider lang="en">
+        <EvmPanel metrics={metrics} {...handlers} />
+      </I18nProvider>,
+    );
+    return { ...view, user: userEvent.setup(), ...handlers };
+  }
+
+  it("shows the loading note", () => {
+    renderEnglish(null);
+    expect(screen.getByText("Loading figures…")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Enlarge" })).toBeDisabled();
+  });
+
+  it("names every metric with its abbreviation and formats numbers the English way", () => {
+    renderEnglish(makeMetrics({ status_date: at(2026, 1, 15) }));
+    expect(screen.getByRole("complementary", { name: "EVM metrics and burn-down" })).toBeInTheDocument();
+    expect(screen.getByText("EVM metrics")).toBeInTheDocument();
+    expect(screen.getByText("As of the status date 2026-01-15.")).toBeInTheDocument();
+    expect(cell("Planned value (PV, BCWS)")).toHaveTextContent("4,000,000");
+    expect(cell("Earned value (EV, BCWP)")).toHaveTextContent("3,000,000");
+    expect(cell("Actual cost (AC, ACWP)")).toHaveTextContent("3,500,000");
+    expect(cell("Schedule variance (SV)")).toHaveTextContent("-1,000,000");
+    expect(cell("Cost variance (CV)")).toHaveClass("bad");
+    expect(cell("Schedule performance index (SPI)")).toHaveTextContent("0.75");
+    expect(cell("Cost performance index (CPI)")).toHaveTextContent("0.86");
+    expect(cell("Budget at completion (BAC)")).toHaveTextContent("10,000,000");
+    expect(cell("Estimate at completion (EAC)")).toHaveTextContent("11,666,667");
+    expect(cell("Estimate to complete (ETC)")).toHaveTextContent("8,166,667");
+    expect(cell("Variance at completion (VAC)")).toHaveTextContent("-1,666,667");
+  });
+
+  it("explains missing baseline and status date, with English buttons", async () => {
+    const { user, onOpenBaseline, onOpenProjectInfo, onClose } = renderEnglish(
+      makeMetrics({ status_date: null, has_baseline: false, metrics: null }),
+    );
+    expect(screen.getByText(/There is no baseline 0 yet/)).toBeInTheDocument();
+    expect(screen.getByText(/There is no status date yet/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Set baseline…" }));
+    await user.click(screen.getByRole("button", { name: "Set status date…" }));
+    await user.click(screen.getByRole("button", { name: "Close the EVM panel" }));
+    expect(onOpenBaseline).toHaveBeenCalledOnce();
+    expect(onOpenProjectInfo).toHaveBeenCalledOnce();
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("labels the burn-down chart, axis, tooltip and legend", () => {
+    const { container } = renderEnglish(
+      makeMetrics(
+        {},
+        {
+          status_date: at(2026, 1, 9),
+          baseline_work: 4800,
+          current_remaining_work: 1500,
+          ideal: [
+            { date: at(2026, 1, 5), remaining_work: 4800 },
+            { date: at(2026, 1, 16), remaining_work: 0 },
+          ],
+          planned: [
+            { date: at(2026, 1, 5), remaining_work: 4800 },
+            { date: at(2026, 1, 16), remaining_work: 0 },
+          ],
+          actual: [{ date: at(2026, 1, 9), remaining_work: 1500, ev: 0, ac: 0 }],
+        },
+      ),
+    );
+    expect(screen.getByText("Remaining work now: 25 hrs · Baseline work: 80 hrs")).toBeInTheDocument();
+    const chart = screen.getByRole("img", { name: "Burn-down chart: remaining work by date" });
+    expect(within(chart).getByText("hrs")).toBeInTheDocument();
+    expect(within(chart).getByText("Jan 5")).toBeInTheDocument();
+    expect(container.querySelector("circle title")).toHaveTextContent("2026-01-09: 25 hrs left");
+    expect(screen.getByText("Ideal (baseline 0)")).toBeInTheDocument();
+    expect(screen.getByText("Scheduled")).toBeInTheDocument();
+    expect(screen.getByText("Actual")).toBeInTheDocument();
+    expect(screen.getByText("Status date")).toBeInTheDocument();
+  });
+
+  it("explains an empty burn-down and S-curve", () => {
+    renderEnglish(makeMetrics());
+    expect(screen.getByText(/^No data yet\./)).toBeInTheDocument();
+    expect(screen.getByText("S-curve")).toBeInTheDocument();
+    expect(screen.getByText("Set baseline 0 to draw the S-curve.")).toBeInTheDocument();
+  });
+
+  it("draws the S-curve with English legend and compact money", () => {
+    renderEnglish(
+      makeMetrics(
+        {},
+        {},
+        {
+          status_date: at(2026, 1, 6),
+          baseline_finish: at(2026, 1, 7),
+          step: "week",
+          points: [
+            { date: at(2026, 1, 5), pv: 0, ev: 0, ac: 0 },
+            { date: at(2026, 1, 7), pv: 8_400_000, ev: null, ac: null },
+          ],
+        },
+      ),
+    );
+    const chart = screen.getByRole("img", { name: "S-curve: cumulative PV, EV and AC over time" });
+    expect(within(chart).getByText("8.4M")).toBeInTheDocument();
+    expect(within(chart).getByText("4.2M")).toBeInTheDocument();
+    expect(screen.getByText(/^Cumulative values by week\./)).toBeInTheDocument();
+    expect(screen.getByText("PV (planned)")).toBeInTheDocument();
+    expect(screen.getByText("EV (earned)")).toBeInTheDocument();
+    expect(screen.getByText("AC (actual)")).toBeInTheDocument();
+  });
+
+  it("opens the enlarged charts dialog with an English title", async () => {
+    const { user } = renderEnglish(makeMetrics());
+    await user.click(screen.getByRole("button", { name: "Enlarge" }));
+    expect(screen.getByRole("dialog", { name: "Burn-down and S-curve" })).toBeInTheDocument();
+  });
+
+  it("abbreviates thousands with K", () => {
+    setCurrentLang("en");
+    expect(formatCompactMoney(120_000)).toBe("120K");
+    expect(formatWorkHours(90)).toBe("1.5 hrs");
+    expect(formatTickDate(at(2026, 9, 14))).toBe("Sep 14");
   });
 });

@@ -3,8 +3,10 @@ import { Check } from "lucide-react";
 import { Button } from "./Button";
 import { DateTimeField } from "./DateTimeField";
 import { Modal } from "./Modal";
-import { formatDuration, formatInstant, parseDuration } from "../format";
+import { formatDuration, formatInstant, normalizePredecessorText, parseDuration } from "../format";
+import { useMessages } from "../i18n";
 import type { Command, Task } from "../types";
+import { taskEditDialogMessages } from "./TaskEditDialog.i18n";
 
 interface Props {
   task: Task;
@@ -14,13 +16,14 @@ interface Props {
 
 /** Same fields and commands as the task sheet row, for views without inline cells. */
 export function TaskEditDialog({ task, send, onClose }: Props) {
+  const m = useMessages(taskEditDialogMessages);
   return (
     <Modal
-      title={`${task.wbs ? `${task.wbs} · ` : ""}Sửa công việc`}
+      title={`${task.wbs ? `${task.wbs} · ` : ""}${m.title}`}
       onClose={onClose}
-      footer={<Button variant="primary" Icon={Check} onClick={onClose}>Đóng</Button>}
+      footer={<Button variant="primary" Icon={Check} onClick={onClose}>{m.close}</Button>}
     >
-      <label>Tên</label>
+      <label>{m.name}</label>
       <input
         autoFocus
         defaultValue={task.name}
@@ -31,7 +34,7 @@ export function TaskEditDialog({ task, send, onClose }: Props) {
           if (name && name !== task.name) send({ type: "rename_task", uid: task.uid, name });
         }}
       />
-      <label>Thời lượng</label>
+      <label>{m.duration}</label>
       <input
         disabled={task.summary}
         defaultValue={formatDuration(task.duration)}
@@ -42,18 +45,18 @@ export function TaskEditDialog({ task, send, onClose }: Props) {
           if (minutes !== null && minutes !== task.duration) send({ type: "set_duration", uid: task.uid, minutes });
         }}
       />
-      <label>Bắt đầu</label>
+      <label>{m.start}</label>
       <DateTimeField
         disabled={task.summary}
-        ariaLabel="Bắt đầu"
+        ariaLabel={m.start}
         value={task.start}
         onCommit={(start) => {
           if (start != null && start !== task.start) send({ type: "move_task", uid: task.uid, start });
         }}
       />
-      <label>Kết thúc</label>
+      <label>{m.finish}</label>
       <input readOnly value={formatInstant(task.finish)} />
-      <label>% hoàn thành</label>
+      <label>{m.percentComplete}</label>
       <input
         disabled={task.summary}
         inputMode="numeric"
@@ -67,15 +70,15 @@ export function TaskEditDialog({ task, send, onClose }: Props) {
           }
         }}
       />
-      <label>Tiền nhiệm</label>
+      <label>{m.predecessors}</label>
       <input
         defaultValue={task.predecessors}
         key={`pred-${task.uid}-${task.predecessors}`}
-        placeholder="VD: 2, 3SS+1d"
+        placeholder={m.predecessorsPlaceholder}
         onKeyDown={(event) => event.key === "Enter" && event.currentTarget.blur()}
         onBlur={(event) => {
           if (event.target.value !== task.predecessors) {
-            send({ type: "set_predecessors", uid: task.uid, text: event.target.value });
+            send({ type: "set_predecessors", uid: task.uid, text: normalizePredecessorText(event.target.value) });
           }
         }}
       />

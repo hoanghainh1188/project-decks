@@ -3,7 +3,10 @@ import { jsPDF } from "jspdf";
 import { formatDuration, formatInstant } from "./format";
 import { barColor } from "./ganttLayout";
 import { embeddedFont } from "./ganttPdf";
+import { pdfMessages } from "./ganttPdf.i18n";
+import { pick } from "./i18n";
 import { edgeLabel, nodeKind, occurrenceCounts } from "./networkLabels";
+import { networkBoxMessages } from "./networkLabels.i18n";
 import type { NetworkLayout, NetworkNode, NetworkPoint, Project, Task } from "./types";
 
 const FONT = "BeVietnamPro";
@@ -43,11 +46,12 @@ export function buildNetworkPdf(input: NetworkPdfInput): Uint8Array {
   doc.addFileToVFS("BeVietnamPro-Regular.ttf", embeddedFont());
   doc.addFont("BeVietnamPro-Regular.ttf", FONT, "normal");
   doc.setFont(FONT, "normal");
-  const title = project.name.trim() || "Dự án";
-  doc.setProperties({ title: `${title} — Sơ đồ mạng`, creator: "ProjectDesk" });
+  const pdf = pick(pdfMessages);
+  const title = pdf.networkTitle(project.name.trim() || pdf.untitled);
+  doc.setProperties({ title, creator: "ProjectDesk" });
   doc.setFontSize(11);
   setText(doc, "#1d1d1f");
-  doc.text(`${title} — Sơ đồ mạng`, MARGIN, MARGIN + 4);
+  doc.text(title, MARGIN, MARGIN + 4);
 
   const ox = MARGIN;
   const oy = MARGIN + TITLE_H;
@@ -135,7 +139,8 @@ function drawNode(
   const fieldPt = 10.5 * scale * PT_PER_MM;
   setText(doc, "#1d1d1f");
   doc.setFontSize(12 * scale * PT_PER_MM);
-  const name = task.name.trim() || `Công việc ${task.id}`;
+  const m = pick(networkBoxMessages);
+  const name = task.name.trim() || m.taskFallback(task.id);
   doc.text(fitText(doc, name, w - 2 * pad), x + w / 2, y + px(18), { align: "center" });
   doc.setLineWidth(0.15);
   doc.line(x + (task.milestone ? px(14) : 0), y + px(27), x + w - (task.milestone ? px(14) : 0), y + px(27));
@@ -144,9 +149,9 @@ function drawNode(
   doc.text(`ID ${task.id}${task.wbs ? ` · WBS ${task.wbs}` : ""}`, x + pad, y + px(43));
   doc.text(kind, x + w - pad, y + px(43), { align: "right" });
   const rows: [string, string, number][] = [
-    ["Bắt đầu", formatInstant(task.start), 60],
-    ["Kết thúc", formatInstant(task.finish), 76],
-    ["Hoàn thành", `${Math.round(Math.max(0, Math.min(100, task.percent_complete)))}%`, 92],
+    [m.start, formatInstant(task.start), 60],
+    [m.finish, formatInstant(task.finish), 76],
+    [m.complete, `${Math.round(Math.max(0, Math.min(100, task.percent_complete)))}%`, 92],
   ];
   for (const [label, value, top] of rows) {
     setText(doc, "#6e6e73");

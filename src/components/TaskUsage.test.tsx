@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
+import { I18nProvider, setCurrentLang } from "../i18n";
 import { makeProject } from "../test/fixtures";
 import { TaskUsage } from "./TaskUsage";
 
@@ -26,5 +27,32 @@ describe("TaskUsage", () => {
   it("writes hours with a decimal comma", () => {
     render(<TaskUsage project={project} />);
     expect(screen.getAllByText("7,2")).toHaveLength(2);
+  });
+});
+
+describe("TaskUsage in English", () => {
+  afterEach(() => setCurrentLang("vi"));
+
+  it("heads the table and the days in English", () => {
+    const project = makeProject({
+      usage: [{ task_uid: 1, assignment_uid: null, resource_uid: null, label: "Task A", days: [{ date: "2026-01-05", hours: 7.2 }] }],
+    });
+    render(
+      <I18nProvider lang="en">
+        <TaskUsage project={project} />
+      </I18nProvider>,
+    );
+    expect(screen.getByRole("columnheader", { name: "Task / resource" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "01-05" })).toBeInTheDocument();
+    expect(screen.getByText("7.2")).toBeInTheDocument();
+  });
+
+  it("says when there is nothing to show", () => {
+    render(
+      <I18nProvider lang="en">
+        <TaskUsage project={makeProject({ usage: [] })} />
+      </I18nProvider>,
+    );
+    expect(screen.getByText("No tasks yet.")).toBeInTheDocument();
   });
 });

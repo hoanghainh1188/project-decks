@@ -1,4 +1,6 @@
 import { utcMidnight } from "./format";
+import { timescaleMessages } from "./ganttLayout.i18n";
+import { pick } from "./i18n";
 import type { Project, Scale, Segment, Task } from "./types";
 
 export const ROW = 28;
@@ -110,12 +112,14 @@ export function isoDate(ms: number): string {
   return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`;
 }
 
+/** Band label in the current language: a month ("Tháng 9 2026"), a week, or a short month. */
 export function groupLabel(ms: number, px: number): string {
+  const m = pick(timescaleMessages);
   const date = new Date(ms);
-  if (px >= 20) return `Tháng ${date.getUTCMonth() + 1} ${date.getUTCFullYear()}`;
+  if (px >= 20) return m.monthBand(date.getUTCMonth() + 1, date.getUTCFullYear());
   const onejan = Date.UTC(date.getUTCFullYear(), 0, 1);
   const week = Math.ceil(((ms - onejan) / 86400000 + new Date(onejan).getUTCDay() + 1) / 7);
-  return px >= 10 ? `Tuần ${week}` : `T${date.getUTCMonth() + 1}/${date.getUTCFullYear()}`;
+  return px >= 10 ? m.weekBand(week) : m.monthShort(date.getUTCMonth() + 1, date.getUTCFullYear());
 }
 
 export interface TimescaleBand {
@@ -138,8 +142,6 @@ export function timescaleBands(days: number[], px: number): TimescaleBand[] {
   return bands;
 }
 
-const WEEKDAYS = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
-
 export interface DayLabelParts {
   weekday: string;
   date: string;
@@ -154,7 +156,7 @@ export function dayLabelParts(ms: number, px: number): DayLabelParts {
   const date = new Date(ms);
   if (px < 10) return { weekday: "", date: "" };
   if (px < 20) return { weekday: "", date: date.getUTCDay() === 1 ? String(date.getUTCDate()) : "" };
-  return { weekday: WEEKDAYS[date.getUTCDay()], date: String(date.getUTCDate()) };
+  return { weekday: pick(timescaleMessages).weekday(date.getUTCDay()), date: String(date.getUTCDate()) };
 }
 
 /** One-line day label, used by the PDF export where the text is shrunk to fit. */

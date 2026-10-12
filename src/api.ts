@@ -1,7 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
+import { defineMessages, isLang, pick, type Lang } from "./i18n";
 import type { Command, NetworkLayout, NetworkOptions, ProjectMetrics, Snapshot } from "./types";
+
+const apiMessages = defineMessages(
+  { failed: "Không thực hiện được thao tác" },
+  { failed: "The action could not be completed" },
+);
 
 export function inTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -27,7 +33,22 @@ function afterQueued<T>(work: () => Promise<T>): Promise<T> {
 export function errorMessage(error: unknown): string {
   if (typeof error === "string") return error;
   if (error instanceof Error) return error.message;
-  return "Không thực hiện được thao tác";
+  return pick(apiMessages).failed;
+}
+
+/** The language the user chose in the menu, or null to follow the system. */
+export async function getLanguage(): Promise<Lang | null> {
+  const saved = await invoke<string | null>("get_language");
+  return isLang(saved) ? saved : null;
+}
+
+/**
+ * Tell the backend which language to use for the native menu, dialogs and error
+ * messages. `remember` stores it as the user's choice; a language followed from the
+ * system is not stored, so a later system change still applies.
+ */
+export function setLanguage(language: Lang, remember: boolean): Promise<void> {
+  return invoke<void>("set_language", { language, remember });
 }
 
 export function loadState(): Promise<Snapshot> {

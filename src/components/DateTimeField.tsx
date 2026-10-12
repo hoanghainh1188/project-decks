@@ -13,10 +13,11 @@ import {
   todayInstant,
   utcMidnight,
 } from "../format";
+import { useMessages } from "../i18n";
+import { dateTimeFieldMessages, WEEKDAY_INDEXES } from "./DateTimeField.i18n";
 
 export type PickerMode = "datetime" | "date" | "time";
 
-const WEEKDAYS = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"];
 const MINUTE_STEP = 15;
 const DEFAULT_MINUTE = 8 * 60;
 const MINUTE_MS = 60_000;
@@ -46,6 +47,7 @@ function parseValue(mode: PickerMode, text: string): number | null {
 }
 
 export function PickerField({ mode, value, optional, disabled, ariaLabel, placeholder, onCommit }: PickerFieldProps) {
+  const m = useMessages(dateTimeFieldMessages);
   const shown = value == null ? "" : formatValue(mode, value);
   const [text, setText] = useState(shown);
   const [editing, setEditing] = useState(false);
@@ -126,8 +128,8 @@ export function PickerField({ mode, value, optional, disabled, ariaLabel, placeh
         type="button"
         className="picker-toggle"
         disabled={disabled}
-        aria-label={mode === "time" ? "Chọn giờ" : "Mở lịch chọn ngày"}
-        title={mode === "time" ? "Chọn giờ" : "Chọn ngày"}
+        aria-label={mode === "time" ? m.pickTime : m.openDatePicker}
+        title={mode === "time" ? m.pickTime : m.pickDate}
         onMouseDown={keepFocus}
         onClick={() => setOpen((current) => !current)}
       >
@@ -138,8 +140,8 @@ export function PickerField({ mode, value, optional, disabled, ariaLabel, placeh
           type="button"
           className="picker-clear"
           disabled={disabled}
-          aria-label="Xóa ngày"
-          title="Xóa"
+          aria-label={m.clearDate}
+          title={m.clear}
           onMouseDown={keepFocus}
           onClick={() => pick(null)}
         >
@@ -177,6 +179,7 @@ function splitSeed(mode: PickerMode, seed: number | null): { day: number; minute
 }
 
 function PickerPopover({ anchor, mode, seed, optional, onPick, onClose }: PickerPopoverProps) {
+  const m = useMessages(dateTimeFieldMessages);
   const initial = splitSeed(mode, seed);
   const [day, setDay] = useState(initial.day);
   const [minute, setMinute] = useState(initial.minute);
@@ -281,7 +284,7 @@ function PickerPopover({ anchor, mode, seed, optional, onPick, onClose }: Picker
       ref={popRef}
       className="picker-popover"
       role="dialog"
-      aria-label={mode === "time" ? "Chọn giờ" : "Chọn ngày"}
+      aria-label={mode === "time" ? m.pickTime : m.pickDate}
       style={style}
       onMouseDown={(event) => {
         event.stopPropagation();
@@ -295,20 +298,20 @@ function PickerPopover({ anchor, mode, seed, optional, onPick, onClose }: Picker
       {mode !== "time" && (
         <>
           <div className="picker-head">
-            <button type="button" aria-label="Tháng trước" onClick={() => shiftMonth(-1)}>
+            <button type="button" aria-label={m.previousMonth} onClick={() => shiftMonth(-1)}>
               ‹
             </button>
             <span className="picker-title">
-              Tháng {view.month + 1}, {view.year}
+              {m.monthTitle(view.month + 1, view.year)}
             </span>
-            <button type="button" aria-label="Tháng sau" onClick={() => shiftMonth(1)}>
+            <button type="button" aria-label={m.nextMonth} onClick={() => shiftMonth(1)}>
               ›
             </button>
           </div>
           <div className="picker-grid" role="grid">
-            {WEEKDAYS.map((label) => (
-              <span key={label} className="picker-weekday" role="columnheader">
-                {label}
+            {WEEKDAY_INDEXES.map((index) => (
+              <span key={index} className="picker-weekday" role="columnheader">
+                {m.weekday(index)}
               </span>
             ))}
             {cells.map((cell) => {
@@ -339,22 +342,22 @@ function PickerPopover({ anchor, mode, seed, optional, onPick, onClose }: Picker
       <div className="picker-foot">
         {mode !== "time" && (
           <button type="button" onClick={goToday}>
-            Hôm nay
+            {m.today}
           </button>
         )}
         {optional && (
           <button type="button" onClick={() => onPick(null)}>
-            Xóa
+            {m.clear}
           </button>
         )}
         <span className="spacer" />
         {mode !== "date" && (
           <>
             <button type="button" onClick={() => onClose(true)}>
-              Hủy
+              {m.cancel}
             </button>
             <button type="button" className="on" onClick={() => onPick(result(day, minute))}>
-              Chọn
+              {m.choose}
             </button>
           </>
         )}
@@ -371,6 +374,7 @@ function stopReactBubble(event: SyntheticEvent) {
 }
 
 function TimeSelect({ mode, minute, onChange }: { mode: PickerMode; minute: number; onChange: (minute: number) => void }) {
+  const m = useMessages(dateTimeFieldMessages);
   const hour = Math.floor(minute / 60);
   const rest = minute % 60;
   // Working-time ranges may end at 24:00; instants roll over to the next day instead.
@@ -382,9 +386,9 @@ function TimeSelect({ mode, minute, onChange }: { mode: PickerMode; minute: numb
   const pad = (value: number) => String(value).padStart(2, "0");
   return (
     <div className="picker-time">
-      <span>Giờ</span>
+      <span>{m.hour}</span>
       <select
-        aria-label="Giờ"
+        aria-label={m.hour}
         value={hour}
         onChange={(event) => {
           const nextHour = Number(event.target.value);
@@ -399,7 +403,7 @@ function TimeSelect({ mode, minute, onChange }: { mode: PickerMode; minute: numb
       </select>
       <span>:</span>
       <select
-        aria-label="Phút"
+        aria-label={m.minute}
         value={rest}
         disabled={hour === 24}
         onChange={(event) => onChange(hour * 60 + Number(event.target.value))}
@@ -410,7 +414,7 @@ function TimeSelect({ mode, minute, onChange }: { mode: PickerMode; minute: numb
           </option>
         ))}
       </select>
-      <span className="meta">Gõ giờ chính xác vào ô nếu cần</span>
+      <span className="meta">{m.typeExactTime}</span>
     </div>
   );
 }
@@ -454,13 +458,14 @@ interface DateKeyFieldProps {
 
 // Calendar exceptions use "YYYY-MM-DD" keys; an empty string means no date yet.
 export function DateKeyField({ value, disabled, ariaLabel, onCommit }: DateKeyFieldProps) {
+  const m = useMessages(dateTimeFieldMessages);
   return (
     <PickerField
       mode="date"
       value={value ? dateKeyToInstant(value) : null}
       disabled={disabled}
       ariaLabel={ariaLabel}
-      placeholder="dd/mm/yyyy"
+      placeholder={m.datePlaceholder}
       onCommit={(ms) => onCommit(ms == null ? "" : instantToDateKey(ms))}
     />
   );

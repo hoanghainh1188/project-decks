@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { setCurrentLang } from "./i18n/lang";
+
 import {
   dateKeyToInstant,
   datetimeLocalToInstant,
@@ -10,6 +12,7 @@ import {
   formatHours,
   formatInstant,
   formatMoney,
+  normalizePredecessorText,
   instantToDateKey,
   instantToDatetimeLocal,
   minuteToTime,
@@ -106,7 +109,7 @@ describe("formatInstant / parseInstant", () => {
     expect(parseInstant(" 5/1/2026 ")).toBe(at(2026, 1, 5, 8, 0));
   });
 
-  it.each(["31/02/2026", "29/02/2026 08:00", "32/01/2026", "00/01/2026", "01/13/2026", "01/01/2026 24:00", "01/01/2026 08:60", "2026-01-01", "1/1/26", ""])(
+  it.each(["31/02/2026", "29/02/2026 08:00", "32/01/2026", "00/01/2026", "01/13/2026", "01/01/2026 24:00", "01/01/2026 08:60", "2026-02-30", "26-01-01", "1/1/26", ""])(
     "rejects %j",
     (text) => {
       expect(parseInstant(text)).toBeNull();
@@ -145,7 +148,8 @@ describe("date-only helpers", () => {
     expect(formatDateKeyDisplay("2026-03-09")).toBe("09/03/2026");
     expect(formatDateKeyDisplay("bad")).toBe("bad");
     expect(formatDateKey("9/3/2026")).toBe("2026-03-09");
-    expect(formatDateKey("2026-03-09")).toBeNull();
+    expect(formatDateKey("2026-03-09")).toBe("2026-03-09");
+    expect(formatDateKey("2026-3-9")).toBe("2026-03-09");
   });
 
   it("shiftDays keeps the time and crosses month and year boundaries", () => {
@@ -224,5 +228,61 @@ describe("number formatting", () => {
     expect(formatHours(8)).toBe("8");
     expect(formatHours(7.25)).toBe("7,3");
     expect(formatHours(-1.5)).toBe("-1,5");
+  });
+});
+
+describe("English formatting", () => {
+  afterEach(() => setCurrentLang("vi"));
+
+  it("shows ISO dates, decimal points, English units and US grouping", () => {
+    setCurrentLang("en");
+    expect(formatInstant(at(2026, 1, 5, 8, 0))).toBe("2026-01-05 08:00");
+    expect(formatDateOnly(at(2026, 1, 5, 8, 0))).toBe("2026-01-05");
+    expect(formatDateKeyDisplay("2026-03-09")).toBe("2026-03-09");
+    expect(formatDuration(0)).toBe("0 days");
+    expect(formatDuration(480)).toBe("1 day");
+    expect(formatDuration(3600)).toBe("7.5 days");
+    expect(formatDuration(60)).toBe("1 hr");
+    expect(formatDuration(90)).toBe("1.5 hrs");
+    expect(formatDuration(7)).toBe("7 mins");
+    expect(formatMoney(3480000)).toBe("3,480,000");
+    expect(formatHours(2.5)).toBe("2.5");
+  });
+
+  it("reads ISO dates only in English, so 1/5/2026 is never taken as May 1", () => {
+    setCurrentLang("en");
+    expect(parseInstant("2026-01-05 08:00")).toBe(at(2026, 1, 5, 8, 0));
+    expect(parseInstant("05/01/2026 08:00")).toBeNull();
+    expect(parseInstant("1/5/2026")).toBeNull();
+    expect(formatDateKey("1/5/2026")).toBeNull();
+    setCurrentLang("vi");
+    expect(parseInstant("2026-01-05 08:00")).toBe(at(2026, 1, 5, 8, 0));
+    expect(parseInstant("05/01/2026 08:00")).toBe(at(2026, 1, 5, 8, 0));
+  });
+
+  it("reads durations in both languages whatever the interface language", () => {
+    setCurrentLang("en");
+    expect(parseDuration("7.5 days")).toBe(3600);
+    expect(parseDuration("2 hrs")).toBe(120);
+    expect(parseDuration("30 mins")).toBe(30);
+    expect(parseDuration("1,5 ngày")).toBe(720);
+    expect(parseDuration("1 week")).toBeNull();
+  });
+
+  it("round-trips every duration it shows", () => {
+    setCurrentLang("en");
+    for (const minutes of [0, 1, 7, 60, 90, 480, 720, 3600, 2410]) {
+      expect(parseDuration(formatDuration(minutes))).toBe(minutes);
+    }
+  });
+});
+
+describe("normalizePredecessorText", () => {
+  it("turns English lag units into the short forms the engine reads", () => {
+    expect(normalizePredecessorText("2SS+2 hrs")).toBe("2SS+2h");
+    expect(normalizePredecessorText("3FS-30 mins; 4")).toBe("3FS-30m; 4");
+    expect(normalizePredecessorText("5FF+1.5 days")).toBe("5FF+1.5d");
+    expect(normalizePredecessorText("2SS+1d")).toBe("2SS+1d");
+    expect(normalizePredecessorText("2SS+2giờ")).toBe("2SS+2giờ");
   });
 });

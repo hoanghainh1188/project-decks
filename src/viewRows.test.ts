@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { setCurrentLang } from "./i18n";
 import { makeProject, makeTask, outlineProject } from "./test/fixtures";
 import {
   buildViewRows,
@@ -185,5 +186,26 @@ describe("buildViewRows keys", () => {
         }
       }
     }
+  });
+});
+
+describe("buildViewRows group headers in English", () => {
+  beforeEach(() => setCurrentLang("en"));
+  afterEach(() => setCurrentLang("vi"));
+
+  it("names unassigned tasks and unnamed resources", () => {
+    const rows = buildViewRows(outlineProject(), "none", null, "resource", "none");
+    expect(shape(rows)).toEqual([
+      "# An", "2", "3",
+      "# Resource 11", "3", "7",
+      "# Unassigned", "1", "4", "5", "6", "8",
+    ]);
+  });
+
+  it("names top-level leaves that have no summary", () => {
+    const labels = shape(buildViewRows(outlineProject(), "none", null, "summary", "none")).filter((item) =>
+      item.startsWith("# "),
+    );
+    expect(labels).toEqual(["# 1 Thiết kế", "# 1.3 Kiểm thử", "# 2 Thi công", "# No summary task"]);
   });
 });

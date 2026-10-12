@@ -22,6 +22,7 @@ import {
   saveProjectAs,
   undo,
 } from "./api";
+import { appMessages } from "./App.i18n";
 import { Button } from "./components/Button";
 import { CalendarEditor } from "./components/CalendarEditor";
 import { DateTimeField } from "./components/DateTimeField";
@@ -38,7 +39,8 @@ import { TaskSheet } from "./components/TaskSheet";
 import { TaskUsage } from "./components/TaskUsage";
 import { Toolbar } from "./components/Toolbar";
 import { VIEW_PANEL_ID, ViewBar, viewTabId } from "./components/ViewBar";
-import { formatInstant } from "./format";
+import { formatInstant, normalizePredecessorText } from "./format";
+import { pick, useLang, useMessages, useSetLang } from "./i18n";
 import { buildGanttPdf, pdfSuggestedName } from "./ganttPdf";
 import { buildNetworkPdf } from "./networkPdf";
 import type {
@@ -69,6 +71,9 @@ import { fileName, windowTitle } from "./windowTitle";
 import "./styles.css";
 
 export default function App() {
+  const m = useMessages(appMessages);
+  const setLang = useSetLang();
+  const lang = useLang();
   const [snap, setSnap] = useState<Snapshot | null>(null);
   const [view, setView] = useState<ViewId>("gantt");
   const [scale, setScale] = useState<Scale>("day");
@@ -102,7 +107,7 @@ export default function App() {
 
   const run = useCallback(async (work: () => Promise<Snapshot | void>): Promise<Snapshot | void> => {
     if (!inTauri()) {
-      setError("Mở ProjectDesk bằng pnpm tauri dev để dùng lịch và lưu tệp.");
+      setError(pick(appMessages).needsTauri);
       return;
     }
     try {
@@ -122,7 +127,7 @@ export default function App() {
   const startFileDialog = useCallback((work: () => Promise<Snapshot | void>) => {
     if (fileDialogBusyRef.current) return;
     if (!inTauri()) {
-      setError("Mở ProjectDesk bằng pnpm tauri dev để dùng lịch và lưu tệp.");
+      setError(pick(appMessages).needsTauri);
       return;
     }
     fileDialogBusyRef.current = true;
@@ -204,6 +209,12 @@ export default function App() {
       if (id === "scale-week") setScale("week");
       if (id === "scale-month") setScale("month");
       if (id === "project-info") void openProjectInfo();
+      if (id === "lang-vi" || id === "lang-en") {
+        // A new, untouched project is renamed in the new language by the backend.
+        void setLang(id === "lang-vi" ? "vi" : "en")
+          .then(() => run(loadState))
+          .catch((err) => setError(errorMessage(err)));
+      }
       if (id === "baseline") setBaselineOpen(true);
       if (id === "level") void send({ type: "level_resources" });
       if (id === "clear-level") void send({ type: "clear_leveling" });
@@ -218,7 +229,7 @@ export default function App() {
       if (id === "outdent" && states.outdent.enabled) void send({ type: "outdent", uid: task.uid });
       if (id === "delete" && states.remove.enabled) void send({ type: "delete_task", uid: task.uid });
     },
-    [run, send, startFileDialog, task, snap, view, fileDialogBusy, openProjectInfo, infoStart],
+    [run, send, startFileDialog, task, snap, view, fileDialogBusy, openProjectInfo, infoStart, setLang],
   );
   menuRef.current = handleMenu;
 
@@ -248,7 +259,7 @@ export default function App() {
 
   useEffect(() => {
     if (!inTauri()) {
-      setError("Mở ProjectDesk bằng pnpm tauri dev để dùng lịch và lưu tệp.");
+      setError(pick(appMessages).needsTauri);
       return;
     }
     // After a crash the backend offers the autosaved project back in a native dialog.
@@ -312,12 +323,13 @@ export default function App() {
   );
   const rows = useMemo(
     () => (project ? buildViewRows(project, rowFilter, filterResource, rowGroup, rowHighlight) : []),
-    [project, rowFilter, filterResource, rowGroup, rowHighlight],
+    // Group headers ("Chưa gán" / "Unassigned") are text, so they follow the language.
+    [project, rowFilter, filterResource, rowGroup, rowHighlight, lang],
   );
   // The network diagram ignores grouping; filters choose the boxes and highlight tints them.
   const networkRows = useMemo(
     () => (project && view === "network" ? buildViewRows(project, rowFilter, filterResource, "none", rowHighlight) : []),
-    [project, view, rowFilter, filterResource, rowHighlight],
+    [project, view, rowFilter, filterResource, rowHighlight, lang],
   );
   const networkVisible = useMemo(
     () => (rowFilter === "none" ? null : networkRows.flatMap((row) => (row.kind === "task" ? [row.task.uid] : []))),
@@ -351,7 +363,7 @@ export default function App() {
       if (!layout) return;
       startFileDialog(async () => {
         const bytes = buildNetworkPdf({ project, layout, highlighted: networkHighlighted });
-        await savePdf(bytes, pdfSuggestedName(`${project.name.trim() || "Dự án"} - sơ đồ mạng`));
+        await savePdf(bytes, pdfSuggestedName(m.networkPdfName(project.name.trim() || m.untitledProject)));
       });
       return;
     }
@@ -387,8 +399,10 @@ export default function App() {
         evmOpen={evmOpen}
         onUndo={() => void run(undo)}
         onRedo={() => void run(redo)}
-        onAddTask={() => void send({ type: "add_task", name: "", after_uid: selected })}
-        onAddMilestone={() => void send({ type: "add_milestone", name: "Mốc", after_uid: selected })}
+        onAddTask={() =>
+          void send({ type: "add_task", name: m.newTask(project?.next_task_uid ?? 1), after_uid: selected })
+        }
+        onAddMilestone={() => void send({ type: "add_milestone", name: m.newMilestone, after_uid: selected })}
         onAddRecurring={() => setSeriesDialog(0)}
         onIndent={() => task && void send({ type: "indent", uid: task.uid })}
         onOutdent={() => task && void send({ type: "outdent", uid: task.uid })}
@@ -444,7 +458,7 @@ export default function App() {
                   onRename={(uid, name) => send({ type: "rename_task", uid, name })}
                   onDuration={(uid, minutes) => send({ type: "set_duration", uid, minutes })}
                   onStart={(uid, start) => send({ type: "move_task", uid, start })}
-                  onPredecessors={(uid, text) => send({ type: "set_predecessors", uid, text })}
+                  onPredecessors={(uid, text) => send({ type: "set_predecessors", uid, text: normalizePredecessorText(text) })}
                   onPercent={(uid, percent) => send({ type: "set_percent_complete", uid, percent })}
                   onRemaining={(uid, minutes) => send({ type: "set_remaining_duration", uid, minutes })}
                   onActualStart={(uid, start) => send({ type: "set_actual_start", uid, start })}
@@ -479,12 +493,12 @@ export default function App() {
                 resources={project.resources}
                 calendars={project.calendars}
                 overallocations={project.overallocations}
-                onAdd={(kind) => send({ type: "add_resource", name: "", kind })}
+                onAdd={(kind) => send({ type: "add_resource", name: m.newResource(project.next_resource_uid), kind })}
                 onChange={(resource) => send(resourceCommand(resource))}
                 onDelete={(uid) => send({ type: "delete_resource", uid })}
                 onEditCalendar={setCalendarEditId}
                 onCreateCalendar={(resource) => {
-                  const name = resource.name.trim() ? `Lịch ${resource.name.trim()}` : "Lịch nguồn lực";
+                  const name = resource.name.trim() ? m.calendarFor(resource.name.trim()) : m.resourceCalendar;
                   void createCalendar(name, (id) => resourceCommand({ ...resource, calendar_id: id }), true);
                 }}
               />
@@ -514,7 +528,7 @@ export default function App() {
               onSplit={setSplitDialog}
               onEditCalendar={setCalendarEditId}
               onCreateCalendar={() => {
-                const name = task.name.trim() ? `Lịch ${task.name.trim()}` : "Lịch công việc";
+                const name = task.name.trim() ? m.calendarFor(task.name.trim()) : m.taskCalendar;
                 void createCalendar(name, (id) => ({ type: "set_task_calendar", uid: task.uid, calendar_id: id }), true);
               }}
             />
@@ -530,14 +544,14 @@ export default function App() {
         )}
       </div>
       <footer className="status">
-        <span>{snap?.dirty ? "Chưa lưu" : "Đã lưu"}</span>
-        <span title={snap?.path ?? undefined}>{snap?.path ? fileName(snap.path) : "Chưa có tệp"}</span>
-        <span>{project?.tasks.length ?? 0} công việc</span>
-        <span>{criticalCount} việc găng</span>
-        <span className="status-finish" title="Công việc kết thúc muộn nhất quyết định ngày kết thúc dự án">
-          {end ? `Kết thúc ${formatInstant(end.finish)} · do “${end.driver}”` : ""}
+        <span>{snap?.dirty ? m.unsaved : m.saved}</span>
+        <span title={snap?.path ?? undefined}>{snap?.path ? fileName(snap.path) : m.noFile}</span>
+        <span>{m.taskCount(project?.tasks.length ?? 0)}</span>
+        <span>{m.criticalCount(criticalCount)}</span>
+        <span className="status-finish" title={m.finishTip}>
+          {end ? m.finishedBy(formatInstant(end.finish), end.driver) : ""}
         </span>
-        <span>{project ? project.overallocations.length : 0} khoảng quá tải</span>
+        <span>{m.overallocations(project ? project.overallocations.length : 0)}</span>
       </footer>
       {infoStart != null && project && (
         <ProjectDialog
@@ -552,19 +566,19 @@ export default function App() {
               // Close only once everything is undone; otherwise stay open so Hủy can be
               // tried again (or Lưu kept) instead of leaving the project half reverted.
               if (state && state.history_cursor <= infoStart) setInfoStart(null);
-              else setError("Không hoàn tác hết thay đổi trong Thông tin dự án. Bấm Hủy lần nữa hoặc Lưu.");
+              else setError(m.rollbackFailed);
             });
           }}
           send={send}
-          onCreateCalendar={() => createCalendar("Lịch mới", () => null, false)}
+          onCreateCalendar={() => createCalendar(m.newCalendar, () => null, false)}
         />
       )}
       {editingCalendar && (
         <Modal
-          title="Sửa lịch"
+          title={m.editCalendar}
           className="wide"
           onClose={() => setCalendarEditId(null)}
-          footer={<Button variant="primary" Icon={Check} onClick={() => setCalendarEditId(null)}>Đóng</Button>}
+          footer={<Button variant="primary" Icon={Check} onClick={() => setCalendarEditId(null)}>{m.close}</Button>}
         >
           <CalendarEditor calendar={editingCalendar} send={send} />
         </Modal>
@@ -643,6 +657,7 @@ function ProjectDialog({
   send: (command: Command) => Promise<Snapshot | void>;
   onCreateCalendar: () => Promise<number | null>;
 }) {
+  const m = useMessages(appMessages);
   const [editingId, setEditingId] = useState(project.calendar_id);
   const calendar =
     project.calendars.find((item) => item.id === editingId) ??
@@ -650,18 +665,18 @@ function ProjectDialog({
     project.calendars[0];
   return (
     <Modal
-      title="Thông tin dự án"
+      title={m.projectInfo}
       className="wide"
       onClose={onCancel}
       footer={
         <>
-          <span className="meta dialog-foot-note">{changed ? "Đang xem trước thay đổi trên lịch" : ""}</span>
-          <Button Icon={X} onClick={onCancel}>Hủy</Button>
-          <Button variant="primary" Icon={Check} onClick={onSave}>Lưu</Button>
+          <span className="meta dialog-foot-note">{changed ? m.previewing : ""}</span>
+          <Button Icon={X} onClick={onCancel}>{m.cancel}</Button>
+          <Button variant="primary" Icon={Check} onClick={onSave}>{m.save}</Button>
         </>
       }
     >
-      <label>Tên</label>
+      <label>{m.name}</label>
       <input
         // Shows the name again after undo or redo inside the dialog.
         key={project.name}
@@ -670,30 +685,30 @@ function ProjectDialog({
           if (event.target.value !== project.name) void send({ type: "rename_project", name: event.target.value });
         }}
       />
-      <label>Ngày bắt đầu</label>
+      <label>{m.startDate}</label>
       <DateTimeField
-        ariaLabel="Ngày bắt đầu dự án"
+        ariaLabel={m.startDateLabel}
         value={project.start}
         onCommit={(start) => {
           if (start != null) void send({ type: "set_project_start", start });
         }}
       />
-      <label>Ngày trạng thái</label>
+      <label>{m.statusDate}</label>
       <DateTimeField
         optional
-        ariaLabel="Ngày trạng thái"
+        ariaLabel={m.statusDate}
         value={project.status_date}
         onCommit={(date) => void send({ type: "set_status_date", date })}
       />
       {calendar && (
         <>
-          <label>Lịch đang sửa</label>
+          <label>{m.editingCalendar}</label>
           <div className="row">
             <select value={calendar.id} onChange={(event) => setEditingId(Number(event.target.value))}>
               {project.calendars.map((item) => (
                 <option key={item.id} value={item.id}>
                   {item.name}
-                  {item.id === project.calendar_id ? " (dự án)" : ""}
+                  {item.id === project.calendar_id ? m.projectCalendarMark : ""}
                 </option>
               ))}
             </select>
@@ -705,7 +720,7 @@ function ProjectDialog({
                 });
               }}
             >
-              Tạo lịch
+              {m.newCalendarButton}
             </Button>
           </div>
           <CalendarEditor calendar={calendar} send={send} />
@@ -724,21 +739,22 @@ function BaselineDialog({
   onSet: (number: number) => void;
   onClear: (number: number) => void;
 }) {
+  const m = useMessages(appMessages);
   const [number, setNumber] = useState(0);
   return (
     <Modal
-      title="Đường cơ sở"
+      title={m.baseline}
       onClose={onClose}
       footer={
         <>
-          <Button variant="danger" Icon={Trash2} onClick={() => onClear(Math.min(10, Math.max(0, number)))}>Xóa</Button>
+          <Button variant="danger" Icon={Trash2} onClick={() => onClear(Math.min(10, Math.max(0, number)))}>{m.baselineDelete}</Button>
           <span className="spacer" />
-          <Button Icon={X} onClick={onClose}>Đóng</Button>
-          <Button variant="primary" Icon={Flag} onClick={() => onSet(Math.min(10, Math.max(0, number)))}>Đặt</Button>
+          <Button Icon={X} onClick={onClose}>{m.close}</Button>
+          <Button variant="primary" Icon={Flag} onClick={() => onSet(Math.min(10, Math.max(0, number)))}>{m.baselineSet}</Button>
         </>
       }
     >
-      <label>Mốc 0–10</label>
+      <label>{m.baselineNumber}</label>
       <input type="number" min={0} max={10} value={number} onChange={(event) => setNumber(Number(event.target.value))} />
     </Modal>
   );

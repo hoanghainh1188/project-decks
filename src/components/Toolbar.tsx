@@ -20,7 +20,9 @@ import type { ButtonHTMLAttributes } from "react";
 
 import type { ToolbarStates } from "../toolbarState";
 import type { DepKind } from "../types";
+import { useMessages } from "../i18n";
 import { MenuButton } from "./MenuButton";
+import { toolbarMessages } from "./Toolbar.i18n";
 
 export interface ToolbarActions {
   onUndo: () => void;
@@ -51,11 +53,11 @@ interface Props extends ToolbarActions {
  */
 type Tone = "history" | "create" | "edit" | "danger" | "project" | "report";
 
-const LINKS: { kind: DepKind; label: string }[] = [
-  { kind: "fs", label: "Kết thúc → bắt đầu (FS)" },
-  { kind: "ss", label: "Bắt đầu → bắt đầu (SS)" },
-  { kind: "ff", label: "Kết thúc → kết thúc (FF)" },
-  { kind: "sf", label: "Bắt đầu → kết thúc (SF)" },
+const LINKS: { kind: DepKind; label: "linkFs" | "linkSs" | "linkFf" | "linkSf" }[] = [
+  { kind: "fs", label: "linkFs" },
+  { kind: "ss", label: "linkSs" },
+  { kind: "ff", label: "linkFf" },
+  { kind: "sf", label: "linkSf" },
 ];
 
 function icon(Icon: LucideIcon) {
@@ -83,75 +85,76 @@ function Tool({ tone, Icon, label, className, ...rest }: ToolProps) {
  * macOS menu. A command that cannot run is disabled with its reason as the tooltip.
  */
 export function Toolbar({ states, evmOpen, ...actions }: Props) {
+  const m = useMessages(toolbarMessages);
   const tip = (key: keyof ToolbarStates, fallback: string) => states[key].reason ?? fallback;
   return (
     <header className="toolbar">
       <strong className="toolbar-brand">ProjectDesk</strong>
-      <div className="toolbar-group" role="group" aria-label="Lịch sử">
+      <div className="toolbar-group" role="group" aria-label={m.history}>
         <Tool
           tone="history"
           Icon={Undo2}
-          label="Hoàn tác"
+          label={m.undo}
           disabled={!states.undo.enabled}
-          title={tip("undo", "Hoàn tác (⌘Z)")}
+          title={tip("undo", m.undoTip)}
           onClick={actions.onUndo}
         />
         <Tool
           tone="history"
           Icon={Redo2}
-          label="Làm lại"
+          label={m.redo}
           disabled={!states.redo.enabled}
-          title={tip("redo", "Làm lại (⇧⌘Z)")}
+          title={tip("redo", m.redoTip)}
           onClick={actions.onRedo}
         />
       </div>
-      <div className="toolbar-group" role="group" aria-label="Tạo công việc">
+      <div className="toolbar-group" role="group" aria-label={m.create}>
         <MenuButton
-          label="Thêm việc"
+          label={m.add}
           className="tool tone-create primary"
           icon={icon(Plus)}
           disabled={!states.add.enabled}
-          title={tip("add", "Thêm sau công việc đang chọn")}
+          title={tip("add", m.addTip)}
           items={[
-            { label: "Công việc", icon: icon(ListPlus), onSelect: actions.onAddTask },
-            { label: "Mốc", icon: icon(Diamond), onSelect: actions.onAddMilestone },
-            { label: "Công việc lặp…", icon: icon(Repeat), onSelect: actions.onAddRecurring },
+            { label: m.addTask, icon: icon(ListPlus), onSelect: actions.onAddTask },
+            { label: m.addMilestone, icon: icon(Diamond), onSelect: actions.onAddMilestone },
+            { label: m.addRecurring, icon: icon(Repeat), onSelect: actions.onAddRecurring },
           ]}
         />
       </div>
-      <div className="toolbar-group" role="group" aria-label="Công việc đang chọn">
+      <div className="toolbar-group" role="group" aria-label={m.selected}>
         <Tool
           tone="edit"
           Icon={IndentDecrease}
-          label="Thụt ra"
+          label={m.outdent}
           disabled={!states.outdent.enabled}
-          title={tip("outdent", "Thụt ra (⌘[)")}
+          title={tip("outdent", m.outdentTip)}
           onClick={actions.onOutdent}
         />
         <Tool
           tone="edit"
           Icon={IndentIncrease}
-          label="Thụt vào"
+          label={m.indent}
           disabled={!states.indent.enabled}
-          title={tip("indent", "Thụt vào (⌘])")}
+          title={tip("indent", m.indentTip)}
           onClick={actions.onIndent}
         />
         <MenuButton
-          label="Liên kết"
+          label={m.link}
           className="tool tone-edit"
           icon={icon(Link2)}
           disabled={!states.link.enabled && !states.unlink.enabled}
-          title={states.link.enabled || states.unlink.enabled ? "Liên kết với việc liền trước trong dàn ý" : tip("link", "")}
+          title={states.link.enabled || states.unlink.enabled ? m.linkTip : tip("link", "")}
           items={[
             ...LINKS.map(({ kind, label }) => ({
-              label,
+              label: m[label],
               icon: icon(Link2),
               onSelect: () => actions.onLink(kind),
               disabled: !states.link.enabled,
               title: states.link.reason,
             })),
             {
-              label: "Gỡ liên kết với việc liền trước",
+              label: m.unlink,
               icon: icon(Unlink2),
               onSelect: actions.onUnlink,
               disabled: !states.unlink.enabled,
@@ -162,48 +165,48 @@ export function Toolbar({ states, evmOpen, ...actions }: Props) {
         <Tool
           tone="edit"
           Icon={Scissors}
-          label="Tách…"
+          label={m.split}
           disabled={!states.split.enabled}
-          title={tip("split", "Ngắt công việc đang chọn thành nhiều đoạn")}
+          title={tip("split", m.splitTip)}
           onClick={actions.onSplit}
         />
         <Tool
           tone="danger"
           Icon={Trash2}
-          label="Xóa"
+          label={m.remove}
           disabled={!states.remove.enabled}
-          title={tip("remove", "Xóa công việc (⌘⌫)")}
+          title={tip("remove", m.removeTip)}
           onClick={actions.onDelete}
         />
       </div>
-      <div className="toolbar-group" role="group" aria-label="Dự án">
+      <div className="toolbar-group" role="group" aria-label={m.project}>
         <Tool
           tone="project"
           Icon={FolderCog}
-          label="Dự án…"
+          label={m.projectInfo}
           disabled={!states.project.enabled}
-          title={tip("project", "Tên, ngày bắt đầu, ngày trạng thái và lịch dự án")}
+          title={tip("project", m.projectInfoTip)}
           onClick={actions.onProjectInfo}
         />
       </div>
       <span className="spacer" />
-      <div className="toolbar-group" role="group" aria-label="Báo cáo">
+      <div className="toolbar-group" role="group" aria-label={m.reports}>
         <Tool
           tone="report"
           Icon={ChartLine}
-          label="EVM"
+          label={m.evm}
           className={evmOpen ? "on" : undefined}
           aria-pressed={evmOpen}
           disabled={!states.evm.enabled}
-          title={tip("evm", "Chỉ số EVM và burn-down")}
+          title={tip("evm", m.evmTip)}
           onClick={actions.onToggleEvm}
         />
         <Tool
           tone="report"
           Icon={FileDown}
-          label="Xuất PDF"
+          label={m.exportPdf}
           disabled={!states.exportPdf.enabled}
-          title={tip("exportPdf", "Xuất view hiện tại ra PDF")}
+          title={tip("exportPdf", m.exportPdfTip)}
           onClick={actions.onExportPdf}
         />
       </div>

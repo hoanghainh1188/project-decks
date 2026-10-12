@@ -1,6 +1,13 @@
 import { X } from "lucide-react";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
+import { defineMessages, useMessages } from "../i18n";
+
+const modalMessages = defineMessages(
+  { close: "Đóng hộp thoại", closeTip: "Đóng (Esc)" },
+  { close: "Close dialog", closeTip: "Close (Esc)" },
+);
+
 interface Props {
   /** The heading, also the dialog's accessible name. */
   title: ReactNode;
@@ -27,6 +34,7 @@ interface Props {
  */
 export function Modal({ title, className, headerAction, footer, onClose, children }: Props) {
   const titleId = useId();
+  const m = useMessages(modalMessages);
   const boxRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
   useEffect(() => {
@@ -87,8 +95,8 @@ export function Modal({ title, className, headerAction, footer, onClose, childre
             <button
               type="button"
               className="dialog-close"
-              aria-label="Đóng hộp thoại"
-              title="Đóng (Esc)"
+              aria-label={m.close}
+              title={m.closeTip}
               onClick={() => closeCommitted(onClose)}
             >
               <X aria-hidden="true" size={16} strokeWidth={2} />

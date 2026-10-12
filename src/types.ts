@@ -201,6 +201,9 @@ export interface Project {
   dependencies: Dependency[];
   resources: Resource[];
   assignments: Assignment[];
+  /** UIDs the engine gives the next task and resource; the UI names new items with them. */
+  next_task_uid: number;
+  next_resource_uid: number;
   overallocations: Overallocation[];
   usage: UsageRow[];
 }

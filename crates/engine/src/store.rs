@@ -74,10 +74,7 @@ fn create_temp(target: &Path) -> Result<PathBuf, EngineError> {
             }
         }
     }
-    Err(save_err(last_error.map_or_else(
-        || "không tạo được tệp tạm".to_string(),
-        |err| err.to_string(),
-    )))
+    Err(last_error.map_or(EngineError::TempFile, save_err))
 }
 
 fn keep_permissions(target: &Path, temp: &Path) -> Result<(), EngineError> {
@@ -240,7 +237,7 @@ fn check_version(connection: &Connection) -> Result<(), EngineError> {
     let version: u32 = stored
         .trim()
         .parse()
-        .map_err(|_| store_err(format!("phiên bản định dạng không hợp lệ: {stored}")))?;
+        .map_err(|_| EngineError::BadFormatVersion(stored.clone()))?;
     if version > FORMAT_VERSION {
         return Err(EngineError::NewerFormat(version));
     }
@@ -276,7 +273,7 @@ fn read_log(connection: &Connection) -> Result<Log, EngineError> {
             continue;
         }
         let parsed = row
-            .map_err(|err| Damage::Failed(err.to_string()))
+            .map_err(|err| Damage::Failed(store_err(err)))
             .and_then(|payload| {
                 serde_json::from_str::<Command>(&payload).map_err(|err| {
                     // Only a command name this build does not know points at a newer app.
@@ -334,7 +331,7 @@ pub fn open(path: &str) -> Result<Opened, EngineError> {
     let replayed = document.replay_to(document.cursor);
     let replay_failed = replayed.error.is_some();
     let damage = match &replayed.error {
-        Some(error) => Some((replayed.applied, Damage::Failed(error.to_string()))),
+        Some(error) => Some((replayed.applied, Damage::Failed(error.clone()))),
         None => log.damage,
     };
     let Some((at, damage)) = damage else {

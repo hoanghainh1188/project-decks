@@ -2,8 +2,11 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { formatDuration, formatInstant } from "../format";
 import { barColor } from "../ganttLayout";
+import { useMessages } from "../i18n";
 import { edgeLabel, nodeKind, occurrenceCounts } from "../networkLabels";
+import { networkBoxMessages } from "../networkLabels.i18n";
 import type { NetworkEdge, NetworkLayout, NetworkNode, NetworkPoint, Project, Task } from "../types";
+import { networkDiagramMessages } from "./NetworkDiagram.i18n";
 
 const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 2;
@@ -30,6 +33,7 @@ interface PanState {
 }
 
 export function NetworkDiagram({ project, layout, selected, highlighted, onSelect, onEdit }: Props) {
+  const m = useMessages(networkDiagramMessages);
   const bodyRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
   const [panning, setPanning] = useState(false);
@@ -118,11 +122,11 @@ export function NetworkDiagram({ project, layout, selected, highlighted, onSelec
   return (
     <div className="network">
       <div className="network-tools">
-        <button type="button" title="Thu nhỏ" onClick={() => zoomTo(zoom / 1.25)}>−</button>
-        <button type="button" title="Về 100%" onClick={() => zoomTo(1)}>{Math.round(zoom * 100)}%</button>
-        <button type="button" title="Phóng to" onClick={() => zoomTo(zoom * 1.25)}>+</button>
-        <button type="button" onClick={fit}>Vừa khung</button>
-        <span className="network-hint">Kéo nền để cuộn · ⌘/Ctrl + cuộn để thu phóng · Nháy đúp để sửa</span>
+        <button type="button" title={m.zoomOut} onClick={() => zoomTo(zoom / 1.25)}>−</button>
+        <button type="button" title={m.zoomReset} onClick={() => zoomTo(1)}>{Math.round(zoom * 100)}%</button>
+        <button type="button" title={m.zoomIn} onClick={() => zoomTo(zoom * 1.25)}>+</button>
+        <button type="button" onClick={fit}>{m.fit}</button>
+        <span className="network-hint">{m.hint}</span>
       </div>
       <div
         className={`network-body${panning ? " panning" : ""}`}
@@ -156,7 +160,7 @@ export function NetworkDiagram({ project, layout, selected, highlighted, onSelec
           setPanning(false);
         }}
       >
-        {layout && layout.nodes.length === 0 && <p className="empty">Không có công việc nào để vẽ sơ đồ mạng.</p>}
+        {layout && layout.nodes.length === 0 && <p className="empty">{m.empty}</p>}
         {layout && layout.nodes.length > 0 && (
           <svg
             className="network-svg"
@@ -164,7 +168,7 @@ export function NetworkDiagram({ project, layout, selected, highlighted, onSelec
             height={height}
             viewBox={`0 0 ${layout.width} ${layout.height}`}
             role="img"
-            aria-label="Sơ đồ mạng"
+            aria-label={m.diagram}
           >
             <defs>
               <marker id="network-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
@@ -258,7 +262,7 @@ function TaskBox({
 }: {
   node: NetworkNode;
   task: Task;
-  /** "Lặp · 10 lần", "Tóm tắt", "Mốc", or empty for a plain task. */
+  /** "Lặp · 10 lần", "Tóm tắt", "Mốc" (in the interface language), or empty for a plain task. */
   kind: string;
   selected: boolean;
   highlighted: boolean;
@@ -269,7 +273,8 @@ function TaskBox({
   const stroke = barColor(task);
   const fill = highlighted ? "#fff3c4" : task.summary ? "#f3f3f6" : "white";
   const percent = Math.max(0, Math.min(100, task.percent_complete));
-  const name = task.name.trim() || `Công việc ${task.id}`;
+  const m = useMessages(networkBoxMessages);
+  const name = task.name.trim() || m.taskFallback(task.id);
   // Keep text clear of the hexagon's slanted sides.
   const pad = task.milestone && !task.summary ? PAD + 12 : PAD;
   return (
@@ -279,7 +284,7 @@ function TaskBox({
       onClick={() => onSelect(task.uid)}
       onDoubleClick={() => onEdit(task.uid)}
     >
-      <title>{`${task.wbs} ${name}${task.critical ? " · Găng" : ""}`}</title>
+      <title>{`${task.wbs} ${name}${task.critical ? m.criticalSuffix : ""}`}</title>
       {selected && <Shape task={task} w={w} h={h} inset={-4} fill="none" stroke={SELECTED} strokeWidth={2.5} />}
       <Shape task={task} w={w} h={h} inset={0} fill={fill} stroke={stroke} strokeWidth={task.critical ? 2.4 : 1.4} />
       {task.summary && <rect x={1} y={1} width={w - 2} height={26} fill={stroke} opacity={0.12} />}
@@ -294,15 +299,15 @@ function TaskBox({
         {kind || formatDuration(task.duration)}
       </text>
       <text className="network-field" x={pad} y={60}>
-        <tspan className="network-label">Bắt đầu</tspan>
+        <tspan className="network-label">{m.start}</tspan>
         <tspan x={w - pad} textAnchor="end">{formatInstant(task.start)}</tspan>
       </text>
       <text className="network-field" x={pad} y={76}>
-        <tspan className="network-label">Kết thúc</tspan>
+        <tspan className="network-label">{m.finish}</tspan>
         <tspan x={w - pad} textAnchor="end">{formatInstant(task.finish)}</tspan>
       </text>
       <text className="network-field" x={pad} y={92}>
-        <tspan className="network-label">Hoàn thành</tspan>
+        <tspan className="network-label">{m.complete}</tspan>
         <tspan x={w - pad} textAnchor="end">{`${Math.round(percent)}%`}</tspan>
       </text>
       {percent > 0 && (

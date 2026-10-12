@@ -1,7 +1,8 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { I18nProvider, setCurrentLang } from "../i18n";
 import { makeTask } from "../test/fixtures";
 import { TaskEditDialog } from "./TaskEditDialog";
 
@@ -35,5 +36,24 @@ describe("TaskEditDialog", () => {
   it("locks schedule fields on summary tasks", () => {
     render(<TaskEditDialog task={makeTask({ uid: 1, summary: true })} send={() => {}} onClose={() => {}} />);
     expect(screen.getByDisplayValue("1 ngày")).toBeDisabled();
+  });
+});
+
+describe("TaskEditDialog in English", () => {
+  afterEach(() => setCurrentLang("vi"));
+
+  it("labels the fields with Project's English terms", () => {
+    render(
+      <I18nProvider lang="en">
+        <TaskEditDialog task={makeTask({ uid: 2, wbs: "1.2" })} send={() => {}} onClose={() => {}} />
+      </I18nProvider>,
+    );
+    expect(screen.getByRole("heading", { name: "1.2 · Edit task" })).toBeInTheDocument();
+    for (const label of ["Name", "Duration", "Start", "Finish", "% Complete", "Predecessors"]) {
+      expect(screen.getByText(label, { selector: "label" })).toBeInTheDocument();
+    }
+    expect(screen.getByDisplayValue("1 day")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("e.g. 2, 3SS+1d")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
   });
 });

@@ -17,6 +17,8 @@ class FakeBackend {
   network: NetworkLayout = emptyNetwork();
   /** What `check_autosave` restores; null when there is no autosave. */
   autosave: Snapshot | null = null;
+  /** The remembered interface language (`get_language`); null follows the system. */
+  language: string | null = null;
   private failures = new Map<string, unknown>();
   private holds = new Map<string, Promise<void>>();
 
@@ -28,6 +30,7 @@ class FakeBackend {
     this.failures.clear();
     this.holds.clear();
     this.autosave = null;
+    this.language = null;
   }
 
   /** The next call to `cmd` waits until the returned function runs, like a slow Rust command. */
@@ -60,6 +63,8 @@ class FakeBackend {
       this.failures.delete(cmd);
       throw error;
     }
+    // Window plugin calls such as setting the title.
+    if (cmd.startsWith("plugin:")) return undefined;
     switch (cmd) {
       case "project_state":
       case "new_project":
@@ -81,6 +86,11 @@ class FakeBackend {
       case "check_autosave":
         if (this.autosave) this.snapshot = structuredClone(this.autosave);
         return this.autosave ? structuredClone(this.autosave) : null;
+      case "get_language":
+        return this.language;
+      case "set_language":
+        if (args?.remember) this.language = args.language as string;
+        return undefined;
       case "apply_command":
         this.apply(args?.command as Command);
         return structuredClone(this.snapshot);

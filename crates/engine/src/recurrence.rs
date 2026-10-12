@@ -7,7 +7,7 @@ use chrono::{Datelike, Duration, NaiveDate};
 use serde::{Deserialize, Serialize};
 
 use crate::calendar::Calendar;
-use crate::error::EngineError;
+use crate::error::{EngineError, Invalid};
 use crate::model::{ConstraintType, Project, Task};
 use crate::schedule::normalize_outline;
 use crate::timeutil::{civil, compose};
@@ -140,7 +140,7 @@ fn check_day(day: u32) -> Result<(), EngineError> {
     if (1..=31).contains(&day) {
         Ok(())
     } else {
-        Err(EngineError::Store("Ngày trong tháng phải từ 1 đến 31".into()))
+        Err(Invalid::DayOfMonth.into())
     }
 }
 
@@ -148,16 +148,16 @@ fn check_month(month: u32) -> Result<(), EngineError> {
     if (1..=12).contains(&month) {
         Ok(())
     } else {
-        Err(EngineError::Store("Tháng phải từ 1 đến 12".into()))
+        Err(Invalid::Month.into())
     }
 }
 
 fn check_nth(ordinal: u8, weekday: u8) -> Result<(), EngineError> {
     if !(1..=LAST_WEEK).contains(&ordinal) {
-        return Err(EngineError::Store("Tuần trong tháng phải là thứ nhất đến thứ tư hoặc cuối cùng".into()));
+        return Err(Invalid::WeekOfMonth.into());
     }
     if weekday >= 7 {
-        return Err(EngineError::Store("Thứ trong tuần không hợp lệ".into()));
+        return Err(Invalid::Weekday.into());
     }
     Ok(())
 }
@@ -200,7 +200,7 @@ where
 }
 
 fn too_many() -> EngineError {
-    EngineError::Store(format!("Chuỗi lặp vượt quá {MAX_OCCURRENCES} lần"))
+    Invalid::TooManyOccurrences.into()
 }
 
 /// Civil dates of every occurrence, in order, before skipping any slot.
@@ -209,18 +209,14 @@ pub fn occurrence_dates(spec: &RecurrenceSpec, calendar: &Calendar) -> Result<Ve
     let (count, until) = match spec.end {
         RecurrenceEnd::Count { count } => {
             if count == 0 || count as usize > MAX_OCCURRENCES {
-                return Err(EngineError::Store(format!(
-                    "Số lần lặp phải từ 1 đến {MAX_OCCURRENCES}"
-                )));
+                return Err(Invalid::OccurrenceCount.into());
             }
             (Some(count as usize), None)
         }
         RecurrenceEnd::Until { date } => {
             let (until, _) = civil(date);
             if until < start {
-                return Err(EngineError::Store(
-                    "Ngày kết thúc chuỗi phải sau ngày bắt đầu".into(),
-                ));
+                return Err(Invalid::SeriesEndsBeforeStart.into());
             }
             (None, Some(until))
         }
@@ -261,7 +257,7 @@ pub fn occurrence_dates(spec: &RecurrenceSpec, calendar: &Calendar) -> Result<Ve
             let every = i64::from((*every).max(1));
             let days: HashSet<u32> = weekdays.iter().filter(|day| **day < 7).map(|day| u32::from(*day)).collect();
             if days.is_empty() {
-                return Err(EngineError::Store("Hãy chọn ít nhất một thứ trong tuần".into()));
+                return Err(Invalid::NoWeekday.into());
             }
             let week_start = start - Duration::days(i64::from(start.weekday().num_days_from_monday()));
             let mut date = start;
@@ -326,7 +322,7 @@ pub fn occurrence_dates(spec: &RecurrenceSpec, calendar: &Calendar) -> Result<Ve
         }
     }
     if dates.is_empty() {
-        return Err(EngineError::Store("Chuỗi lặp không có lần nào".into()));
+        return Err(Invalid::NoOccurrences.into());
     }
     Ok(dates)
 }
@@ -334,7 +330,7 @@ pub fn occurrence_dates(spec: &RecurrenceSpec, calendar: &Calendar) -> Result<Ve
 pub fn validate_spec(project: &Project, spec: &RecurrenceSpec) -> Result<(), EngineError> {
     if let Some(id) = spec.calendar_id {
         if project.calendar_by_id(id).is_none() {
-            return Err(EngineError::Store("Không có lịch này".into()));
+            return Err(Invalid::NoSuchCalendar.into());
         }
     }
     let uids = spec.resource_uids.iter().chain(spec.resources.iter().map(|resource| &resource.uid));
@@ -348,10 +344,10 @@ pub fn validate_spec(project: &Project, spec: &RecurrenceSpec) -> Result<(), Eng
         .iter()
         .any(|resource| !resource.units.is_finite() || resource.units <= 0.0)
     {
-        return Err(EngineError::Store("Đơn vị nguồn lực phải lớn hơn 0".into()));
+        return Err(Invalid::UnitsNotPositive.into());
     }
     if spec.duration < 0 {
-        return Err(EngineError::Store("Thời lượng không hợp lệ".into()));
+        return Err(Invalid::BadDuration.into());
     }
     Ok(())
 }
@@ -396,7 +392,7 @@ pub fn regenerate(project: &mut Project, summary_uid: u32) -> Result<(), EngineE
     let recurrence = project.tasks[index]
         .recurrence
         .clone()
-        .ok_or_else(|| EngineError::Store("Công việc này không phải chuỗi lặp".into()))?;
+        .ok_or_else(|| EngineError::from(Invalid::NotRecurring))?;
     let spec = clean_spec(&recurrence.spec);
     validate_spec(project, &spec)?;
     let calendar = spec
