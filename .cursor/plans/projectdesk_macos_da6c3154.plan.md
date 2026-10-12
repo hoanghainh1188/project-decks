@@ -56,9 +56,9 @@ todos:
   - id: ui-basics
     content: "Pha 11: giao diện cơ bản (PR #25; kiểm tra bằng mắt sau Pha 13, sửa ở PR #33)"
     status: completed
-  - id: release-0-1-0
-    content: "Bản v0.1.0: draft release, chưa ký số, macOS chỉ arm64. Build trước Pha 12–13 (định dạng tệp 1, nay là 3); bản phát hành tiếp theo đi cùng Pha 14"
-    status: in_progress
+  - id: release-1-0-0
+    content: "Bản v1.0.0: bản chính thức đầu tiên (chưa ký số, macOS chỉ arm64, định dạng tệp 4); ghi chú ở docs/releases/v1.0.0.md. Bản nháp v0.1.0 đã xóa, tag v0.1.0 giữ lại. Ký số và bản universal vẫn chờ Pha 14"
+    status: completed
   - id: file-performance
     content: "Pha 12: nền tệp và hiệu năng (checkpoint, lệnh bất đồng bộ, tệp hỏng, báo đổi ngày, tự lưu, gộp lịch sử; PR #28, #29 và phần 3)"
     status: completed
@@ -413,8 +413,8 @@ Nghiệm thu: test CPM bằng số tính tay (bắt đầu muộn đẩy task sa
 - Bản universal (`--target universal-apple-darwin`).
 - `bundle.fileAssociations` cho `.pdproj` với UTI riêng; xử lý `RunEvent::Opened` qua `confirm_discard`; danh sách "Mở gần đây".
 - CSP thay cho `csp: null`, cho phép `data:` và `blob:` mà jsPDF cần.
-- Sửa metadata `src-tauri/Cargo.toml` (`description`, `authors`).
-- Quy trình phát hành: tăng phiên bản đồng bộ ở `package.json`, `tauri.conf.json`, `Cargo.toml`; ghi chú phát hành tiếng Việt kèm giới hạn đã biết; tag `v*` từ `main`. Bản `v0.1.0` đã build (draft, chưa ký, macOS chỉ arm64).
+- Sửa metadata `src-tauri/Cargo.toml` (`description`, `authors`). (Đã làm ở PR #38.)
+- Quy trình phát hành: tăng phiên bản đồng bộ ở `package.json`, `tauri.conf.json`, `Cargo.toml` (workspace và `src-tauri`); ghi chú phát hành tiếng Việt kèm giới hạn đã biết trong `docs/releases/v<phiên bản>.md`; tag `v*` từ `main`; workflow tạo bản nháp, rồi thay nội dung bằng ghi chú đó và publish. Bản `v1.0.0` phát hành theo quy trình này, chưa ký số, macOS chỉ arm64. Đổi phiên bản crate cũng đổi `engine_tag()`, nên checkpoint trong tệp cũ bị bỏ qua và tệp được dựng lại bằng replay (chậm hơn một lần, kết quả như nhau).
 
 Nghiệm thu: CI chạy `codesign --verify --strict`, `spctl -a -vv`, `xcrun stapler validate`, `lipo -archs` (có x86_64 và arm64); bấm đúp tệp `.pdproj` mở được và vẫn hỏi lưu.
 

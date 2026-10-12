@@ -1,6 +1,6 @@
 [package]
 name = "projectdesk"
-version = "0.1.0"
+version = "1.0.0"
 description = "ProjectDesk: lập lịch dự án kiểu Microsoft Project, giao diện tiếng Việt"
 authors = ["Harry Nguyen"]
 edition = "2024"
