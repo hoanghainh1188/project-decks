@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { I18nProvider, setCurrentLang } from "../i18n";
 import { makeProject, makeTask } from "../test/fixtures";
 import type { NetworkLayout, Project } from "../types";
 import { NetworkDiagram } from "./NetworkDiagram";
@@ -115,5 +116,55 @@ describe("NetworkDiagram", () => {
       />,
     );
     expect(screen.getByText("Không có công việc nào để vẽ sơ đồ mạng.")).toBeInTheDocument();
+  });
+});
+
+describe("NetworkDiagram in English", () => {
+  afterEach(() => setCurrentLang("vi"));
+
+  function renderEnglish(layout?: NetworkLayout) {
+    const data = fixture();
+    return render(
+      <I18nProvider lang="en">
+        <NetworkDiagram
+          project={data.project}
+          layout={layout ?? data.layout}
+          selected={null}
+          highlighted={new Set()}
+          onSelect={() => {}}
+          onEdit={() => {}}
+        />
+      </I18nProvider>,
+    );
+  }
+
+  it("labels the box fields, kinds and links in English", () => {
+    const { container } = renderEnglish();
+    expect(screen.getByRole("img", { name: "Network diagram" })).toBeInTheDocument();
+    const box = screen.getByText("Đào móng").closest(".network-node");
+    const text = box?.textContent ?? "";
+    expect(text).toContain("Start");
+    expect(text).toContain("Finish");
+    expect(text).toContain("Complete");
+    expect(text).toContain("1 day");
+    expect(text).toContain("2026-01-05 08:00");
+    expect(box?.querySelector("title")).toHaveTextContent("1 Đào móng · Critical");
+    expect(screen.getByText("Bàn giao").closest(".network-node")?.textContent).toContain("Milestone");
+    const labels = [...container.querySelectorAll(".network-edge-label")].map((item) => item.textContent);
+    expect(labels).toEqual(["SS+0.5 days"]);
+  });
+
+  it("translates the zoom tools and hint", () => {
+    renderEnglish();
+    expect(screen.getByTitle("Zoom out")).toBeInTheDocument();
+    expect(screen.getByTitle("Zoom in")).toBeInTheDocument();
+    expect(screen.getByTitle("Reset to 100%")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Fit" })).toBeInTheDocument();
+    expect(screen.getByText(/Double-click to edit/)).toBeInTheDocument();
+  });
+
+  it("says so in English when there is nothing to draw", () => {
+    renderEnglish({ nodes: [], edges: [], columns: 0, width: 0, height: 0, crossings: 0 });
+    expect(screen.getByText("There are no tasks to draw a network diagram.")).toBeInTheDocument();
   });
 });
