@@ -132,7 +132,7 @@ export function makeProject(overrides: Partial<Project> = {}): Project {
 }
 
 export function makeSnapshot(project: Project = makeProject()): Snapshot {
-  return { project, path: null, dirty: false, can_undo: false, can_redo: false };
+  return { project, path: null, dirty: false, can_undo: false, can_redo: false, history_cursor: 0 };
 }
 
 export function makeEvm(overrides: Partial<EvmMetrics> = {}): EvmMetrics {

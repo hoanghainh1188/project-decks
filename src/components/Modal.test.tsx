@@ -97,7 +97,7 @@ describe("Modal", () => {
     await user.keyboard("Lan{Enter}");
     expect(document.body).toHaveFocus();
     await user.tab();
-    expect(screen.getByRole("textbox", { name: "Tên" })).toHaveFocus();
+    expect(screen.getByRole("button", { name: "Đóng hộp thoại" })).toHaveFocus();
     await user.click(document.body);
     await user.keyboard("{Escape}");
     expect(onClose).toHaveBeenCalledOnce();
@@ -122,5 +122,20 @@ describe("Modal", () => {
     );
     await user.click(screen.getByRole("button", { name: "Mở" }));
     expect(screen.getByRole("textbox", { name: "Tên" })).toHaveFocus();
+  });
+
+  it("has a close button in the header and keeps the footer apart from the scrolling body", async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    render(
+      <Modal title="Có chân" onClose={onClose} footer={<button type="button">Lưu</button>}>
+        <p>Nội dung</p>
+      </Modal>,
+    );
+    const dialog = screen.getByRole("dialog", { name: "Có chân" });
+    expect(dialog.querySelector(".dialog-body")).toHaveTextContent("Nội dung");
+    expect(dialog.querySelector(".dialog-foot")).toContainElement(screen.getByRole("button", { name: "Lưu" }));
+    await user.click(screen.getByRole("button", { name: "Đóng hộp thoại" }));
+    expect(onClose).toHaveBeenCalledOnce();
   });
 });

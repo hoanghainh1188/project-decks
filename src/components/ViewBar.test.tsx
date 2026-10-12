@@ -29,11 +29,29 @@ function renderBar(view: ViewId) {
 }
 
 describe("ViewBar", () => {
-  it("navigates between views and marks the current one", async () => {
+  it("shows the views as tabs with one tab stop on the current one", async () => {
     const { user, props } = renderBar("gantt");
-    expect(screen.getByRole("button", { name: "Gantt" })).toHaveAttribute("aria-current", "page");
-    await user.click(screen.getByRole("button", { name: "Sơ đồ mạng" }));
+    expect(screen.getByRole("tablist", { name: "View" })).toBeInTheDocument();
+    const gantt = screen.getByRole("tab", { name: "Gantt" });
+    expect(gantt).toHaveAttribute("aria-selected", "true");
+    expect(gantt).toHaveAttribute("aria-controls", "view-panel");
+    expect(gantt).toHaveAttribute("tabindex", "0");
+    expect(screen.getByRole("tab", { name: "Theo dõi" })).toHaveAttribute("tabindex", "-1");
+    await user.click(screen.getByRole("tab", { name: "Sơ đồ mạng" }));
     expect(props.onView).toHaveBeenCalledWith("network");
+  });
+
+  it("moves between tabs with the arrow keys, Home and End", async () => {
+    const { user, props } = renderBar("gantt");
+    screen.getByRole("tab", { name: "Gantt" }).focus();
+    await user.keyboard("{ArrowRight}");
+    expect(props.onView).toHaveBeenLastCalledWith("tracking");
+    await user.keyboard("{ArrowLeft}");
+    expect(props.onView).toHaveBeenLastCalledWith("network");
+    await user.keyboard("{End}");
+    expect(props.onView).toHaveBeenLastCalledWith("network");
+    await user.keyboard("{Home}");
+    expect(props.onView).toHaveBeenLastCalledWith("gantt");
   });
 
   it("shows the time scale and row controls on the chart views only", async () => {

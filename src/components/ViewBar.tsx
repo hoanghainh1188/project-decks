@@ -1,13 +1,23 @@
+import { ChartGantt, ListChecks, Network, Table2, Users, type LucideIcon } from "lucide-react";
+import { useRef, type KeyboardEvent } from "react";
+
 import type { Project, Scale, ViewId } from "../types";
 import type { FilterMode, GroupMode, HighlightMode } from "../viewRows";
 
-const VIEWS: { id: ViewId; label: string }[] = [
-  { id: "gantt", label: "Gantt" },
-  { id: "tracking", label: "Theo dõi" },
-  { id: "resources", label: "Nguồn lực" },
-  { id: "usage", label: "Sử dụng" },
-  { id: "network", label: "Sơ đồ mạng" },
+const VIEWS: { id: ViewId; label: string; Icon: LucideIcon }[] = [
+  { id: "gantt", label: "Gantt", Icon: ChartGantt },
+  { id: "tracking", label: "Theo dõi", Icon: ListChecks },
+  { id: "resources", label: "Nguồn lực", Icon: Users },
+  { id: "usage", label: "Sử dụng", Icon: Table2 },
+  { id: "network", label: "Sơ đồ mạng", Icon: Network },
 ];
+
+/** The view area the tabs control; App puts this id on its main element. */
+export const VIEW_PANEL_ID = "view-panel";
+
+export function viewTabId(view: ViewId): string {
+  return `view-tab-${view}`;
+}
 
 const SCALES: { id: Scale; label: string }[] = [
   { id: "day", label: "Ngày" },
@@ -34,32 +44,60 @@ interface Props {
 }
 
 /**
- * The second row: the views as navigation on the left, and the controls of the current
- * view (time scale, filter, group, highlight) on the right.
+ * The second row: the views as tabs on the left, joined to the view below, and the
+ * controls of the current view (time scale, filter, group, highlight) on the right.
+ * The tabs follow the WAI-ARIA tabs pattern: one tab stop, arrows and Home/End move
+ * and switch at once.
  */
 export function ViewBar(props: Props) {
   const { project, view } = props;
   const chart = view === "gantt" || view === "tracking";
   const rowControls = project && (chart || view === "network");
+  const tabsRef = useRef<HTMLDivElement>(null);
+
+  const onTabKey = (event: KeyboardEvent<HTMLDivElement>) => {
+    const at = VIEWS.findIndex((item) => item.id === view);
+    const next =
+      event.key === "ArrowRight"
+        ? (at + 1) % VIEWS.length
+        : event.key === "ArrowLeft"
+          ? (at - 1 + VIEWS.length) % VIEWS.length
+          : event.key === "Home"
+            ? 0
+            : event.key === "End"
+              ? VIEWS.length - 1
+              : null;
+    if (next === null) return;
+    event.preventDefault();
+    props.onView(VIEWS[next].id);
+    tabsRef.current?.querySelector<HTMLButtonElement>(`#${viewTabId(VIEWS[next].id)}`)?.focus();
+  };
+
   return (
     <div className="viewbar">
-      <nav className="view-tabs" aria-label="View">
-        {VIEWS.map((item) => (
+      <div ref={tabsRef} className="view-tabs" role="tablist" aria-label="View" onKeyDown={onTabKey}>
+        {VIEWS.map(({ id, label, Icon }) => (
           <button
-            key={item.id}
+            key={id}
+            id={viewTabId(id)}
             type="button"
-            className={view === item.id ? "on" : ""}
-            aria-current={view === item.id ? "page" : undefined}
-            onClick={() => props.onView(item.id)}
+            role="tab"
+            className={view === id ? "view-tab on" : "view-tab"}
+            aria-selected={view === id}
+            aria-controls={VIEW_PANEL_ID}
+            tabIndex={view === id ? 0 : -1}
+            onClick={() => props.onView(id)}
           >
-            {item.label}
+            <Icon aria-hidden="true" size={15} strokeWidth={1.9} />
+            <span>{label}</span>
           </button>
         ))}
-      </nav>
+      </div>
       <span className="spacer" />
       {rowControls && (
         <div className="view-controls">
           {chart && (
+            // One control in three parts, not three separate buttons.
             <div className="segmented" role="group" aria-label="Thang thời gian">
               {SCALES.map((item) => (
                 <button

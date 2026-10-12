@@ -1,7 +1,9 @@
+import { CalendarPlus, Plus, Trash2, X } from "lucide-react";
 import { useState } from "react";
 
 import { formatDateKeyDisplay, minuteToTime } from "../format";
 import type { Calendar, Command, Snapshot, TimeRange } from "../types";
+import { Button } from "./Button";
 import { DateKeyField, TimeField } from "./DateTimeField";
 
 const WEEKDAYS = ["Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy", "Chủ Nhật"];
@@ -94,9 +96,9 @@ export function CalendarEditor({ calendar, send }: CalendarEditorProps) {
             {working && (
               <>
                 <RangeRows ranges={ranges} onChange={(next) => setDay(index, next)} />
-                <button type="button" disabled={!extra} onClick={() => extra && setDay(index, [...ranges, extra])}>
+                <Button Icon={Plus} disabled={!extra} onClick={() => extra && setDay(index, [...ranges, extra])}>
                   Thêm khoảng
-                </button>
+                </Button>
               </>
             )}
           </div>
@@ -126,8 +128,8 @@ export function CalendarEditor({ calendar, send }: CalendarEditorProps) {
         {kind === "hours" && (
           <>
             <RangeRows ranges={hours} onChange={setHours} />
-            <button
-              type="button"
+            <Button
+              Icon={Plus}
               disabled={!suggestRange(hours)}
               onClick={() => {
                 const extra = suggestRange(hours);
@@ -135,16 +137,17 @@ export function CalendarEditor({ calendar, send }: CalendarEditorProps) {
               }}
             >
               Thêm khoảng
-            </button>
+            </Button>
           </>
         )}
-        <button
-          type="button"
+        <Button
+          variant="primary"
+          Icon={CalendarPlus}
           disabled={!from || (span === "range" && !to) || (kind === "hours" && !rangesValid(hours))}
           onClick={() => void addException()}
         >
           Thêm ngoại lệ
-        </button>
+        </Button>
       </div>
       {exceptions.length === 0 && <p className="meta">Chưa có ngày nghỉ hay ngoại lệ.</p>}
       <ul>
@@ -157,8 +160,9 @@ export function CalendarEditor({ calendar, send }: CalendarEditorProps) {
               {" · "}
               {item.ranges.length === 0 ? "Nghỉ cả ngày" : item.ranges.map(formatRange).join(", ")}
             </span>
-            <button
-              type="button"
+            <Button
+              variant="danger"
+              Icon={Trash2}
               onClick={() =>
                 void send({
                   type: "clear_calendar_exceptions",
@@ -169,7 +173,7 @@ export function CalendarEditor({ calendar, send }: CalendarEditorProps) {
               }
             >
               Bỏ
-            </button>
+            </Button>
           </li>
         ))}
       </ul>
@@ -202,9 +206,9 @@ function RangeRows({ ranges, onChange }: { ranges: TimeRange[]; onChange: (range
               }
             />
           </label>
-          <button type="button" onClick={() => onChange(ranges.filter((_, itemIndex) => itemIndex !== index))}>
+          <Button Icon={X} onClick={() => onChange(ranges.filter((_, itemIndex) => itemIndex !== index))}>
             Bỏ
-          </button>
+          </Button>
         </div>
       ))}
     </div>

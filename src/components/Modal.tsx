@@ -1,3 +1,4 @@
+import { X } from "lucide-react";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 interface Props {
@@ -5,9 +6,11 @@ interface Props {
   title: ReactNode;
   /** Extra classes on the dialog box, e.g. `wide`. */
   className?: string;
-  /** Shown beside the title, e.g. a close button. */
+  /** Extra controls in the header, before the close button. */
   headerAction?: ReactNode;
-  /** Escape and a press on the backdrop call this; without it they do nothing. */
+  /** The dialog's buttons, kept in view at the bottom while the body scrolls. */
+  footer?: ReactNode;
+  /** The ✕ in the header, Escape and a press on the backdrop call this; without it none of them close. */
   onClose?: () => void;
   children: ReactNode;
 }
@@ -18,10 +21,11 @@ interface Props {
  * through its own controls only. Opening moves focus into it (unless a child already took
  * it, e.g. with `autoFocus`), and closing returns focus to where it was.
  *
- * Escape and the backdrop close it like the Đóng button: a field being edited commits
- * first (its `onBlur` runs) instead of losing what was typed.
+ * The header (title, ✕) and the footer (buttons) stay put; only the body scrolls.
+ * The ✕, Escape and the backdrop close it like a Đóng button: a field being edited
+ * commits first (its `onBlur` runs) instead of losing what was typed.
  */
-export function Modal({ title, className, headerAction, onClose, children }: Props) {
+export function Modal({ title, className, headerAction, footer, onClose, children }: Props) {
   const titleId = useId();
   const boxRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
@@ -57,7 +61,6 @@ export function Modal({ title, className, headerAction, onClose, children }: Pro
     };
   }, [before]);
 
-  const heading = <h2 id={titleId}>{title}</h2>;
   return (
     <div
       className="modal"
@@ -77,15 +80,23 @@ export function Modal({ title, className, headerAction, onClose, children }: Pro
         // A click on text or a chart lands focus on the box instead of <body>.
         tabIndex={-1}
       >
-        {headerAction ? (
-          <div className="dialog-head">
-            {heading}
-            {headerAction}
-          </div>
-        ) : (
-          heading
-        )}
-        {children}
+        <div className="dialog-head">
+          <h2 id={titleId}>{title}</h2>
+          {headerAction}
+          {onClose && (
+            <button
+              type="button"
+              className="dialog-close"
+              aria-label="Đóng hộp thoại"
+              title="Đóng (Esc)"
+              onClick={() => closeCommitted(onClose)}
+            >
+              <X aria-hidden="true" size={16} strokeWidth={2} />
+            </button>
+          )}
+        </div>
+        <div className="dialog-body">{children}</div>
+        {footer && <div className="dialog-foot">{footer}</div>}
       </div>
     </div>
   );

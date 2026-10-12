@@ -10,7 +10,7 @@ use projectdesk_engine::mspdi::{read_mspdi, write_mspdi};
 use projectdesk_engine::network::{self, NetworkLayout, NetworkOptions};
 use projectdesk_engine::store;
 use projectdesk_engine::{Command, Document, Snapshot};
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
+use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, Runtime, State, WindowEvent};
 use tauri_plugin_dialog::{
     DialogExt, FileDialogBuilder, FilePath, MessageDialogBuilder, MessageDialogButtons,
@@ -637,13 +637,47 @@ fn menu_item(
     MenuItem::with_id(app, id, label, true, accelerator)
 }
 
+/// Text for "Giới thiệu ProjectDesk". macOS shows the name, version, copyright and
+/// credits; the other fields are for Windows and Linux.
+fn about_metadata(app: &tauri::AppHandle) -> AboutMetadata<'static> {
+    let version = app.package_info().version.to_string();
+    // macOS shows `short_version` as the version and `version` as a build number in
+    // parentheses, so set only one; Windows and Linux show `version`.
+    let (version, short_version) = if cfg!(target_os = "macos") {
+        (None, Some(version))
+    } else {
+        (Some(version), None)
+    };
+    AboutMetadata {
+        name: Some("ProjectDesk".into()),
+        version,
+        short_version,
+        comments: Some(ABOUT_TEXT.into()),
+        credits: Some(ABOUT_TEXT.into()),
+        copyright: Some("© 2026 Harry’s Forge · Giấy phép MIT".into()),
+        license: Some("MIT".into()),
+        ..Default::default()
+    }
+}
+
+const ABOUT_TEXT: &str = "Lập lịch dự án kiểu Microsoft Project, chạy trên máy, giao diện tiếng Việt.\n\n\
+Đường găng, lịch làm việc, nguồn lực và cân bằng tải, theo dõi tiến độ, baseline, \
+EVM, burn-down và đường cong S; năm view Gantt, Theo dõi, Nguồn lực, Sử dụng và \
+Sơ đồ mạng; xuất PDF và trao đổi MSPDI với Microsoft Project.\n\n\
+Engine lập lịch viết bằng Rust; giao diện Tauri 2 và React 19. \
+Biểu tượng: Lucide (ISC). Phông PDF: Be Vietnam Pro (OFL).";
+
 fn build_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let app_menu = Submenu::with_items(
         app,
         "ProjectDesk",
         true,
         &[
-            &PredefinedMenuItem::about(app, Some("Giới thiệu ProjectDesk"), None)?,
+            &PredefinedMenuItem::about(
+                app,
+                Some("Giới thiệu ProjectDesk"),
+                Some(about_metadata(app)),
+            )?,
             &PredefinedMenuItem::separator(app)?,
             &PredefinedMenuItem::hide(app, Some("Ẩn ProjectDesk"))?,
             &PredefinedMenuItem::hide_others(app, Some("Ẩn ứng dụng khác"))?,

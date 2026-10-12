@@ -1,4 +1,5 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import { ChevronDown } from "lucide-react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 
 export interface MenuItem {
   label: string;
@@ -6,6 +7,8 @@ export interface MenuItem {
   disabled?: boolean;
   /** Why the item is off, or what it does. */
   title?: string;
+  /** A small decorative icon before the label. */
+  icon?: ReactNode;
 }
 
 interface Props {
@@ -13,6 +16,10 @@ interface Props {
   items: MenuItem[];
   disabled?: boolean;
   title?: string;
+  /** A small decorative icon before the label. */
+  icon?: ReactNode;
+  /** Extra classes on the button, e.g. its colour tone. */
+  className?: string;
 }
 
 /**
@@ -20,7 +27,7 @@ interface Props {
  * opening focuses the first enabled item, arrows move, Escape closes back to the button,
  * and Tab or a click elsewhere closes it.
  */
-export function MenuButton({ label, items, disabled, title }: Props) {
+export function MenuButton({ label, items, disabled, title, icon, className }: Props) {
   const [open, setOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -77,7 +84,7 @@ export function MenuButton({ label, items, disabled, title }: Props) {
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
-        className={open ? "on" : ""}
+        className={[className, open ? "open" : ""].filter(Boolean).join(" ") || undefined}
         onClick={() => setOpen((current) => !current)}
         onKeyDown={(event) => {
           if (event.key === "ArrowDown" && !open) {
@@ -86,7 +93,9 @@ export function MenuButton({ label, items, disabled, title }: Props) {
           }
         }}
       >
-        {label} <span aria-hidden="true">▾</span>
+        {icon}
+        <span>{label}</span>
+        <ChevronDown className="chevron" aria-hidden="true" size={13} strokeWidth={2} />
       </button>
       {open && (
         <div id={menuId} ref={menuRef} className="menu" role="menu" aria-label={label} onKeyDown={onMenuKey}>
@@ -103,7 +112,8 @@ export function MenuButton({ label, items, disabled, title }: Props) {
                 item.onSelect();
               }}
             >
-              {item.label}
+              {item.icon}
+              <span>{item.label}</span>
             </button>
           ))}
         </div>

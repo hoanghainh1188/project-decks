@@ -9,7 +9,8 @@
 - **Nguồn lực:** người và máy, đơn vị tối đa, đơn giá, kiểu task (đơn vị/thời lượng/công cố định), phát hiện quá tải theo giờ trùng nhau, cân bằng nguồn lực.
 - **Theo dõi:** baseline 0–10, % hoàn thành, ngày bắt đầu/kết thúc thực tế điều khiển lịch như Project, dời phần chưa xong sau ngày trạng thái, cờ trễ hạn, chi phí.
 - **Báo cáo:** EVM (PV, EV, AC, SPI, CPI, EAC…), burn-down và đường cong S.
-- **Các view:** Gantt, Gantt theo dõi, bảng nguồn lực, sử dụng công việc, sơ đồ mạng; lọc, nhóm, tô sáng; xuất PDF.
+- **Các view:** năm tab Gantt, Theo dõi, Nguồn lực, Sử dụng và Sơ đồ mạng; thang ngày/tuần/tháng, lọc, nhóm, tô sáng theo từng view; xuất PDF.
+- **Giao diện:** thanh công cụ chia nhóm theo màu và có biểu tượng (lịch sử, tạo việc, sửa việc đang chọn, dự án, báo cáo); nút bị tắt cho biết lý do. Dùng được bằng bàn phím: chuyển tab bằng mũi tên, chọn và dời task trên Gantt (↑ ↓, Enter, Option+← →), hộp thoại đóng bằng Esc. Biểu đồ EVM xem phóng to được.
 - **Tệp:** định dạng `.pdproj` (SQLite) lưu cả lịch sử hoàn tác; lưu an toàn, tự lưu và khôi phục sau khi app tắt đột ngột; mở được tệp hỏng một phần. Nhập/xuất MSPDI (`.xml`) để trao đổi với Microsoft Project; không đọc được tệp `.mpp`.
 
 ## Cài bản phát hành
@@ -62,4 +63,4 @@ cargo bench -p projectdesk-engine --bench large_project -- leveling  # cân bằ
 
 ## Giấy phép
 
-MIT. Phông Be Vietnam Pro dùng cho xuất PDF theo giấy phép SIL Open Font License (`src/fonts/OFL.txt`).
+MIT. Phông Be Vietnam Pro dùng cho xuất PDF theo giấy phép SIL Open Font License (`src/fonts/OFL.txt`). Biểu tượng từ [Lucide](https://lucide.dev) (ISC). Hộp "Giới thiệu ProjectDesk" trong menu ứng dụng ghi phiên bản và các ghi công này.

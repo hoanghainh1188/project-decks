@@ -1,3 +1,6 @@
+import { Check } from "lucide-react";
+
+import { Button } from "./Button";
 import { DateTimeField } from "./DateTimeField";
 import { Modal } from "./Modal";
 import { formatDuration, formatInstant, parseDuration } from "../format";
@@ -12,7 +15,11 @@ interface Props {
 /** Same fields and commands as the task sheet row, for views without inline cells. */
 export function TaskEditDialog({ task, send, onClose }: Props) {
   return (
-    <Modal title={`${task.wbs ? `${task.wbs} · ` : ""}Sửa công việc`} onClose={onClose}>
+    <Modal
+      title={`${task.wbs ? `${task.wbs} · ` : ""}Sửa công việc`}
+      onClose={onClose}
+      footer={<Button variant="primary" Icon={Check} onClick={onClose}>Đóng</Button>}
+    >
       <label>Tên</label>
       <input
         autoFocus
@@ -72,7 +79,6 @@ export function TaskEditDialog({ task, send, onClose }: Props) {
           }
         }}
       />
-      <button type="button" onClick={onClose}>Đóng</button>
     </Modal>
   );
 }
