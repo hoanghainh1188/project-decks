@@ -425,6 +425,16 @@ Rủi ro: cần tài khoản Apple Developer; CSP có thể làm hỏng xuất P
 - Đọc/ghi `Deadline`, chi phí thực tế, `WorkWeeks` của lịch, và tiến độ theo nghĩa mới của Pha 13.
 - Nghiệm thu: test xuất rồi nhập lại với tệp từ Project 2019/365.
 
+Hiện có (13/10/2026): `mspdi.rs` đọc/ghi task (ngày, thời lượng, ràng buộc, lịch, ưu tiên, ghi chú, %, `ActualStart`/`ActualFinish`, `RemainingDuration`, `OvertimeWork`, chi phí cố định, `LevelingDelay`), liên kết, baseline, nguồn lực, assignment kèm timephased, lịch (tuần chuẩn, ngoại lệ), `StatusDate`, task tách. Thiếu: `Deadline` (engine đã có `task.deadline`), chi phí và công thực tế, `WorkWeeks`, `Resume`/`Stop` và timephased công thực tế.
+
+Chia 3 PR:
+
+- **PR A — Deadline và tiến độ (S–M):** đọc/ghi `Deadline`; ghi `ActualDuration`, `ActualWork`, `RemainingWork`, `Resume`, `Stop`; khi đọc, ngày thực tế và phần còn lại trong tệp được ưu tiên hơn % (theo quy tắc Pha 13); ghi timephased công thực tế (`TimephasedData` type 2) cho task đã bắt đầu.
+- **PR B — chi phí thực tế (M):** ghi `Cost`, `ActualCost`, `RemainingCost` của task, assignment và nguồn lực (engine tính). Chủ dự án chọn có **nhập chi phí thực tế bằng tay** như tùy chọn của Project: thêm cờ dự án "Chi phí thực tế do engine tính" (mặc định bật) và lệnh đặt chi phí thực tế của task/assignment khi cờ tắt; lệnh mới nên tăng `FORMAT_VERSION`, và `ENGINE_REVISION` nếu số dẫn xuất đổi. EVM (AC, đường cong S) dùng số nhập tay khi có, phân bổ theo thời gian như Project (dồn vào ngày trạng thái hoặc theo công thực tế). Nhập MSPDI đọc `ActualCost` và cờ tương ứng (`AutoCalcActualCosts` hay tên trong schema) nếu có. Giao diện: ô chi phí thực tế trong nhóm Chi phí của panel thuộc tính, chỉ sửa được khi cờ tắt; cờ nằm trong Thông tin dự án.
+- **PR C — WorkWeeks (M):** `Calendar` thêm các tuần làm việc theo khoảng ngày (7 ngày giờ làm mỗi tuần), ưu tiên: ngoại lệ > tuần theo khoảng > tuần chuẩn; lệnh `set_calendar_work_week`/`clear_calendar_work_week` (tăng `FORMAT_VERSION` và `ENGINE_REVISION`); MSPDI `<WorkWeeks><WorkWeek>` với `TimePeriod` và `WeekDays`; `CalendarEditor` có mục "Tuần làm việc khác"; chạy lại bench `large_project` để chắc không chậm.
+
+Nghiệm thu mỗi PR: test xuất rồi nhập lại trong `crates/engine/tests/mspdi.rs` (tệp mới), so từng trường; test giao diện cho phần mới. Chưa có tệp xuất từ Project thật: dùng một fixture XML viết tay theo schema MSPDI công khai (có đủ trường mới); khi có Project 2019/365 thì đối chiếu tệp thật (nợ từ Pha 5 và 13). Rủi ro: Project tính lại một số trường khi mở, nên chỉ kiểm được trọn vẹn bằng Project thật.
+
 ### Pha 16 — leveling (M–L, cần Pha 12) — đã xong
 
 **Kết quả.** `level.rs` viết lại:
