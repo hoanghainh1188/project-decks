@@ -43,7 +43,7 @@ import { pick, useLang, useMessages, useSetLang } from "./i18n";
 import { buildGanttPdf, pdfSuggestedName } from "./ganttPdf";
 import { handleMenuAction } from "./menuActions";
 import { buildNetworkPdf } from "./networkPdf";
-import type { Command, NetworkLayout, ProjectMetrics, Scale, Snapshot, ViewId } from "./types";
+import type { Command, FillField, NetworkLayout, ProjectMetrics, Scale, Snapshot, TaskClipboard, ViewId } from "./types";
 import {
   commitFocusedField,
   isEditableTarget,
@@ -58,6 +58,8 @@ import { undoTo } from "./undoTo";
 import { useFileDialog } from "./useFileDialog";
 import { buildViewRows, type FilterMode, type GroupMode, type HighlightMode } from "./viewRows";
 import { windowTitle } from "./windowTitle";
+import { selectionRange } from "./taskSelection";
+import { useClipboardEvents } from "./useClipboardEvents";
 import "./styles.css";
 
 export default function App() {
@@ -68,6 +70,10 @@ export default function App() {
   const [view, setView] = useState<ViewId>("gantt");
   const [scale, setScale] = useState<Scale>("day");
   const [selected, setSelected] = useState<number | null>(null);
+  // The other end of a Shift+click range in the sheet; null when one row is selected.
+  const [selectionEnd, setSelectionEnd] = useState<number | null>(null);
+  const [clipboard, setClipboard] = useState<TaskClipboard | null>(null);
+  const [fillField, setFillField] = useState<FillField | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Thông tin dự án is a transaction: the history cursor when it opened, so Hủy can
   // undo back to it. null while the dialog is closed.
@@ -146,10 +152,30 @@ export default function App() {
   );
 
   const menuRef = useRef<(id: string) => void>(() => {});
+  // Selecting one row ends a Shift+click range.
+  const selectOne = useCallback((uid: number) => {
+    setSelected(uid);
+    setSelectionEnd(null);
+  }, []);
 
   const project = snap?.project;
   const task = project?.tasks.find((item) => item.uid === selected) ?? null;
   const editTask = project?.tasks.find((item) => item.uid === editUid) ?? null;
+  const rows = useMemo(
+    () => (project ? buildViewRows(project, rowFilter, filterResource, rowGroup, rowHighlight) : []),
+    // Group headers ("Chưa gán" / "Unassigned") are text, so they follow the language.
+    [project, rowFilter, filterResource, rowGroup, rowHighlight, lang],
+  );
+  // Ranges exist only in the sheet; the network diagram selects one box.
+  const selection = useMemo(
+    () => {
+      const range = view === "network" ? (selected == null ? [] : [selected]) : selectionRange(rows, selected, selectionEnd);
+      // A deleted or undone task leaves the selection before the effect below replaces it.
+      return range.filter((uid) => project?.tasks.some((item) => item.uid === uid));
+    },
+    [rows, selected, selectionEnd, view, project],
+  );
+  const selectionSet = useMemo(() => new Set(selection), [selection]);
   const closeEdit = useCallback(() => setEditUid(null), []);
 
   // The theme switches at once; if the backend cannot store it, the previous one comes
@@ -189,8 +215,12 @@ export default function App() {
             .then(() => run(loadState))
             .catch((err) => setError(errorMessage(err))),
         changeTheme,
+        selection,
+        clipboard,
+        setClipboard,
+        fillField,
       }),
-    [run, send, startFileDialog, task, snap, view, fileDialogBusy, openProjectInfo, infoStart, setLang, changeTheme],
+    [run, send, startFileDialog, task, snap, view, fileDialogBusy, openProjectInfo, infoStart, setLang, changeTheme, selection, clipboard, fillField],
   );
   menuRef.current = handleMenu;
 
@@ -208,6 +238,11 @@ export default function App() {
   );
 
   useEffect(() => trackCommittedText(document), []);
+
+  const dispatchFocused = useCallback((id: string) => dispatchAction(id, document.activeElement), [dispatchAction]);
+  useClipboardEvents(dispatchFocused, () =>
+    selection.map((uid) => project?.tasks.find((item) => item.uid === uid)?.name ?? "").join("\n"),
+  );
 
   const title = windowTitle(snap);
   useEffect(() => {
@@ -249,10 +284,16 @@ export default function App() {
     };
   }, [run, dispatchAction, startFileDialog, openFileWhenFree]);
 
+  // A range whose far end was deleted does not come back when an undo restores it.
+  useEffect(() => {
+    if (selectionEnd != null && !project?.tasks.some((item) => item.uid === selectionEnd)) setSelectionEnd(null);
+  }, [project, selectionEnd]);
+
   useEffect(() => {
     if (!project || project.tasks.length === 0) return;
     if (selected != null && project.tasks.some((item) => item.uid === selected)) return;
     setSelected(project.tasks[0].uid);
+    setSelectionEnd(null);
   }, [project, selected]);
 
   // EVM and burn-down numbers are computed by the engine; refresh them after every change.
@@ -288,11 +329,6 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [dispatchAction]);
 
-  const rows = useMemo(
-    () => (project ? buildViewRows(project, rowFilter, filterResource, rowGroup, rowHighlight) : []),
-    // Group headers ("Chưa gán" / "Unassigned") are text, so they follow the language.
-    [project, rowFilter, filterResource, rowGroup, rowHighlight, lang],
-  );
   // The network diagram ignores grouping; filters choose the boxes and highlight tints them.
   const networkRows = useMemo(
     () => (project && view === "network" ? buildViewRows(project, rowFilter, filterResource, "none", rowHighlight) : []),
@@ -361,7 +397,7 @@ export default function App() {
   return (
     <div className="app">
       <Toolbar
-        states={toolbarStates({ snap, task, view, fileDialogBusy })}
+        states={toolbarStates({ snap, task, view, fileDialogBusy, selection, hasClipboard: clipboard != null, fillField })}
         evmOpen={evmOpen}
         onUndo={() => void run(undo)}
         onRedo={() => void run(redo)}
@@ -418,9 +454,11 @@ export default function App() {
                   assignments={project.assignments}
                   resources={project.resources}
                   selected={selected}
+                  selection={selectionSet}
                   tracking={view === "tracking"}
                   bodyRef={sheetRef}
-                  onSelect={setSelected}
+                  onSelect={(uid, extend) => (extend && selected != null ? setSelectionEnd(uid) : selectOne(uid))}
+                  onFillField={setFillField}
                   onRename={(uid, name) => send({ type: "rename_task", uid, name })}
                   onDuration={(uid, minutes) => send({ type: "set_duration", uid, minutes })}
                   onStart={(uid, start) => send({ type: "move_task", uid, start })}
@@ -433,7 +471,7 @@ export default function App() {
                   onOvertime={(uid, minutes) => send({ type: "set_overtime_work", uid, minutes })}
                   onCalendar={(uid, calendarId) => send({ type: "set_task_calendar", uid, calendar_id: calendarId })}
                   onEditSeries={(uid) => {
-                    setSelected(uid);
+                    selectOne(uid);
                     setSeriesDialog(uid);
                   }}
                   onScroll={() => syncScroll("sheet")}
@@ -445,9 +483,10 @@ export default function App() {
                   selected={selected}
                   tracking={view === "tracking"}
                   bodyRef={ganttRef}
-                  onSelect={setSelected}
+                  onSelect={selectOne}
                   onMove={(uid, start) => send({ type: "move_task", uid, start })}
                   onResize={(uid, finish) => send({ type: "resize_task", uid, finish })}
+                  onMoveSegment={(uid, index, start) => send({ type: "move_segment", uid, index, start })}
                   onLink={(from, to) => send({ type: "add_dependency", predecessor_uid: from, successor_uid: to, kind: "fs", lag: 0 })}
                   onEdit={setEditUid}
                   onScroll={() => syncScroll("gantt")}
@@ -476,9 +515,9 @@ export default function App() {
                 layout={networkLayout}
                 selected={selected}
                 highlighted={networkHighlighted}
-                onSelect={setSelected}
+                onSelect={selectOne}
                 onEdit={(uid) => {
-                  setSelected(uid);
+                  selectOne(uid);
                   setEditUid(uid);
                 }}
               />

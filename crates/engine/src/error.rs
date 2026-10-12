@@ -66,6 +66,8 @@ pub enum Invalid {
     SplitGapNotPositive,
     NotSplit,
     NoSuchSplit,
+    FirstSegment,
+    NothingToPaste,
 }
 
 impl EngineError {
@@ -224,6 +226,11 @@ impl Invalid {
             ),
             Self::NotSplit => fixed("Công việc này chưa bị tách", "This task is not split"),
             Self::NoSuchSplit => fixed("Không có khoảng ngắt này", "That split does not exist"),
+            Self::FirstSegment => fixed(
+                "Đoạn đầu dời cùng cả công việc; hãy kéo cả thanh",
+                "The first segment moves with the whole task; drag the bar instead",
+            ),
+            Self::NothingToPaste => fixed("Không có gì để dán", "There is nothing to paste"),
         }
     }
 }
@@ -272,6 +279,8 @@ mod tests {
             SplitGapNotPositive,
             NotSplit,
             NoSuchSplit,
+            FirstSegment,
+            NothingToPaste,
         ];
         for reason in all {
             let (vi, en) = (reason.message(Lang::Vi), reason.message(Lang::En));

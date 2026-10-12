@@ -11,6 +11,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use sheafly_engine::autosave::AutosaveSlot;
+use sheafly_engine::clipboard;
 use sheafly_engine::document::now_millis;
 use sheafly_engine::evm::ProjectMetrics;
 use sheafly_engine::mspdi::{read_mspdi, write_mspdi};
@@ -437,6 +438,12 @@ fn project_metrics(state: State<'_, AppState>) -> ProjectMetrics {
     lock(&state).metrics()
 }
 
+/// The selected tasks with their subtrees, as `PasteTasks` takes them.
+#[tauri::command]
+fn copy_tasks(state: State<'_, AppState>, uids: Vec<u32>) -> clipboard::TaskClipboard {
+    clipboard::copy_tasks(&lock(&state).project, &uids)
+}
+
 #[tauri::command(async)]
 fn network_layout(state: State<'_, AppState>, options: NetworkOptions) -> NetworkLayout {
     network::layout(&lock(&state).project, &options)
@@ -851,6 +858,16 @@ fn append_entries(
             i18n::Entry::Item { id, vi, en, accelerator } => {
                 menu.append(&MenuItem::with_id(app, *id, lang.pick(*vi, *en), true, *accelerator)?)?
             }
+            i18n::Entry::Native { kind, vi, en } => {
+                let label = Some(lang.pick(*vi, *en));
+                let native = match kind {
+                    i18n::NativeItem::Cut => PredefinedMenuItem::cut(app, label)?,
+                    i18n::NativeItem::Copy => PredefinedMenuItem::copy(app, label)?,
+                    i18n::NativeItem::Paste => PredefinedMenuItem::paste(app, label)?,
+                    i18n::NativeItem::SelectAll => PredefinedMenuItem::select_all(app, label)?,
+                };
+                menu.append(&native)?
+            }
             i18n::Entry::Separator => menu.append(&PredefinedMenuItem::separator(app)?)?,
         }
     }
@@ -1137,6 +1154,7 @@ pub fn run() {
             project_state,
             project_metrics,
             network_layout,
+            copy_tasks,
             apply_command,
             undo,
             redo,

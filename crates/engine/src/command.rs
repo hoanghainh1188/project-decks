@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::calendar::{Calendar, TimeRange};
+use crate::clipboard::{self, FillField, TaskClipboard};
 use crate::error::{EngineError, Invalid};
 use crate::level::level_project;
 use crate::model::{
@@ -236,6 +237,23 @@ pub enum Command {
         uid: u32,
         index: Option<u32>,
     },
+    /// Move segment `index` (1 or later) of a split task to start at `start`.
+    MoveSegment {
+        uid: u32,
+        index: u32,
+        start: i64,
+    },
+    /// Insert copied tasks after `after_uid` and its subtree.
+    PasteTasks {
+        after_uid: Option<u32>,
+        clipboard: TaskClipboard,
+    },
+    /// Copy `field` of `from_uid` to the tasks `to_uids`.
+    FillDown {
+        from_uid: u32,
+        to_uids: Vec<u32>,
+        field: FillField,
+    },
 }
 
 /// One task's leveling delay, in working minutes.
@@ -292,7 +310,8 @@ fn edited_task(project: &Project, command: &Command) -> Option<u32> {
         | Command::SetLevelingDelay { uid, .. }
         | Command::SetDeadline { uid, .. }
         | Command::SplitTask { uid, .. }
-        | Command::RemoveSplit { uid, .. } => Some(*uid),
+        | Command::RemoveSplit { uid, .. }
+        | Command::MoveSegment { uid, .. } => Some(*uid),
         // Before any progress these set the duration or work: that is an edit.
         Command::SetRemainingDuration { uid, .. } | Command::SetRemainingWork { uid, .. } => project
             .task(*uid)
@@ -749,6 +768,15 @@ fn apply_inner(project: &mut Project, command: &Command) -> Result<(), EngineErr
         }
         Command::SplitTask { uid, at, gap } => split::split_task(project, *uid, *at, *gap)?,
         Command::RemoveSplit { uid, index } => split::remove_split(project, *uid, *index)?,
+        Command::MoveSegment { uid, index, start } => {
+            split::move_segment(project, *uid, *index, *start)?
+        }
+        Command::PasteTasks { after_uid, clipboard } => {
+            clipboard::paste_tasks(project, *after_uid, clipboard)?
+        }
+        Command::FillDown { from_uid, to_uids, field } => {
+            clipboard::fill_down(project, *from_uid, to_uids, *field)?
+        }
     }
     Ok(())
 }
@@ -834,7 +862,7 @@ fn occurrence_level_error() -> EngineError {
     Invalid::OccurrenceOutline.into()
 }
 
-fn subtree_end(tasks: &[Task], index: usize) -> usize {
+pub(crate) fn subtree_end(tasks: &[Task], index: usize) -> usize {
     let level = tasks[index].outline_level;
     let mut end = index + 1;
     while end < tasks.len() && tasks[end].outline_level > level {

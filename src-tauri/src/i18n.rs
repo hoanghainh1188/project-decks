@@ -146,7 +146,27 @@ pub enum Entry {
         en: &'static str,
         accelerator: Option<&'static str>,
     },
+    /// A system item (Cut, Copy, Paste, Select All) that edits the focused text field.
+    /// The webview turns Copy and Paste outside a field into the page's `copy` and
+    /// `paste` events, which copy and paste the selected tasks.
+    Native {
+        kind: NativeItem,
+        vi: &'static str,
+        en: &'static str,
+    },
     Separator,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NativeItem {
+    Cut,
+    Copy,
+    Paste,
+    SelectAll,
+}
+
+const fn native(kind: NativeItem, vi: &'static str, en: &'static str) -> Entry {
+    Entry::Native { kind, vi, en }
 }
 
 const fn item(
@@ -200,6 +220,25 @@ pub const HELP_MENU: &[Entry] = &[item(
 pub const EDIT_MENU: &[Entry] = &[
     item("undo", "Hoàn tác", "Undo", Some("CmdOrCtrl+Z")),
     item("redo", "Làm lại", "Redo", Some("CmdOrCtrl+Shift+Z")),
+    Entry::Separator,
+    native(NativeItem::Cut, "Cắt", "Cut"),
+    native(NativeItem::Copy, "Sao chép", "Copy"),
+    native(NativeItem::Paste, "Dán", "Paste"),
+    native(NativeItem::SelectAll, "Chọn tất cả", "Select All"),
+    Entry::Separator,
+    item(
+        "copy-task",
+        "Sao chép công việc",
+        "Copy Task",
+        Some("CmdOrCtrl+Alt+C"),
+    ),
+    item(
+        "paste-task",
+        "Dán công việc",
+        "Paste Task",
+        Some("CmdOrCtrl+Alt+V"),
+    ),
+    item("fill-down", "Điền xuống", "Fill Down", Some("CmdOrCtrl+D")),
     Entry::Separator,
     item("indent", "Thụt vào", "Indent", Some("CmdOrCtrl+]")),
     item("outdent", "Thụt ra", "Outdent", Some("CmdOrCtrl+[")),
@@ -413,6 +452,9 @@ mod tests {
     fn english_labels_are_translated() {
         // Every label is translated; the Vietnamese "Gantt" is "Gantt Chart" in English.
         for entry in all_entries() {
+            if let Entry::Native { vi, en, .. } = entry {
+                assert_ne!(vi, en);
+            }
             if let Entry::Item { id, vi, en, .. } = entry {
                 assert_ne!(vi, en, "{id} is not translated");
                 assert!(
@@ -427,7 +469,7 @@ mod tests {
     fn quit_keeps_its_accelerator() {
         let quit = match QUIT {
             Entry::Item { accelerator, .. } => accelerator,
-            Entry::Separator => None,
+            Entry::Native { .. } | Entry::Separator => None,
         };
         assert_eq!(quit, Some("CmdOrCtrl+Q"));
     }

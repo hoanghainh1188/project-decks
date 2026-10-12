@@ -13,6 +13,7 @@ A Microsoft Project–style scheduler that runs on your own computer (macOS, Win
 ## Features
 
 - **Scheduling:** critical path (CPM) from FS/SS/FF/SF links with lag; constraints (As Soon As Possible, As Late As Possible, Start/Finish No Earlier/Later Than, Must Start/Finish On); deadlines; manually scheduled tasks; split tasks; recurring tasks.
+- **Editing:** copy and paste tasks (⌘C / ⌘V on selected rows, with their subtasks, assignments and the links between them); Shift+click selects a range of rows and ⌘D fills the column of the focused cell down from the first row; drag one segment of a split task on the Gantt.
 - **Calendars:** work weeks, nonworking days and exceptions; a project calendar plus calendars for individual tasks and resources.
 - **Resources:** people and equipment, max units, rates, task types (Fixed Units, Fixed Duration, Fixed Work), overallocation found from overlapping hours, and resource leveling.
 - **Tracking:** baselines 0–10, % complete, actual start and finish that drive the schedule the way Project does, moving unfinished work past the status date, late flags, costs.

@@ -270,6 +270,8 @@ button.view-tab.on:active:not(:disabled) { background: var(--surface); }
 }
 .sheet-row.highlighted { background: var(--highlight-row); box-shadow: inset 3px 0 0 var(--highlight-mark); }
 .sheet-row.selected { background: var(--selected-row); }
+/* The other rows of a Shift+click range: copy, paste and fill-down act on them too. */
+.sheet-row.in-selection { background: var(--selected-wash); box-shadow: inset 3px 0 0 var(--accent); }
 .sheet-row.highlighted.selected {
   background: var(--highlight-selected);
   box-shadow: inset 3px 0 0 var(--accent), inset 6px 0 0 var(--highlight-mark);

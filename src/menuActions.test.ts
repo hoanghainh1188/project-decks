@@ -24,9 +24,53 @@ function context(overrides: Partial<MenuContext> = {}): MenuContext {
     openSplit: vi.fn(),
     changeLang: vi.fn(),
     changeTheme: vi.fn(),
+    selection: [2],
+    clipboard: null,
+    setClipboard: vi.fn(),
+    fillField: "duration",
     ...overrides,
   };
 }
+
+const CLIPBOARD = { tasks: [], links: [] };
+
+describe("copy, paste and fill-down", () => {
+  it("pastes the copied tasks after the last selected row", () => {
+    const ctx = context({ clipboard: CLIPBOARD, selection: [1, 2] });
+    handleMenuAction("paste-task", ctx);
+    expect(ctx.send).toHaveBeenCalledWith({ type: "paste_tasks", after_uid: 2, clipboard: CLIPBOARD });
+  });
+
+  it("does not paste before anything is copied", () => {
+    const ctx = context();
+    handleMenuAction("paste-task", ctx);
+    expect(ctx.send).not.toHaveBeenCalled();
+  });
+
+  it("fills the focused column from the first row down", () => {
+    const ctx = context({ selection: [1, 2], fillField: "name" });
+    handleMenuAction("fill-down", ctx);
+    expect(ctx.send).toHaveBeenCalledWith({ type: "fill_down", from_uid: 1, to_uids: [2], field: "name" });
+  });
+
+  it("does not fill down from a column it cannot fill", () => {
+    const ctx = context({ selection: [1, 2], fillField: null });
+    handleMenuAction("fill-down", ctx);
+    expect(ctx.send).not.toHaveBeenCalled();
+  });
+
+  it("needs more than one row to fill down", () => {
+    const ctx = context();
+    handleMenuAction("fill-down", ctx);
+    expect(ctx.send).not.toHaveBeenCalled();
+  });
+
+  it("copies through the backend", () => {
+    const ctx = context();
+    handleMenuAction("copy-task", ctx);
+    expect(ctx.run).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe("handleMenuAction", () => {
   it("switches views, scales, language and theme", () => {

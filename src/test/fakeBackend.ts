@@ -1,4 +1,4 @@
-import type { Command, NetworkLayout, ProjectMetrics, Snapshot } from "../types";
+import type { Command, NetworkLayout, ProjectMetrics, Snapshot, Task, TaskClipboard } from "../types";
 import { makeMetrics, makeSnapshot, makeTask } from "./fixtures";
 
 export interface InvokeCall {
@@ -103,12 +103,45 @@ class FakeBackend {
       case "set_language":
         if (args?.remember) this.language = args.language as string;
         return undefined;
+      case "copy_tasks":
+        return this.copy(args?.uids as number[]);
       case "apply_command":
         this.apply(args?.command as Command);
         return structuredClone(this.snapshot);
       default:
         throw `Fake backend: lệnh ${cmd} chưa hỗ trợ`;
     }
+  }
+
+  /** A clipboard with the names and durations of `uids`, in sheet order. */
+  private copy(uids: number[]): TaskClipboard {
+    const tasks = this.snapshot.project.tasks.filter((task: Task) => uids.includes(task.uid));
+    return {
+      tasks: tasks.map((task) => ({
+        name: task.name,
+        level: 0,
+        milestone: task.milestone,
+        manual: task.manual,
+        duration: task.duration,
+        work: task.work,
+        start: task.start,
+        finish: task.finish,
+        notes: task.notes,
+        priority: task.priority,
+        calendar_id: task.calendar_id,
+        calendar_name: null,
+        constraint_type: task.constraint_type,
+        constraint_date: task.constraint_date,
+        deadline: task.deadline,
+        task_type: task.task_type,
+        effort_driven: task.effort_driven,
+        fixed_cost: task.fixed_cost,
+        fixed_cost_accrual: task.fixed_cost_accrual,
+        splits: task.splits,
+        assignments: [],
+      })),
+      links: [],
+    };
   }
 
   private apply(command: Command): void {
@@ -146,6 +179,23 @@ class FakeBackend {
         if (!task?.recurrence) throw `Không có chuỗi lặp ${command.uid}`;
         task.name = command.spec.name;
         task.recurrence = { ...task.recurrence, spec: command.spec };
+        return;
+      }
+      case "paste_tasks": {
+        // Only names, durations and order: enough for the UI flows; the engine does the rest.
+        const at = command.after_uid == null ? project.tasks.length : project.tasks.findIndex((item) => item.uid === command.after_uid) + 1;
+        let uid = Math.max(0, ...project.tasks.map((item) => item.uid));
+        const pasted = command.clipboard.tasks.map((copy) => makeTask({ uid: ++uid, name: copy.name, duration: copy.duration }));
+        project.tasks.splice(at, 0, ...pasted);
+        return;
+      }
+      case "fill_down": {
+        const source = project.tasks.find((item) => item.uid === command.from_uid);
+        if (!source) throw `Không có công việc ${command.from_uid}`;
+        for (const task of project.tasks.filter((item) => command.to_uids.includes(item.uid))) {
+          if (command.field === "name") task.name = source.name;
+          if (command.field === "duration") task.duration = source.duration;
+        }
         return;
       }
       default:

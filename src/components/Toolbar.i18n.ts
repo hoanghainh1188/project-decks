@@ -95,6 +95,10 @@ export const commandReasons = defineMessages(
     nothingToRedo: "Không còn gì để làm lại",
     pdfView: "Xuất PDF từ Gantt, Theo dõi hoặc Sơ đồ mạng",
     dialogOpen: "Đang mở một hộp thoại",
+    nothingCopied: "Chưa sao chép công việc nào",
+    sheetView: "Điền xuống trong bảng của Gantt hoặc Theo dõi",
+    oneRow: "Giữ Shift và bấm một hàng bên dưới để chọn các hàng cần điền",
+    noColumn: "Bấm vào một ô của cột cần điền (Tên, Thời lượng, Bắt đầu, Tiền nhiệm, %, Lịch)",
   },
   {
     noProject: "No project is open",
@@ -112,5 +116,9 @@ export const commandReasons = defineMessages(
     nothingToRedo: "Nothing to redo",
     pdfView: "Export PDF from Gantt, Tracking or Network",
     dialogOpen: "A dialog is open",
+    nothingCopied: "No tasks have been copied",
+    sheetView: "Fill down in the Gantt or Tracking table",
+    oneRow: "Shift-click a row below to select the rows to fill",
+    noColumn: "Click a cell in the column to fill (Name, Duration, Start, Predecessors, %, Calendar)",
   },
 );
