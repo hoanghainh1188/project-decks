@@ -1,8 +1,9 @@
 [package]
 name = "projectdesk"
-version = "1.0.0"
+version = "1.0.1"
 description = "ProjectDesk: lập lịch dự án kiểu Microsoft Project, giao diện tiếng Việt"
 authors = ["Harry Nguyen"]
+license = "MIT"
 edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

@@ -74,6 +74,6 @@ cargo bench -p projectdesk-engine --bench large_project -- leveling  # cân bằ
 
 ## Giấy phép
 
-MIT. Phông Be Vietnam Pro dùng cho xuất PDF theo giấy phép SIL Open Font License (`src/fonts/OFL.txt`). Biểu tượng từ [Lucide](https://lucide.dev) (ISC). Hộp "Giới thiệu ProjectDesk" trong menu ứng dụng ghi phiên bản và các ghi công này.
+MIT. App đóng gói các thư viện mã nguồn mở và phông Be Vietnam Pro (SIL Open Font License); thông báo bản quyền và nguyên văn giấy phép của chúng nằm trong [`src-tauri/THIRD_PARTY_LICENSES.txt`](src-tauri/THIRD_PARTY_LICENSES.txt), có trong mọi bản cài và mở được bằng Trợ giúp → Giấy phép bên thứ ba. Sau khi đổi thư viện, chạy lại `node scripts/third-party-licenses.mjs`; CI kiểm tra tệp này luôn khớp.
 
 Microsoft Project là nhãn hiệu của Microsoft Corporation. ProjectDesk là phần mềm độc lập, không liên quan đến Microsoft.

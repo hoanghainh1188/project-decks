@@ -15,7 +15,9 @@ use projectdesk_engine::network::{self, NetworkLayout, NetworkOptions};
 use projectdesk_engine::store;
 use projectdesk_engine::{Command, Document, EngineError, Lang, Snapshot};
 use tauri::menu::{AboutMetadata, CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
+use tauri::path::BaseDirectory;
 use tauri::{AppHandle, Emitter, Manager, RunEvent, Runtime, State, WindowEvent};
+use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_dialog::{
     DialogExt, FileDialogBuilder, FilePath, MessageDialogBuilder, MessageDialogButtons,
     MessageDialogKind, MessageDialogResult,
@@ -733,9 +735,10 @@ fn build_menu(app: &tauri::AppHandle, lang: Lang) -> tauri::Result<Menu<tauri::W
     view_menu.append(&PredefinedMenuItem::separator(app)?)?;
     view_menu.append(&language_menu(app, lang)?)?;
     let project_menu = submenu(app, text.menu_project, i18n::PROJECT_MENU, lang)?;
+    let help_menu = submenu(app, text.menu_help, i18n::HELP_MENU, lang)?;
     Menu::with_items(
         app,
-        &[&app_menu, &file_menu, &edit_menu, &view_menu, &project_menu],
+        &[&app_menu, &file_menu, &edit_menu, &view_menu, &project_menu, &help_menu],
     )
 }
 
@@ -780,6 +783,26 @@ fn set_language(
     }
 }
 
+/// The licenses file the installer ships (`bundle.resources`), opened in the system's text
+/// viewer. The open-source licenses of the bundled packages require it to come with the app.
+fn open_third_party_licenses(app: &AppHandle) {
+    let opened = app
+        .path()
+        .resolve(THIRD_PARTY_LICENSES, BaseDirectory::Resource)
+        .map_err(|err| err.to_string())
+        .and_then(|path| {
+            app.opener()
+                .open_path(path.to_string_lossy(), None::<&str>)
+                .map_err(|err| err.to_string())
+        });
+    if let Err(err) = opened {
+        let lang = app.try_state::<AppState>().map(|state| lang(&state)).unwrap_or_default();
+        alert(app, format!("{} ({err})", i18n::text(lang).licenses_unavailable)).show(|_| {});
+    }
+}
+
+const THIRD_PARTY_LICENSES: &str = "THIRD_PARTY_LICENSES.txt";
+
 /// Whether the open document has unsaved changes. False before `setup` manages the state.
 fn is_dirty<R: Runtime>(app: &AppHandle<R>) -> bool {
     app.try_state::<AppState>().is_some_and(|state| lock(&state).dirty)
@@ -819,6 +842,10 @@ pub fn run() {
         .on_menu_event(|app, event| {
             if event.id().as_ref() == "quit" {
                 tauri::async_runtime::spawn(quit_if_confirmed(app.clone()));
+                return;
+            }
+            if event.id().as_ref() == "third-party-licenses" {
+                open_third_party_licenses(app);
                 return;
             }
             let _ = app.emit("menu-action", event.id().as_ref());
