@@ -10,6 +10,7 @@ use crate::document::Document;
 use crate::error::EngineError;
 use crate::evm::BurndownSnapshot;
 use crate::model::Project;
+use crate::recovery::{self, Damage, OpenReport, Recovery};
 
 /// File format version. Bump it when a new `Command` variant or a table an older app must
 /// read is added, so that app refuses the file with a clear message instead of failing
@@ -171,38 +172,45 @@ fn file_checkpoints(document: &Document) -> Vec<(usize, &Project)> {
     chosen
 }
 
-/// Checkpoints this engine wrote. Any other engine's, one that does not parse, or a
-/// damaged table is skipped: the log replays instead.
-fn load_checkpoints(connection: &Connection, commands: usize) -> Checkpoints {
-    read_checkpoints(connection, commands).unwrap_or_default()
+/// A checkpoint row as stored. The project is parsed only when it is used.
+struct StoredCheckpoint {
+    applied: usize,
+    ours: bool,
+    payload: String,
 }
 
-fn read_checkpoints(connection: &Connection, commands: usize) -> Result<Checkpoints, EngineError> {
-    let mut checkpoints = Checkpoints::default();
-    if !table_exists(connection, "checkpoint")? {
-        return Ok(checkpoints);
+impl StoredCheckpoint {
+    fn project(&self) -> Option<Project> {
+        serde_json::from_str(&self.payload).ok()
     }
+}
+
+/// Every readable checkpoint row. A damaged table reads as none: the log replays instead.
+fn stored_checkpoints(connection: &Connection) -> Vec<StoredCheckpoint> {
+    read_stored_checkpoints(connection).unwrap_or_default()
+}
+
+fn read_stored_checkpoints(connection: &Connection) -> Result<Vec<StoredCheckpoint>, EngineError> {
+    if !table_exists(connection, "checkpoint")? {
+        return Ok(Vec::new());
+    }
+    let engine = checkpoint::engine_tag();
     let mut statement = connection
-        .prepare("SELECT applied, project FROM checkpoint WHERE engine = ?1 ORDER BY applied")
+        .prepare("SELECT applied, engine, project FROM checkpoint ORDER BY applied")
         .map_err(store_err)?;
     let rows = statement
-        .query_map([checkpoint::engine_tag()], |row| {
-            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        .query_map([], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
         })
         .map_err(store_err)?;
+    let mut stored = Vec::new();
     for row in rows {
-        let (applied, payload) = row.map_err(store_err)?;
-        let Ok(applied) = usize::try_from(applied) else {
-            continue;
-        };
-        if applied == 0 || applied > commands {
-            continue;
-        }
-        if let Ok(project) = serde_json::from_str::<Project>(&payload) {
-            checkpoints.insert(applied, project);
+        let (applied, tag, payload) = row.map_err(store_err)?;
+        if let Some(applied) = usize::try_from(applied).ok().filter(|applied| *applied > 0) {
+            stored.push(StoredCheckpoint { applied, ours: tag == engine, payload });
         }
     }
-    Ok(checkpoints)
+    Ok(stored)
 }
 
 fn table_exists(connection: &Connection, name: &str) -> Result<bool, EngineError> {
@@ -235,53 +243,170 @@ fn check_version(connection: &Connection) -> Result<(), EngineError> {
     Ok(())
 }
 
-pub fn load(path: &str) -> Result<Document, EngineError> {
+/// A file opened for editing, with what the app should tell the user about it.
+pub struct Opened {
+    pub document: Document,
+    pub report: OpenReport,
+}
+
+/// The commands that parse, in order, up to the first one that does not.
+struct Log {
+    commands: Vec<Command>,
+    /// Rows in the log, including any after the damage.
+    total: usize,
+    damage: Option<(usize, Damage)>,
+}
+
+fn read_log(connection: &Connection) -> Result<Log, EngineError> {
+    let mut statement = connection
+        .prepare("SELECT payload FROM command_log ORDER BY seq")
+        .map_err(store_err)?;
+    let rows = statement
+        .query_map([], |row| row.get::<_, String>(0))
+        .map_err(store_err)?;
+    let mut log = Log { commands: Vec::new(), total: 0, damage: None };
+    for row in rows {
+        let position = log.total;
+        log.total += 1;
+        if log.damage.is_some() {
+            continue;
+        }
+        let parsed = row
+            .map_err(|err| Damage::Failed(err.to_string()))
+            .and_then(|payload| {
+                serde_json::from_str::<Command>(&payload).map_err(|err| {
+                    // Only a command name this build does not know points at a newer app.
+                    if err.to_string().contains("unknown variant") {
+                        Damage::Newer
+                    } else {
+                        Damage::Unreadable
+                    }
+                })
+            });
+        match parsed {
+            Ok(command) => log.commands.push(command),
+            Err(damage) => log.damage = Some((position, damage)),
+        }
+    }
+    Ok(log)
+}
+
+/// Open a file. A damaged command log opens as an unsaved copy at the last state that
+/// can be rebuilt; only an unreadable header or a newer format is an error.
+pub fn open(path: &str) -> Result<Opened, EngineError> {
     let connection = Connection::open(path).map_err(store_err)?;
     check_version(&connection)?;
     let base_json: String = connection
         .query_row("SELECT value FROM meta WHERE key = 'base'", [], |row| row.get(0))
-        .map_err(|err| EngineError::Store(err.to_string()))?;
+        .map_err(store_err)?;
     let cursor_text: String = connection
         .query_row("SELECT value FROM meta WHERE key = 'cursor'", [], |row| row.get(0))
-        .map_err(|err| EngineError::Store(err.to_string()))?;
-    let cursor: usize = cursor_text
-        .parse()
-        .map_err(|err: std::num::ParseIntError| EngineError::Store(err.to_string()))?;
-    let base: Project = serde_json::from_str(&base_json).map_err(|err| EngineError::Store(err.to_string()))?;
-    let mut commands = Vec::new();
-    let mut statement = connection
-        .prepare("SELECT payload FROM command_log ORDER BY seq")
-        .map_err(|err| EngineError::Store(err.to_string()))?;
-    let rows = statement
-        .query_map([], |row| row.get::<_, String>(0))
-        .map_err(|err| EngineError::Store(err.to_string()))?;
-    for row in rows {
-        let payload = row.map_err(|err| EngineError::Store(err.to_string()))?;
-        let command: Command = serde_json::from_str(&payload).map_err(|err| {
-            // Only a command name this build does not know points at a newer app.
-            if err.to_string().contains("unknown variant") {
-                EngineError::UnknownCommand(err.to_string())
-            } else {
-                store_err(err)
-            }
-        })?;
-        commands.push(command);
+        .map_err(store_err)?;
+    let base: Project = serde_json::from_str(&base_json).map_err(store_err)?;
+    let log = read_log(&connection)?;
+    // A damaged burn-down table or cursor loses that much, not the whole project.
+    let burndown = load_burndown(&connection).unwrap_or_default();
+    let stored = stored_checkpoints(&connection);
+
+    let saved_cursor = cursor_text.trim().parse::<usize>().unwrap_or(log.total).min(log.total);
+    // Checkpoints from this engine are trusted as replays of the commands before them;
+    // that holds as long as `ENGINE_REVISION` is bumped whenever results can change.
+    let mut checkpoints = Checkpoints::default();
+    for row in stored.iter().filter(|row| row.ours && row.applied <= log.commands.len()) {
+        if let Some(project) = row.project() {
+            checkpoints.insert(row.applied, project);
+        }
     }
-    let cursor = cursor.min(commands.len());
-    let burndown = load_burndown(&connection)?;
-    let checkpoints = load_checkpoints(&connection, commands.len());
     let mut document = Document {
         project: base.clone(),
         base,
-        commands,
-        cursor,
+        cursor: saved_cursor.min(log.commands.len()),
+        commands: log.commands,
         path: Some(path.to_string()),
         dirty: false,
         burndown,
         checkpoints,
     };
-    document.project = document.project_at(cursor)?;
-    Ok(document)
+    let replayed = document.replay_to(document.cursor);
+    let replay_failed = replayed.error.is_some();
+    let damage = match &replayed.error {
+        Some(error) => Some((replayed.applied, Damage::Failed(error.to_string()))),
+        None => log.damage,
+    };
+    let Some((at, damage)) = damage else {
+        document.project = replayed.project;
+        let moved = stored
+            .iter()
+            .find(|row| !row.ours && row.applied == document.cursor)
+            .and_then(StoredCheckpoint::project)
+            .map(|before| recovery::moved_tasks(&before, &document.project))
+            .unwrap_or_default();
+        return Ok(Opened { document, report: OpenReport { recovery: None, moved } });
+    };
+    if !replay_failed && at >= saved_cursor {
+        // Only redo commands are lost; the saved state and its history are whole.
+        document.project = replayed.project;
+        let recovery = Recovery {
+            damage,
+            at,
+            total: log.total,
+            saved_cursor,
+            shown_after: saved_cursor,
+            history_kept: true,
+            copy: false,
+        };
+        return Ok(Opened {
+            document,
+            report: OpenReport { recovery: Some(recovery), moved: Vec::new() },
+        });
+    }
+
+    let good = replayed.applied;
+    // A checkpoint this engine saved past the damage still shows what the user last saw.
+    let later = stored
+        .iter()
+        .rev()
+        .filter(|row| row.ours && row.applied > good && row.applied <= saved_cursor)
+        .find_map(|row| row.project().map(|project| (row.applied, project)));
+    let history_kept = later.is_none();
+    let shown_after = match later {
+        Some((applied, project)) => {
+            document.base = project.clone();
+            document.project = project;
+            document.commands.clear();
+            document.cursor = 0;
+            document.checkpoints.clear();
+            applied
+        }
+        None => {
+            document.project = replayed.project;
+            document.commands.truncate(good);
+            document.cursor = good;
+            document.checkpoints.drop_after(good);
+            good
+        }
+    };
+    // Saving must not write over the file that still holds the rest of the log.
+    document.path = None;
+    document.dirty = true;
+    let recovery = Recovery {
+        damage,
+        at,
+        total: log.total,
+        saved_cursor,
+        shown_after,
+        history_kept,
+        copy: true,
+    };
+    Ok(Opened {
+        document,
+        report: OpenReport { recovery: Some(recovery), moved: Vec::new() },
+    })
+}
+
+/// Open a file without the report. See `open`.
+pub fn load(path: &str) -> Result<Document, EngineError> {
+    open(path).map(|opened| opened.document)
 }
 
 /// User save: sample burn-down for today (or the status date day), then write the file.

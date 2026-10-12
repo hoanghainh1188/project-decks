@@ -294,10 +294,20 @@ async fn open_project(app: tauri::AppHandle, state: State<'_, AppState>) -> Resu
     let Some(path) = picked.and_then(path_from_dialog) else {
         return Ok(lock(&state).snapshot());
     };
-    let loaded = store::load(&path).map_err(|err| err.to_string())?;
-    let mut doc = lock(&state);
-    *doc = loaded;
-    Ok(doc.snapshot())
+    let opened = store::open(&path).map_err(|err| err.to_string())?;
+    let snapshot = {
+        let mut doc = lock(&state);
+        *doc = opened.document;
+        doc.snapshot()
+    };
+    // A damaged log or a different engine still opens; say what the user is looking at.
+    if let Some(message) = opened.report.message() {
+        alert(&app, message)
+            .title("Mở dự án")
+            .kind(MessageDialogKind::Warning)
+            .show(|_| {});
+    }
+    Ok(snapshot)
 }
 
 #[tauri::command]
