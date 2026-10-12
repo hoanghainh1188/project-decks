@@ -1,5 +1,7 @@
+import { Check, Repeat, X } from "lucide-react";
 import { useState } from "react";
 
+import { Button } from "./Button";
 import { DateTimeField } from "./DateTimeField";
 import { Modal } from "./Modal";
 import { formatDuration, parseDuration } from "../format";
@@ -204,7 +206,19 @@ export function RecurringDialog({ project, initial, defaultStart, onClose, onSub
   );
 
   return (
-    <Modal title={initial ? "Sửa công việc lặp" : "Công việc lặp"} className="wide recurring-dialog" onClose={onClose}>
+    <Modal
+      title={initial ? "Sửa công việc lặp" : "Công việc lặp"}
+      className="wide recurring-dialog"
+      onClose={onClose}
+      footer={
+        <>
+          <Button Icon={X} onClick={onClose}>Hủy</Button>
+          <Button variant="primary" Icon={initial ? Check : Repeat} onClick={() => void submit()}>
+            {initial ? "Cập nhật chuỗi" : "Tạo chuỗi"}
+          </Button>
+        </>
+      }
+    >
       <label>Tên</label>
       <input aria-label="Tên chuỗi lặp" value={name} onChange={(event) => setName(event.target.value)} />
       <label>Thời lượng mỗi lần</label>
@@ -377,10 +391,6 @@ export function RecurringDialog({ project, initial, defaultStart, onClose, onSub
         <p className="meta">Các lần đã sửa riêng được giữ nguyên khi sinh lại chuỗi.</p>
       )}
       {problem && <p className="meta bad">{problem}</p>}
-      <div className="row">
-        <button type="button" onClick={() => void submit()}>{initial ? "Cập nhật chuỗi" : "Tạo chuỗi"}</button>
-        <button type="button" onClick={onClose}>Hủy</button>
-      </div>
     </Modal>
   );
 }

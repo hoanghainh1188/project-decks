@@ -1,4 +1,5 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { CalendarPlus, Check, Flag, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
@@ -21,6 +22,7 @@ import {
   saveProjectAs,
   undo,
 } from "./api";
+import { Button } from "./components/Button";
 import { CalendarEditor } from "./components/CalendarEditor";
 import { DateTimeField } from "./components/DateTimeField";
 import { EvmPanel } from "./components/EvmPanel";
@@ -35,7 +37,7 @@ import { TaskEditDialog } from "./components/TaskEditDialog";
 import { TaskSheet } from "./components/TaskSheet";
 import { TaskUsage } from "./components/TaskUsage";
 import { Toolbar } from "./components/Toolbar";
-import { ViewBar } from "./components/ViewBar";
+import { VIEW_PANEL_ID, ViewBar, viewTabId } from "./components/ViewBar";
 import { formatInstant } from "./format";
 import { buildGanttPdf, pdfSuggestedName } from "./ganttPdf";
 import { buildNetworkPdf } from "./networkPdf";
@@ -61,6 +63,7 @@ import {
   trackCommittedText,
 } from "./shortcuts";
 import { linkFromAbove, taskAbove, toolbarStates } from "./toolbarState";
+import { undoTo } from "./undoTo";
 import { buildViewRows, type FilterMode, type GroupMode, type HighlightMode } from "./viewRows";
 import { fileName, windowTitle } from "./windowTitle";
 import "./styles.css";
@@ -71,7 +74,9 @@ export default function App() {
   const [scale, setScale] = useState<Scale>("day");
   const [selected, setSelected] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [infoOpen, setInfoOpen] = useState(false);
+  // Thông tin dự án is a transaction: the history cursor when it opened, so Hủy can
+  // undo back to it. null while the dialog is closed.
+  const [infoStart, setInfoStart] = useState<number | null>(null);
   const [baselineOpen, setBaselineOpen] = useState(false);
   const [calendarEditId, setCalendarEditId] = useState<number | null>(null);
   const [rowFilter, setRowFilter] = useState<FilterMode>("none");
@@ -147,6 +152,21 @@ export default function App() {
     [send, snap],
   );
 
+  // Read the cursor through the queue: a cell committed by the click that opened the
+  // dialog may still be in flight, and must count as before the dialog, not inside it.
+  const openProjectInfo = useCallback(async () => {
+    const state = await run(loadState);
+    setInfoStart(state ? state.history_cursor : (snap?.history_cursor ?? 0));
+  }, [run, snap]);
+
+  // Undo every command applied since `cursor`. Queued edits (a field committed on
+  // close) land first, because loadState waits for them.
+  const rollbackTo = useCallback(
+    (cursor: number) =>
+      run(() => undoTo(cursor, { current: loadState, undo })),
+    [run],
+  );
+
   const menuRef = useRef<(id: string) => void>(() => {});
 
   const project = snap?.project;
@@ -167,7 +187,9 @@ export default function App() {
         await exportMspdi();
       });
       if (id === "export-pdf") exportPdfRef.current();
-      if (id === "undo") void run(undo);
+      // Inside Thông tin dự án, undo stops at the state the dialog opened with, so
+      // Hủy can still restore exactly that.
+      if (id === "undo" && !(infoStart != null && (snap?.history_cursor ?? 0) <= infoStart)) void run(undo);
       if (id === "redo") void run(redo);
       if (id === "view-gantt") setView("gantt");
       if (id === "view-tracking") setView("tracking");
@@ -181,7 +203,7 @@ export default function App() {
       if (id === "scale-day") setScale("day");
       if (id === "scale-week") setScale("week");
       if (id === "scale-month") setScale("month");
-      if (id === "project-info") setInfoOpen(true);
+      if (id === "project-info") void openProjectInfo();
       if (id === "baseline") setBaselineOpen(true);
       if (id === "level") void send({ type: "level_resources" });
       if (id === "clear-level") void send({ type: "clear_leveling" });
@@ -196,7 +218,7 @@ export default function App() {
       if (id === "outdent" && states.outdent.enabled) void send({ type: "outdent", uid: task.uid });
       if (id === "delete" && states.remove.enabled) void send({ type: "delete_task", uid: task.uid });
     },
-    [run, send, startFileDialog, task, snap, view, fileDialogBusy],
+    [run, send, startFileDialog, task, snap, view, fileDialogBusy, openProjectInfo, infoStart],
   );
   menuRef.current = handleMenu;
 
@@ -377,7 +399,7 @@ export default function App() {
         }}
         onSplit={() => task && setSplitDialog(task.uid)}
         onDelete={() => task && void send({ type: "delete_task", uid: task.uid })}
-        onProjectInfo={() => setInfoOpen(true)}
+        onProjectInfo={() => void openProjectInfo()}
         onToggleEvm={() => {
           if (!evmOpen && view !== "gantt" && view !== "tracking") setView("gantt");
           setEvmOpen((open) => !open);
@@ -406,6 +428,8 @@ export default function App() {
       <div className="work-area">
         <div className="work-column">
           <main className="workspace">
+            {/* The panel the view tabs control; inside <main> so the main landmark stays. */}
+            <div className="workspace-panel" id={VIEW_PANEL_ID} role="tabpanel" aria-labelledby={viewTabId(view)}>
             {project && (view === "gantt" || view === "tracking") && (
               <>
                 <TaskSheet
@@ -479,6 +503,7 @@ export default function App() {
                 }}
               />
             )}
+            </div>
           </main>
           {project && task && (view === "gantt" || view === "tracking") && (
             <Inspector
@@ -498,7 +523,7 @@ export default function App() {
         {project && evmOpen && (view === "gantt" || view === "tracking") && (
           <EvmPanel
             metrics={metrics}
-            onOpenProjectInfo={() => setInfoOpen(true)}
+            onOpenProjectInfo={() => void openProjectInfo()}
             onOpenBaseline={() => setBaselineOpen(true)}
             onClose={() => setEvmOpen(false)}
           />
@@ -514,18 +539,34 @@ export default function App() {
         </span>
         <span>{project ? project.overallocations.length : 0} khoảng quá tải</span>
       </footer>
-      {infoOpen && project && (
+      {infoStart != null && project && (
         <ProjectDialog
           project={project}
-          onClose={() => setInfoOpen(false)}
+          changed={(snap?.history_cursor ?? 0) !== infoStart}
+          onSave={() => {
+            commitFocusedField();
+            setInfoStart(null);
+          }}
+          onCancel={() => {
+            void rollbackTo(infoStart).then((state) => {
+              // Close only once everything is undone; otherwise stay open so Hủy can be
+              // tried again (or Lưu kept) instead of leaving the project half reverted.
+              if (state && state.history_cursor <= infoStart) setInfoStart(null);
+              else setError("Không hoàn tác hết thay đổi trong Thông tin dự án. Bấm Hủy lần nữa hoặc Lưu.");
+            });
+          }}
           send={send}
           onCreateCalendar={() => createCalendar("Lịch mới", () => null, false)}
         />
       )}
       {editingCalendar && (
-        <Modal title="Sửa lịch" className="wide" onClose={() => setCalendarEditId(null)}>
+        <Modal
+          title="Sửa lịch"
+          className="wide"
+          onClose={() => setCalendarEditId(null)}
+          footer={<Button variant="primary" Icon={Check} onClick={() => setCalendarEditId(null)}>Đóng</Button>}
+        >
           <CalendarEditor calendar={editingCalendar} send={send} />
-          <button type="button" onClick={() => setCalendarEditId(null)}>Đóng</button>
         </Modal>
       )}
       {seriesDialog != null && project && (
@@ -583,14 +624,22 @@ function resourceCommand(resource: Resource): Command {
   };
 }
 
+/**
+ * Changes apply as they are made, so the Gantt previews them; Lưu keeps them and Hủy
+ * (✕, Escape) undoes back to the state the dialog opened with.
+ */
 function ProjectDialog({
   project,
-  onClose,
+  changed,
+  onSave,
+  onCancel,
   send,
   onCreateCalendar,
 }: {
   project: Project;
-  onClose: () => void;
+  changed: boolean;
+  onSave: () => void;
+  onCancel: () => void;
   send: (command: Command) => Promise<Snapshot | void>;
   onCreateCalendar: () => Promise<number | null>;
 }) {
@@ -600,11 +649,26 @@ function ProjectDialog({
     project.calendars.find((item) => item.id === project.calendar_id) ??
     project.calendars[0];
   return (
-    <Modal title="Thông tin dự án" className="wide" onClose={onClose}>
+    <Modal
+      title="Thông tin dự án"
+      className="wide"
+      onClose={onCancel}
+      footer={
+        <>
+          <span className="meta dialog-foot-note">{changed ? "Đang xem trước thay đổi trên lịch" : ""}</span>
+          <Button Icon={X} onClick={onCancel}>Hủy</Button>
+          <Button variant="primary" Icon={Check} onClick={onSave}>Lưu</Button>
+        </>
+      }
+    >
       <label>Tên</label>
       <input
+        // Shows the name again after undo or redo inside the dialog.
+        key={project.name}
         defaultValue={project.name}
-        onBlur={(event) => send({ type: "rename_project", name: event.target.value })}
+        onBlur={(event) => {
+          if (event.target.value !== project.name) void send({ type: "rename_project", name: event.target.value });
+        }}
       />
       <label>Ngày bắt đầu</label>
       <DateTimeField
@@ -633,8 +697,8 @@ function ProjectDialog({
                 </option>
               ))}
             </select>
-            <button
-              type="button"
+            <Button
+              Icon={CalendarPlus}
               onClick={() => {
                 void onCreateCalendar().then((id) => {
                   if (id != null) setEditingId(id);
@@ -642,12 +706,11 @@ function ProjectDialog({
               }}
             >
               Tạo lịch
-            </button>
+            </Button>
           </div>
           <CalendarEditor calendar={calendar} send={send} />
         </>
       )}
-      <button type="button" onClick={onClose}>Đóng</button>
     </Modal>
   );
 }
@@ -663,14 +726,20 @@ function BaselineDialog({
 }) {
   const [number, setNumber] = useState(0);
   return (
-    <Modal title="Đường cơ sở" onClose={onClose}>
+    <Modal
+      title="Đường cơ sở"
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="danger" Icon={Trash2} onClick={() => onClear(Math.min(10, Math.max(0, number)))}>Xóa</Button>
+          <span className="spacer" />
+          <Button Icon={X} onClick={onClose}>Đóng</Button>
+          <Button variant="primary" Icon={Flag} onClick={() => onSet(Math.min(10, Math.max(0, number)))}>Đặt</Button>
+        </>
+      }
+    >
       <label>Mốc 0–10</label>
       <input type="number" min={0} max={10} value={number} onChange={(event) => setNumber(Number(event.target.value))} />
-      <div className="row">
-        <button type="button" onClick={() => onSet(Math.min(10, Math.max(0, number)))}>Đặt</button>
-        <button type="button" onClick={() => onClear(Math.min(10, Math.max(0, number)))}>Xóa</button>
-        <button type="button" onClick={onClose}>Đóng</button>
-      </div>
     </Modal>
   );
 }

@@ -15,6 +15,10 @@ pub struct Snapshot {
     pub dirty: bool,
     pub can_undo: bool,
     pub can_redo: bool,
+    /// Commands applied and not undone (`Document::cursor`). The UI records it when a
+    /// dialog opens, so Hủy can undo back to exactly that point.
+    #[serde(default)]
+    pub history_cursor: usize,
 }
 
 /// Outcome of replaying part of the log.
@@ -74,6 +78,7 @@ impl Document {
             dirty: self.dirty,
             can_undo: self.cursor > 0,
             can_redo: self.cursor < self.commands.len(),
+            history_cursor: self.cursor,
         }
     }
 

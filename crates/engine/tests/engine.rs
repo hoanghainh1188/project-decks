@@ -530,10 +530,13 @@ fn undo_redo_and_sqlite_roundtrip() {
     })
     .unwrap();
     assert_eq!(doc.project.tasks.len(), before + 1);
+    assert_eq!(doc.snapshot().history_cursor, 1);
     doc.undo().unwrap();
     assert_eq!(doc.project.tasks.len(), before);
+    assert_eq!(doc.snapshot().history_cursor, 0);
     doc.redo().unwrap();
     assert_eq!(doc.project.tasks.len(), before + 1);
+    assert_eq!(doc.snapshot().history_cursor, 1);
 
     let path = std::env::temp_dir().join(format!("projectdesk-test-{}.pdproj", std::process::id()));
     let path = path.to_string_lossy().to_string();

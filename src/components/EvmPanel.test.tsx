@@ -73,9 +73,9 @@ describe("EvmPanel enlarged charts", () => {
     const zoom = screen.getByRole("button", { name: "Phóng to" });
     await user.click(zoom);
     const dialog = screen.getByRole("dialog", { name: "Burn-down và đường cong S" });
-    expect(within(dialog).getByRole("button", { name: "Đóng" })).toHaveFocus();
+    expect(dialog).toHaveFocus();
     expect(within(dialog).getByRole("img", { name: /Biểu đồ burn-down/ })).toHaveAttribute("viewBox", "0 0 880 340");
-    const close = within(dialog).getByRole("button", { name: "Đóng" });
+    const close = within(dialog).getByRole("button", { name: "Đóng hộp thoại" });
     await user.tab();
     expect(close).toHaveFocus();
     await user.tab({ shift: true });

@@ -1,5 +1,7 @@
+import { Scissors, X } from "lucide-react";
 import { useState } from "react";
 
+import { Button } from "./Button";
 import { DateTimeField } from "./DateTimeField";
 import { Modal } from "./Modal";
 import { formatDuration, formatInstant, parseDuration } from "../format";
@@ -42,7 +44,17 @@ export function SplitDialog({ task, onClose, onSubmit }: SplitDialogProps) {
   }
 
   return (
-    <Modal title="Tách công việc" className="split-dialog" onClose={onClose}>
+    <Modal
+      title="Tách công việc"
+      className="split-dialog"
+      onClose={onClose}
+      footer={
+        <>
+          <Button Icon={X} onClick={onClose}>Hủy</Button>
+          <Button variant="primary" Icon={Scissors} onClick={() => void submit()}>Tách</Button>
+        </>
+      }
+    >
       <p className="meta">
         {task.name} · {formatInstant(task.start)} – {formatInstant(task.finish)} · thời lượng {formatDuration(task.duration)}
       </p>
@@ -60,10 +72,6 @@ export function SplitDialog({ task, onClose, onSubmit }: SplitDialogProps) {
         Thời lượng giữ nguyên. Phần việc sau điểm tách dời muộn hơn đúng bằng khoảng ngắt, nên ngày kết thúc cũng lùi theo.
       </p>
       {problem && <p className="meta bad">{problem}</p>}
-      <div className="row">
-        <button type="button" onClick={() => void submit()}>Tách</button>
-        <button type="button" onClick={onClose}>Hủy</button>
-      </div>
     </Modal>
   );
 }

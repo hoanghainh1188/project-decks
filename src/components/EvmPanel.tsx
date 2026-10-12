@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { CalendarClock, Flag, Maximize2, X } from "lucide-react";
+import { useEffect, useState } from "react";
 
 import { formatDateOnly, formatMoney } from "../format";
 import type { BurndownReport, EvmMetrics, ProjectMetrics, SCurveReport } from "../types";
+import { Button } from "./Button";
 import { Modal } from "./Modal";
 
 interface EvmPanelProps {
@@ -50,23 +52,20 @@ export function EvmPanel({ metrics, onOpenProjectInfo, onOpenBaseline, onClose }
       <div className="evm-head">
         <strong>Chỉ số EVM</strong>
         <span className="evm-head-actions">
-          <button
-            type="button"
+          <Button
+            Icon={Maximize2}
             disabled={!metrics}
             aria-haspopup="dialog"
             title="Xem burn-down và đường cong S cỡ lớn"
             onClick={() => setLarge(true)}
           >
             Phóng to
-          </button>
-          <button type="button" onClick={onClose} aria-label="Đóng bảng EVM">Đóng</button>
+          </Button>
+          <Button Icon={X} onClick={onClose} aria-label="Đóng bảng EVM">Đóng</Button>
         </span>
       </div>
       {large && metrics && (
-        <ChartsDialog
-          metrics={metrics}
-          onClose={() => setLarge(false)}
-        />
+        <ChartsDialog metrics={metrics} onClose={() => setLarge(false)} />
       )}
       {!metrics && <p className="evm-note">Đang tải số liệu…</p>}
       {evm && (
@@ -77,13 +76,13 @@ export function EvmPanel({ metrics, onOpenProjectInfo, onOpenBaseline, onClose }
           {!evm.has_baseline && (
             <div className="evm-empty">
               Chưa có đường cơ sở 0, nên chưa tính được EVM và đường lý tưởng.
-              <button type="button" onClick={onOpenBaseline}>Đặt đường cơ sở…</button>
+              <Button Icon={Flag} onClick={onOpenBaseline}>Đặt đường cơ sở…</Button>
             </div>
           )}
           {evm.status_date == null && (
             <div className="evm-empty">
               Chưa có ngày trạng thái, nên chưa tính được giá trị kế hoạch.
-              <button type="button" onClick={onOpenProjectInfo}>Đặt ngày trạng thái…</button>
+              <Button Icon={CalendarClock} onClick={onOpenProjectInfo}>Đặt ngày trạng thái…</Button>
             </div>
           )}
           {evm.metrics && <MetricTable metrics={evm.metrics} />}
@@ -97,18 +96,9 @@ export function EvmPanel({ metrics, onOpenProjectInfo, onOpenBaseline, onClose }
 
 /** Burn-down and S-curve at a readable size, over the window. */
 function ChartsDialog({ metrics, onClose }: { metrics: ProjectMetrics; onClose: () => void }) {
-  const closeRef = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    closeRef.current?.focus();
-  }, []);
   const status = metrics.evm.status_date;
   return (
-    <Modal
-      title="Burn-down và đường cong S"
-      className="charts-dialog"
-      onClose={onClose}
-      headerAction={<button ref={closeRef} type="button" onClick={onClose}>Đóng</button>}
-    >
+    <Modal title="Burn-down và đường cong S" className="charts-dialog" onClose={onClose}>
       {status != null && <p className="evm-note">Tính đến ngày trạng thái {formatDateOnly(status)}.</p>}
       <BurndownSection report={metrics.burndown} box={LARGE_CHART} />
       <SCurveSection report={metrics.s_curve} box={LARGE_CHART} />

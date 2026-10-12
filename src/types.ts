@@ -211,6 +211,8 @@ export interface Snapshot {
   dirty: boolean;
   can_undo: boolean;
   can_redo: boolean;
+  /** Commands applied and not undone; a dialog records it to roll back to on Hủy. */
+  history_cursor: number;
 }
 
 export type Command =
