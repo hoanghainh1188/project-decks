@@ -4,7 +4,7 @@ use std::fs;
 use std::io;
 use std::path::Path;
 
-use projectdesk_engine::Lang;
+use sheafly_engine::Lang;
 use serde_json::{Map, Value};
 
 pub const FILE_NAME: &str = "settings.json";
@@ -50,7 +50,7 @@ mod tests {
 
     fn temp_dir(name: &str) -> std::path::PathBuf {
         let dir = std::env::temp_dir().join(format!(
-            "projectdesk-settings-{}-{name}",
+            "sheafly-settings-{}-{name}",
             std::process::id()
         ));
         let _ = fs::remove_dir_all(&dir);

@@ -1,4 +1,4 @@
-//! Scheduling engine for ProjectDesk.
+//! Scheduling engine for Sheafly.
 //!
 //! Instants are Unix milliseconds holding project wall-clock time (formatted as UTC).
 //! Durations and lags are working minutes. Calendars convert between the two.

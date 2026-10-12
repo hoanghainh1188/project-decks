@@ -4,13 +4,13 @@ use std::fs;
 
 use rusqlite::Connection;
 
-use projectdesk_engine::command::Command;
-use projectdesk_engine::store::{load, open, save, FORMAT_VERSION};
-use projectdesk_engine::timeutil::timestamp;
-use projectdesk_engine::{Document, Lang, Project};
+use sheafly_engine::command::Command;
+use sheafly_engine::store::{load, open, save, FORMAT_VERSION};
+use sheafly_engine::timeutil::timestamp;
+use sheafly_engine::{Document, Lang, Project};
 
 fn temp_dir(name: &str) -> String {
-    let dir = std::env::temp_dir().join(format!("projectdesk-store-{}-{name}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("sheafly-store-{}-{name}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).unwrap();
     dir.to_string_lossy().to_string()

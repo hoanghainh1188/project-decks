@@ -1,9 +1,9 @@
 [package]
-name = "projectdesk-engine"
+name = "sheafly-engine"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "ProjectDesk scheduling engine: calendars, CPM, resources, tracking, leveling, MSPDI"
+description = "Sheafly scheduling engine: calendars, CPM, resources, tracking, leveling, MSPDI"
 publish = false
 
 [dependencies]

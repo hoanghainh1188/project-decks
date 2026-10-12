@@ -23,8 +23,8 @@ describe("windowTitle", () => {
   });
 
   it("falls back to the app name", () => {
-    expect(windowTitle(null)).toBe("ProjectDesk");
-    expect(windowTitle({ ...makeSnapshot(makeProject({ name: "  " })), dirty: false })).toBe("ProjectDesk");
+    expect(windowTitle(null)).toBe("Sheafly");
+    expect(windowTitle({ ...makeSnapshot(makeProject({ name: "  " })), dirty: false })).toBe("Sheafly");
   });
 });
 

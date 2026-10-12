@@ -48,7 +48,7 @@ export function buildNetworkPdf(input: NetworkPdfInput): Uint8Array {
   doc.setFont(FONT, "normal");
   const pdf = pick(pdfMessages);
   const title = pdf.networkTitle(project.name.trim() || pdf.untitled);
-  doc.setProperties({ title, creator: "ProjectDesk" });
+  doc.setProperties({ title, creator: "Sheafly" });
   doc.setFontSize(11);
   setText(doc, "#1d1d1f");
   doc.text(title, MARGIN, MARGIN + 4);

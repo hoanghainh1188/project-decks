@@ -82,7 +82,7 @@ export function renderGanttPdf(input: GanttPdfInput, fontData: string): Uint8Arr
   doc.addFont("BeVietnamPro-Regular.ttf", FONT, "normal");
   doc.setFont(FONT, "normal");
   const title = input.project.name.trim() || pick(pdfMessages).untitled;
-  doc.setProperties({ title, creator: "ProjectDesk" });
+  doc.setProperties({ title, creator: "Sheafly" });
 
   const timescale = buildTimescale(input.project);
   const px = pixelsPerDay(input.scale);

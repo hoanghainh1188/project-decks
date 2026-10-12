@@ -3,16 +3,16 @@
 
 use chrono::{Datelike, NaiveDate};
 
-use projectdesk_engine::command::Command;
-use projectdesk_engine::evm::{evm_at, s_curve, CurveStep, SCurvePoint};
-use projectdesk_engine::model::{Accrual, Baseline, ResourceKind, Task};
-use projectdesk_engine::recurrence::{
+use sheafly_engine::command::Command;
+use sheafly_engine::evm::{evm_at, s_curve, CurveStep, SCurvePoint};
+use sheafly_engine::model::{Accrual, Baseline, ResourceKind, Task};
+use sheafly_engine::recurrence::{
     occurrence_dates, RecurrenceEnd, RecurrencePattern, RecurrenceSpec, SeriesResource, LAST_WEEK,
 };
-use projectdesk_engine::schedule::schedule;
-use projectdesk_engine::store::{load, save};
-use projectdesk_engine::timeutil::timestamp;
-use projectdesk_engine::{Calendar, Document, Project, Resource};
+use sheafly_engine::schedule::schedule;
+use sheafly_engine::store::{load, save};
+use sheafly_engine::timeutil::timestamp;
+use sheafly_engine::{Calendar, Document, Project, Resource};
 
 /// 2026-01-05 is a Monday; `day_offset` 0 is that Monday.
 fn at(day_offset: u32, hour: u32, minute: u32) -> i64 {
@@ -34,7 +34,7 @@ fn close(actual: f64, expected: f64) {
 
 fn temp_path(name: &str) -> String {
     std::env::temp_dir()
-        .join(format!("projectdesk-{name}-{}.pdproj", std::process::id()))
+        .join(format!("sheafly-{name}-{}.pdproj", std::process::id()))
         .to_string_lossy()
         .to_string()
 }

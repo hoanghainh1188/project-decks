@@ -2,7 +2,7 @@ import { defineMessages } from "./i18n";
 
 export const appMessages = defineMessages(
   {
-    needsTauri: "Mở ProjectDesk bằng pnpm tauri dev để dùng lịch và lưu tệp.",
+    needsTauri: "Mở Sheafly bằng pnpm tauri dev để dùng lịch và lưu tệp.",
     untitledProject: "Dự án",
     networkPdfName: (project: string) => `${project} - sơ đồ mạng`,
     newTask: (uid: number) => `Công việc ${uid}`,
@@ -40,7 +40,7 @@ export const appMessages = defineMessages(
     baselineNumber: "Mốc 0–10",
   },
   {
-    needsTauri: "Open ProjectDesk with pnpm tauri dev to schedule and save files.",
+    needsTauri: "Open Sheafly with pnpm tauri dev to schedule and save files.",
     untitledProject: "Project",
     networkPdfName: (project: string) => `${project} - network diagram`,
     newTask: (uid: number) => `Task ${uid}`,

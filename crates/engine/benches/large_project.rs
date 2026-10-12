@@ -1,16 +1,16 @@
 //! Timing for large projects: apply, undo, redo, save, and load.
 //!
-//! `cargo bench -p projectdesk-engine` builds a project of grouped tasks with chained
+//! `cargo bench -p sheafly-engine` builds a project of grouped tasks with chained
 //! and summary-to-summary links, then pads the log with edits. Pass `-- <tasks> <commands>`
 //! to change the size (default 1000 tasks, 10000 commands).
 
 use std::time::{Duration, Instant};
 
-use projectdesk_engine::command::Command;
-use projectdesk_engine::model::{DepKind, ResourceKind};
-use projectdesk_engine::store::{load, save};
-use projectdesk_engine::timeutil::timestamp;
-use projectdesk_engine::{Document, Project};
+use sheafly_engine::command::Command;
+use sheafly_engine::model::{DepKind, ResourceKind};
+use sheafly_engine::store::{load, save};
+use sheafly_engine::timeutil::timestamp;
+use sheafly_engine::{Document, Project};
 
 const GROUP: u32 = 10;
 const DAY: i64 = 480;
@@ -167,7 +167,7 @@ fn main() {
         .expect("apply")
     });
 
-    let dir = std::env::temp_dir().join(format!("projectdesk-bench-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("sheafly-bench-{}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("temp dir");
     let path = dir.join("bench.pdproj").to_string_lossy().to_string();
     timed("save", || save(&doc, &path).expect("save"));

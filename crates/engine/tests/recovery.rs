@@ -4,13 +4,13 @@ use std::fs;
 
 use rusqlite::Connection;
 
-use projectdesk_engine::command::Command;
-use projectdesk_engine::document::replay;
-use projectdesk_engine::model::DepKind;
-use projectdesk_engine::recovery::Damage;
-use projectdesk_engine::store::{open, save};
-use projectdesk_engine::timeutil::timestamp;
-use projectdesk_engine::{Document, Lang, Project};
+use sheafly_engine::command::Command;
+use sheafly_engine::document::replay;
+use sheafly_engine::model::DepKind;
+use sheafly_engine::recovery::Damage;
+use sheafly_engine::store::{open, save};
+use sheafly_engine::timeutil::timestamp;
+use sheafly_engine::{Document, Lang, Project};
 
 const DAY: i64 = 480;
 /// Commands in `built()`.
@@ -18,7 +18,7 @@ const TOTAL: usize = 30;
 
 fn temp_path(name: &str) -> String {
     let dir = std::env::temp_dir().join(format!(
-        "projectdesk-recovery-{}-{name}",
+        "sheafly-recovery-{}-{name}",
         std::process::id()
     ));
     let _ = fs::remove_dir_all(&dir);

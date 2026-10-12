@@ -89,7 +89,7 @@ export function Toolbar({ states, evmOpen, ...actions }: Props) {
   const tip = (key: keyof ToolbarStates, fallback: string) => states[key].reason ?? fallback;
   return (
     <header className="toolbar">
-      <strong className="toolbar-brand">ProjectDesk</strong>
+      <strong className="toolbar-brand">Sheafly</strong>
       <div className="toolbar-group" role="group" aria-label={m.history}>
         <Tool
           tone="history"

@@ -3,12 +3,12 @@
 
 use chrono::Datelike;
 
-use projectdesk_engine::command::Command;
-use projectdesk_engine::document::replay;
-use projectdesk_engine::model::{ConstraintType, ResourceKind, Task};
-use projectdesk_engine::store::{load, save};
-use projectdesk_engine::timeutil::timestamp;
-use projectdesk_engine::{Document, Project};
+use sheafly_engine::command::Command;
+use sheafly_engine::document::replay;
+use sheafly_engine::model::{ConstraintType, ResourceKind, Task};
+use sheafly_engine::store::{load, save};
+use sheafly_engine::timeutil::timestamp;
+use sheafly_engine::{Document, Project};
 
 const DAY: i64 = 480;
 
@@ -93,7 +93,7 @@ fn back_to_back_tasks_within_a_day_do_not_clash() {
     doc.apply(Command::AddDependency {
         predecessor_uid: 1,
         successor_uid: 2,
-        kind: projectdesk_engine::model::DepKind::Fs,
+        kind: sheafly_engine::model::DepKind::Fs,
         lag: 0,
     })
     .unwrap();
@@ -290,7 +290,7 @@ fn files_that_logged_the_heuristic_still_replay_it() {
     doc.cursor = doc.commands.len();
     let path = std::env::temp_dir()
         .join(format!(
-            "projectdesk-leveling-{}.pdproj",
+            "sheafly-leveling-{}.pdproj",
             std::process::id()
         ))
         .to_string_lossy()
@@ -330,7 +330,7 @@ fn start_to_start_links_level_without_leftover_clashes() {
     doc.apply(Command::AddDependency {
         predecessor_uid: 1,
         successor_uid: 2,
-        kind: projectdesk_engine::model::DepKind::Ss,
+        kind: sheafly_engine::model::DepKind::Ss,
         lag: 0,
     })
     .unwrap();
@@ -362,7 +362,7 @@ fn a_resource_that_never_works_when_the_task_does_is_left_overloaded_quickly() {
     })
     .unwrap();
     let calendar_id = doc.project.calendars.last().unwrap().id;
-    let night = vec![projectdesk_engine::calendar::TimeRange::new(
+    let night = vec![sheafly_engine::calendar::TimeRange::new(
         20 * 60,
         23 * 60,
     )];

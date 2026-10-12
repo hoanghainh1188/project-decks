@@ -4,7 +4,7 @@ import { windowTitleMessages } from "./windowTitle.i18n";
 
 /** Window title: the project name, marked while there are unsaved changes (in the current language). */
 export function windowTitle(snap: Snapshot | null): string {
-  const name = snap?.project.name.trim() || "ProjectDesk";
+  const name = snap?.project.name.trim() || "Sheafly";
   return snap?.dirty ? pick(windowTitleMessages).edited(name) : name;
 }
 

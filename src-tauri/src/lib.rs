@@ -7,13 +7,13 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use projectdesk_engine::autosave::AutosaveSlot;
-use projectdesk_engine::document::now_millis;
-use projectdesk_engine::evm::ProjectMetrics;
-use projectdesk_engine::mspdi::{read_mspdi, write_mspdi};
-use projectdesk_engine::network::{self, NetworkLayout, NetworkOptions};
-use projectdesk_engine::store;
-use projectdesk_engine::{Command, Document, EngineError, Lang, Snapshot};
+use sheafly_engine::autosave::AutosaveSlot;
+use sheafly_engine::document::now_millis;
+use sheafly_engine::evm::ProjectMetrics;
+use sheafly_engine::mspdi::{read_mspdi, write_mspdi};
+use sheafly_engine::network::{self, NetworkLayout, NetworkOptions};
+use sheafly_engine::store;
+use sheafly_engine::{Command, Document, EngineError, Lang, Snapshot};
 use tauri::menu::{AboutMetadata, CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::path::BaseDirectory;
 use tauri::{AppHandle, Emitter, Manager, RunEvent, Runtime, State, WindowEvent};
@@ -77,7 +77,7 @@ fn clear_autosave(state: &AppState) {
         .autosaved
         .store(state.revision.load(Ordering::Acquire), Ordering::Release);
     if let Some(Err(err)) = state.autosave.as_ref().map(AutosaveSlot::clear) {
-        eprintln!("ProjectDesk: không xóa được bản tự lưu: {err}");
+        eprintln!("Sheafly: không xóa được bản tự lưu: {err}");
     }
 }
 
@@ -102,7 +102,7 @@ fn autosave_tick(state: &AppState) {
     }
     match slot.write(&doc, now_millis()) {
         Ok(()) => state.autosaved.store(revision, Ordering::Release),
-        Err(err) => eprintln!("ProjectDesk: không tự lưu được: {err}"),
+        Err(err) => eprintln!("Sheafly: không tự lưu được: {err}"),
     }
 }
 
@@ -186,6 +186,21 @@ fn path_from_dialog(path: FilePath) -> Option<String> {
     }
 }
 
+/// Project files are saved as `.sheafly`. Files from before the rename end in `.pdproj`
+/// ("Sheafly project"); the content is the same, so both open, and a name the user
+/// gives with either ending keeps it.
+const PROJECT_EXTENSION: &str = "sheafly";
+const LEGACY_PROJECT_EXTENSION: &str = "pdproj";
+
+fn ensure_project_suffix(path: String) -> String {
+    let lower = path.to_ascii_lowercase();
+    if lower.ends_with(&format!(".{LEGACY_PROJECT_EXTENSION}")) {
+        path
+    } else {
+        ensure_suffix(path, &format!(".{PROJECT_EXTENSION}"))
+    }
+}
+
 fn ensure_suffix(path: String, suffix: &str) -> String {
     if path.to_ascii_lowercase().ends_with(suffix) {
         path
@@ -260,14 +275,12 @@ async fn pick_save_path<R: Runtime>(app: &AppHandle<R>, state: &AppState) -> Opt
     let picked = await_save(
         app.dialog()
             .file()
-            .add_filter("ProjectDesk", &["pdproj"])
+            .add_filter("Sheafly", &[PROJECT_EXTENSION])
             .set_title(i18n::text(lang(state)).save_project_title)
-            .set_file_name(format!("{suggested}.pdproj")),
+            .set_file_name(format!("{suggested}.{PROJECT_EXTENSION}")),
     )
     .await;
-    picked
-        .and_then(path_from_dialog)
-        .map(|path| ensure_suffix(path, ".pdproj"))
+    picked.and_then(path_from_dialog).map(ensure_project_suffix)
 }
 
 /// Save to the current file, or ask where when there is none. `Ok(false)` means the
@@ -404,7 +417,7 @@ async fn open_project(app: tauri::AppHandle, state: State<'_, AppState>) -> Resu
     let picked = await_pick(
         app.dialog()
             .file()
-            .add_filter("ProjectDesk", &["pdproj"])
+            .add_filter("Sheafly", &[PROJECT_EXTENSION, LEGACY_PROJECT_EXTENSION])
             .set_title(i18n::text(lang(&state)).open_project_title),
     )
     .await;
@@ -649,7 +662,7 @@ async fn save_pdf(
     fs::write(path, bytes).map_err(write_failed(&state))
 }
 
-/// Text for "About ProjectDesk". macOS shows the name, version, copyright and
+/// Text for "About Sheafly". macOS shows the name, version, copyright and
 /// credits; the other fields are for Windows and Linux.
 fn about_metadata(app: &tauri::AppHandle, text: &i18n::Text) -> AboutMetadata<'static> {
     let version = app.package_info().version.to_string();
@@ -661,7 +674,7 @@ fn about_metadata(app: &tauri::AppHandle, text: &i18n::Text) -> AboutMetadata<'s
         (Some(version), None)
     };
     AboutMetadata {
-        name: Some("ProjectDesk".into()),
+        name: Some("Sheafly".into()),
         version,
         short_version,
         comments: Some(text.about_text.into()),
@@ -717,7 +730,7 @@ fn build_menu(app: &tauri::AppHandle, lang: Lang) -> tauri::Result<Menu<tauri::W
     let text = i18n::text(lang);
     let app_menu = Submenu::with_items(
         app,
-        "ProjectDesk",
+        "Sheafly",
         true,
         &[
             &PredefinedMenuItem::about(app, Some(text.about), Some(about_metadata(app, text)))?,
@@ -817,14 +830,14 @@ pub fn run() {
             let slot = match app.path().app_data_dir() {
                 Ok(dir) => Some(AutosaveSlot::new(dir.join("autosave"))),
                 Err(err) => {
-                    eprintln!("ProjectDesk: không có thư mục dữ liệu, tắt tự lưu: {err}");
+                    eprintln!("Sheafly: không có thư mục dữ liệu, tắt tự lưu: {err}");
                     None
                 }
             };
             let settings = match app.path().app_config_dir() {
                 Ok(dir) => Some(dir.join(settings::FILE_NAME)),
                 Err(err) => {
-                    eprintln!("ProjectDesk: không có thư mục cấu hình, không nhớ ngôn ngữ: {err}");
+                    eprintln!("Sheafly: không có thư mục cấu hình, không nhớ ngôn ngữ: {err}");
                     None
                 }
             };
@@ -880,7 +893,7 @@ pub fn run() {
             set_language
         ])
         .build(tauri::generate_context!())
-        .expect("error while building ProjectDesk")
+        .expect("error while building Sheafly")
         .run(|app, event| {
             // Quit from the Dock or the system. `app.exit` passes a code and goes through.
             match event {
@@ -916,7 +929,7 @@ mod tests {
 
     #[test]
     fn the_language_starts_from_the_settings_file() {
-        let dir = std::env::temp_dir().join(format!("projectdesk-tauri-lang-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("sheafly-tauri-lang-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         let path = dir.join(settings::FILE_NAME);
         assert_eq!(lang(&AppState::new(None, Some(path.clone()))), Lang::Vi, "no file: Vietnamese");
@@ -936,7 +949,7 @@ mod tests {
 
     #[test]
     fn autosave_writes_only_new_unsaved_changes_and_clears_on_save() {
-        let dir = std::env::temp_dir().join(format!("projectdesk-tauri-autosave-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("sheafly-tauri-autosave-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         let state = AppState::new(Some(AutosaveSlot::new(&dir)), None);
         state.slot_checked.store(true, Ordering::Release);
@@ -965,7 +978,7 @@ mod tests {
 
     #[test]
     fn autosave_keeps_crash_work_until_it_has_been_offered() {
-        let dir = std::env::temp_dir().join(format!("projectdesk-tauri-crash-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("sheafly-tauri-crash-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         let slot = AutosaveSlot::new(&dir);
         let mut crashed = Document::new_default();

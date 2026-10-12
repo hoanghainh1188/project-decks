@@ -1,14 +1,14 @@
 <p align="center"><img src="src-tauri/icons/128x128@2x.png" width="128" height="128" alt=""></p>
 
-# ProjectDesk
+# Sheafly
 
 **English** · [Tiếng Việt](README.vi.md)
 
 A Microsoft Project–style scheduler that runs on your own computer (macOS, Windows, Linux), in English or Vietnamese. Built with Tauri 2, React 19 and a scheduling engine written in Rust. Open source under the MIT license; your projects stay on your machine, with no account or server.
 
-**[Download the latest release](https://github.com/hoanghainh1188/project-decks/releases/latest)**
+**[Download the latest release](https://github.com/hoanghainh1188/sheafly/releases/latest)**
 
-![ProjectDesk: task sheet, Gantt chart, task details and the EVM panel](docs/images/screenshot-en.jpg)
+![Sheafly: task sheet, Gantt chart, task details and the EVM panel](docs/images/screenshot-en.jpg)
 
 ## Features
 
@@ -20,16 +20,16 @@ A Microsoft Project–style scheduler that runs on your own computer (macOS, Win
 - **Views:** five tabs (Gantt, Tracking, Resources, Usage, Network diagram); day, week and month timescales; filter, group and highlight per view; PDF export.
 - **Languages:** English and Vietnamese. The first launch follows your system language; switch any time in View → Language. English uses ISO dates (`2026-01-05 08:00`) and Microsoft Project terminology.
 - **Interface:** a toolbar grouped by colour with icons (history, create, selected task, project, reports), and disabled commands that say why. Works from the keyboard: arrow keys move between tabs; on the Gantt, ↑ ↓ select rows, Enter edits, Option+← → (Alt on Windows and Linux) move a task by a working day; Esc closes dialogs.
-- **Files:** `.pdproj` (SQLite) keeps the undo history with the project. Saves are crash-safe, unsaved work is autosaved and offered back after a crash, and partly damaged files still open. Import and export MSPDI (`.xml`) to exchange projects with Microsoft Project; `.mpp` files cannot be read.
+- **Files:** `.sheafly` (SQLite; files from ProjectDesk, `.pdproj`, open as they are) keeps the undo history with the project. Saves are crash-safe, unsaved work is autosaved and offered back after a crash, and partly damaged files still open. Import and export MSPDI (`.xml`) to exchange projects with Microsoft Project; `.mpp` files cannot be read.
 
 ## Install
 
-Download an installer from [Releases](https://github.com/hoanghainh1188/project-decks/releases): `.dmg` for macOS (Apple Silicon), `.msi` or `-setup.exe` for Windows, `.AppImage`, `.deb` or `.rpm` for Linux.
+Download an installer from [Releases](https://github.com/hoanghainh1188/sheafly/releases): `.dmg` for macOS (Apple Silicon), `.msi` or `-setup.exe` for Windows, `.AppImage`, `.deb` or `.rpm` for Linux.
 
-The installers are not code-signed yet. On macOS, try to open ProjectDesk once, then go to **System Settings → Privacy & Security** and click **Open Anyway** near the bottom (since macOS 15, right-click → Open no longer works for unsigned apps). If macOS says the app is damaged, run:
+The installers are not code-signed yet. On macOS, try to open Sheafly once, then go to **System Settings → Privacy & Security** and click **Open Anyway** near the bottom (since macOS 15, right-click → Open no longer works for unsigned apps). If macOS says the app is damaged, run:
 
 ```bash
-xattr -dr com.apple.quarantine /Applications/ProjectDesk.app
+xattr -dr com.apple.quarantine /Applications/Sheafly.app
 ```
 
 On Windows, SmartScreen may ask first; choose **More info → Run anyway**.
@@ -49,12 +49,12 @@ The interface only works inside the Tauri window; opening `localhost:1420` in a 
 ## Tests
 
 ```bash
-cargo test -p projectdesk-engine      # scheduling engine
-cargo test -p projectdesk             # Tauri shell
+cargo test -p sheafly-engine      # scheduling engine
+cargo test -p sheafly             # Tauri shell
 pnpm exec tsc --noEmit                # type check
 pnpm test                             # interface (Vitest)
-cargo bench -p projectdesk-engine --bench large_project              # 1,000 tasks, 10,000 commands
-cargo bench -p projectdesk-engine --bench large_project -- leveling  # leveling 500 tasks
+cargo bench -p sheafly-engine --bench large_project              # 1,000 tasks, 10,000 commands
+cargo bench -p sheafly-engine --bench large_project -- leveling  # leveling 500 tasks
 ```
 
 ## Project layout
@@ -76,4 +76,4 @@ cargo bench -p projectdesk-engine --bench large_project -- leveling  # leveling 
 
 MIT. The app bundles open-source packages and the Be Vietnam Pro font (SIL Open Font License); their copyright notices and license texts are in [`src-tauri/THIRD_PARTY_LICENSES.txt`](src-tauri/THIRD_PARTY_LICENSES.txt), which every installer includes and Help → Third-Party Licenses opens. Regenerate it with `node scripts/third-party-licenses.mjs` after changing dependencies; CI checks that it is current.
 
-Microsoft Project is a trademark of Microsoft Corporation. ProjectDesk is independent software, not affiliated with Microsoft.
+Microsoft Project is a trademark of Microsoft Corporation. Sheafly is independent software, not affiliated with Microsoft.

@@ -1,14 +1,14 @@
 <p align="center"><img src="src-tauri/icons/128x128@2x.png" width="128" height="128" alt=""></p>
 
-# ProjectDesk
+# Sheafly
 
 [English](README.md) · **Tiếng Việt**
 
 Ứng dụng lập lịch dự án kiểu Microsoft Project, chạy trên máy (macOS, Windows, Linux). Giao diện tiếng Việt và tiếng Anh. Xây bằng Tauri 2, React 19 và một engine lập lịch viết bằng Rust. Mã nguồn mở, giấy phép MIT; dữ liệu nằm trên máy của bạn, không cần tài khoản hay máy chủ.
 
-**[Tải bản mới nhất](https://github.com/hoanghainh1188/project-decks/releases/latest)**
+**[Tải bản mới nhất](https://github.com/hoanghainh1188/sheafly/releases/latest)**
 
-![ProjectDesk: bảng công việc, Gantt, panel thuộc tính và bảng EVM](docs/images/screenshot-vi.jpg)
+![Sheafly: bảng công việc, Gantt, panel thuộc tính và bảng EVM](docs/images/screenshot-vi.jpg)
 
 ## Tính năng
 
@@ -20,16 +20,16 @@
 - **Các view:** năm tab Gantt, Theo dõi, Nguồn lực, Sử dụng và Sơ đồ mạng; thang ngày/tuần/tháng, lọc, nhóm, tô sáng theo từng view; xuất PDF.
 - **Ngôn ngữ:** tiếng Việt và tiếng Anh, đổi trong menu Xem → Ngôn ngữ; lần đầu mở theo ngôn ngữ của máy. Tiếng Anh dùng ngày ISO và thuật ngữ của Microsoft Project.
 - **Giao diện:** thanh công cụ chia nhóm theo màu và có biểu tượng (lịch sử, tạo việc, sửa việc đang chọn, dự án, báo cáo); nút bị tắt cho biết lý do. Dùng được bằng bàn phím: chuyển tab bằng mũi tên, chọn và dời task trên Gantt (↑ ↓, Enter, Option+← →), hộp thoại đóng bằng Esc. Biểu đồ EVM xem phóng to được.
-- **Tệp:** định dạng `.pdproj` (SQLite) lưu cả lịch sử hoàn tác; lưu an toàn, tự lưu và khôi phục sau khi app tắt đột ngột; mở được tệp hỏng một phần. Nhập/xuất MSPDI (`.xml`) để trao đổi với Microsoft Project; không đọc được tệp `.mpp`.
+- **Tệp:** định dạng `.sheafly` (SQLite; tệp `.pdproj` từ thời ProjectDesk vẫn mở bình thường) lưu cả lịch sử hoàn tác; lưu an toàn, tự lưu và khôi phục sau khi app tắt đột ngột; mở được tệp hỏng một phần. Nhập/xuất MSPDI (`.xml`) để trao đổi với Microsoft Project; không đọc được tệp `.mpp`.
 
 ## Cài bản phát hành
 
-Tải bản cài ở trang [Releases](https://github.com/hoanghainh1188/project-decks/releases): `.dmg` cho macOS (Apple Silicon), `.msi` hoặc `-setup.exe` cho Windows, `.AppImage`, `.deb` hoặc `.rpm` cho Linux.
+Tải bản cài ở trang [Releases](https://github.com/hoanghainh1188/sheafly/releases): `.dmg` cho macOS (Apple Silicon), `.msi` hoặc `-setup.exe` cho Windows, `.AppImage`, `.deb` hoặc `.rpm` cho Linux.
 
-Bản cài chưa ký số. Trên macOS, hãy mở ProjectDesk một lần, rồi vào **Cài đặt hệ thống → Quyền riêng tư & Bảo mật** và bấm **Vẫn mở** ở phía dưới (từ macOS 15, nhấp chuột phải → Mở không còn dùng được cho app chưa ký). Nếu macOS báo ứng dụng bị hỏng, chạy:
+Bản cài chưa ký số. Trên macOS, hãy mở Sheafly một lần, rồi vào **Cài đặt hệ thống → Quyền riêng tư & Bảo mật** và bấm **Vẫn mở** ở phía dưới (từ macOS 15, nhấp chuột phải → Mở không còn dùng được cho app chưa ký). Nếu macOS báo ứng dụng bị hỏng, chạy:
 
 ```bash
-xattr -dr com.apple.quarantine /Applications/ProjectDesk.app
+xattr -dr com.apple.quarantine /Applications/Sheafly.app
 ```
 
 Trên Windows, SmartScreen có thể hỏi; chọn **More info → Run anyway**.
@@ -49,12 +49,12 @@ Giao diện chỉ chạy được bên trong cửa sổ Tauri; mở `localhost:1
 ## Kiểm thử
 
 ```bash
-cargo test -p projectdesk-engine      # engine lập lịch
-cargo test -p projectdesk             # lớp vỏ Tauri
+cargo test -p sheafly-engine      # engine lập lịch
+cargo test -p sheafly             # lớp vỏ Tauri
 pnpm exec tsc --noEmit                # kiểm tra kiểu
 pnpm test                             # giao diện (Vitest)
-cargo bench -p projectdesk-engine --bench large_project              # 1.000 task, 10.000 lệnh
-cargo bench -p projectdesk-engine --bench large_project -- leveling  # cân bằng 500 task
+cargo bench -p sheafly-engine --bench large_project              # 1.000 task, 10.000 lệnh
+cargo bench -p sheafly-engine --bench large_project -- leveling  # cân bằng 500 task
 ```
 
 ## Cấu trúc
@@ -76,4 +76,4 @@ cargo bench -p projectdesk-engine --bench large_project -- leveling  # cân bằ
 
 MIT. App đóng gói các thư viện mã nguồn mở và phông Be Vietnam Pro (SIL Open Font License); thông báo bản quyền và nguyên văn giấy phép của chúng nằm trong [`src-tauri/THIRD_PARTY_LICENSES.txt`](src-tauri/THIRD_PARTY_LICENSES.txt), có trong mọi bản cài và mở được bằng Trợ giúp → Giấy phép bên thứ ba. Sau khi đổi thư viện, chạy lại `node scripts/third-party-licenses.mjs`; CI kiểm tra tệp này luôn khớp.
 
-Microsoft Project là nhãn hiệu của Microsoft Corporation. ProjectDesk là phần mềm độc lập, không liên quan đến Microsoft.
+Microsoft Project là nhãn hiệu của Microsoft Corporation. Sheafly là phần mềm độc lập, không liên quan đến Microsoft.
