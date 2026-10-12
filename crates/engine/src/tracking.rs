@@ -11,8 +11,8 @@
 
 use crate::calendar::Calendar;
 use crate::error::EngineError;
-use crate::model::{Project, Task};
-use crate::split;
+use crate::model::{ConstraintType, Project, Task};
+use crate::split::{self, Split};
 use crate::work::{self, Changed};
 
 /// Finished: an actual finish, or 100 % done.
@@ -241,4 +241,50 @@ fn settle_progress(task: &mut Task, cal: &Calendar, done: i64, total: i64, remai
     } else {
         start
     });
+}
+
+/// "Reschedule uncompleted work to start after the status date", for the whole project.
+///
+/// A started task whose remaining work should already be under way gets a split at its
+/// progress point, so the rest resumes at the status date. A task that should have
+/// started but has not gets a start-no-earlier-than constraint on the status date.
+/// Manual tasks, finished tasks, tasks with a firmer constraint, and recurring
+/// occurrences that have not started stay as they are. The status date is part of
+/// the project, so replaying the command gives the same splits.
+pub(crate) fn reschedule_uncompleted(project: &mut Project) -> Result<(), EngineError> {
+    let status = project.status_date.ok_or(EngineError::NoStatusDate)?;
+    for index in 0..project.tasks.len() {
+        let task = &project.tasks[index];
+        if task.summary || task.manual || is_complete(task) {
+            continue;
+        }
+        let cal = project.task_calendar(task);
+        let resume = cal.next_work_start(status);
+        if task.actual_start.is_some() {
+            let done = done_minutes(task);
+            if done <= 0 || done >= task.duration {
+                continue;
+            }
+            let gap = cal.working_between(split::resume_at(cal, task, done), resume);
+            if gap > 0 {
+                let task = &mut project.tasks[index];
+                task.splits.push(Split { offset: done, gap });
+                split::normalize(&mut task.splits, task.duration);
+            }
+        } else if task.series_uid.is_none() && task.start < status && waits_for(task, resume) {
+            let task = &mut project.tasks[index];
+            task.constraint_type = ConstraintType::Snet;
+            task.constraint_date = Some(resume);
+        }
+    }
+    Ok(())
+}
+
+/// Whether a start-no-earlier-than `resume` only tightens the task's own constraint.
+fn waits_for(task: &Task, resume: i64) -> bool {
+    match task.constraint_type {
+        ConstraintType::Asap => true,
+        ConstraintType::Snet => task.constraint_date.is_none_or(|date| date < resume),
+        _ => false,
+    }
 }

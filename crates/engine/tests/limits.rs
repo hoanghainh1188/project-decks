@@ -49,6 +49,7 @@ fn spec_of(pattern: RecurrencePattern, end: RecurrenceEnd) -> RecurrenceSpec {
         calendar_id: None,
         resource_uids: Vec::new(),
         resources: Vec::new(),
+        background: false,
     }
 }
 

@@ -16,6 +16,8 @@ pub enum EngineError {
     BadPredecessor(String),
     #[error("Ngày kết thúc thực tế phải sau ngày bắt đầu thực tế")]
     ActualFinishBeforeStart,
+    #[error("Chưa đặt ngày trạng thái")]
+    NoStatusDate,
     #[error("Lịch không có thời gian làm việc")]
     NoWorkingTime,
     #[error("Không đọc được tệp: {0}")]

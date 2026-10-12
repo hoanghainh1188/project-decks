@@ -712,6 +712,8 @@ fn build_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
             &menu_item(app, "level", "Cân bằng nguồn lực", None)?,
             &menu_item(app, "clear-level", "Xóa độ trễ cân bằng", None)?,
             &PredefinedMenuItem::separator(app)?,
+            &menu_item(app, "reschedule-uncompleted", "Dời phần chưa xong sau ngày trạng thái", None)?,
+            &PredefinedMenuItem::separator(app)?,
             &menu_item(app, "compact-history", "Gộp lịch sử hoàn tác…", None)?,
         ],
     )?;

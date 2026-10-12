@@ -130,6 +130,8 @@ export interface RecurrenceSpec {
   /** Only in series saved before per-resource units; read as units 1. */
   resource_uids?: number[];
   resources: SeriesResource[];
+  /** Never sets the project finish or the critical path. Absent in older series. */
+  background?: boolean;
 }
 
 export interface Recurrence {
@@ -274,6 +276,7 @@ export type Command =
   | { type: "clear_baseline"; number: number }
   | { type: "level_resources" }
   | { type: "clear_leveling" }
+  | { type: "reschedule_uncompleted" }
   | { type: "set_leveling_delay"; uid: number; minutes: number }
   | { type: "set_deadline"; uid: number; date: number | null }
   | { type: "create_recurring_task"; after_uid: number | null; spec: RecurrenceSpec }

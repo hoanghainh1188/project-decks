@@ -17,8 +17,9 @@ use crate::recovery::{self, Damage, OpenReport, Recovery};
 /// halfway through. The `checkpoint` table needs no bump: it is only a cache, and an app
 /// that does not know it ignores it and replays the log. Version 2: actual dates drive the
 /// schedule and remaining-duration/work edits keep progress (phase 13), so an older app
-/// would replay the same commands to other dates.
-pub const FORMAT_VERSION: u32 = 2;
+/// would replay the same commands to other dates. Version 3 added
+/// `Command::RescheduleUncompleted` and the background flag on recurring series.
+pub const FORMAT_VERSION: u32 = 3;
 
 /// Checkpoints a file keeps below the cursor, besides the one at the cursor. Each is
 /// a whole scheduled project (about 1 MB for 1,000 tasks), so only a few nearby ones.

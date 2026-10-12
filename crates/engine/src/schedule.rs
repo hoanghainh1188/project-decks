@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::error::EngineError;
 use crate::graph::Graph;
@@ -42,8 +42,9 @@ pub fn schedule(project: &mut Project) -> Result<(), EngineError> {
     if !settled {
         forward(project, &graph, &shift);
     }
-    backward(project, &graph);
-    rollup(project);
+    let background = background_tasks(project);
+    backward(project, &graph, &background);
+    rollup(project, &background);
     free_slack(project, &graph);
     split::publish_segments(project);
     publish_costs_and_usage(project);
@@ -485,17 +486,51 @@ fn summary_required_finish(project: &Project, graph: &Graph, index: usize) -> Op
     required
 }
 
-fn backward(project: &mut Project, graph: &Graph) {
-    let horizon = project
+/// The summary and occurrences of every background recurring series.
+fn background_tasks(project: &Project) -> Vec<bool> {
+    let series: HashSet<u32> = project
         .tasks
         .iter()
-        .map(|t| t.early_finish)
-        .max()
-        .unwrap_or(project.start);
+        .filter(|task| task.recurrence.as_ref().is_some_and(|series| series.spec.background))
+        .map(|task| task.uid)
+        .collect();
+    project
+        .tasks
+        .iter()
+        .map(|task| {
+            series.contains(&task.uid) || task.series_uid.is_some_and(|uid| series.contains(&uid))
+        })
+        .collect()
+}
+
+/// Latest early finish of the work that sets the project finish. Leaves are enough: a
+/// summary finishes with its last leaf. Background series are left out unless nothing
+/// else is left.
+fn horizon(project: &Project, background: &[bool]) -> i64 {
+    let finish_of = |skip_background: bool| {
+        project
+            .tasks
+            .iter()
+            .zip(background)
+            .filter(|(task, background)| !task.summary && !(skip_background && **background))
+            .map(|(task, _)| task.early_finish)
+            .max()
+    };
+    finish_of(true).or_else(|| finish_of(false)).unwrap_or(project.start)
+}
+
+fn backward(project: &mut Project, graph: &Graph, background: &[bool]) {
+    let horizon = horizon(project, background);
     let mut late: Dates = vec![None; project.tasks.len()];
 
     for &index in graph.order().iter().rev() {
-        let (ls, lf) = late_leaf(project, graph, index, horizon, &late);
+        // A background occurrence sits where it is: no slack against a horizon it is
+        // outside of, and never critical.
+        let (ls, lf) = if background[index] {
+            (project.tasks[index].early_start, project.tasks[index].early_finish)
+        } else {
+            late_leaf(project, graph, index, horizon, &late)
+        };
         late[index] = Some((ls, lf));
         let task = &project.tasks[index];
         let cal = project.task_calendar(task);
@@ -510,11 +545,11 @@ fn backward(project: &mut Project, graph: &Graph) {
         task.late_start = ls;
         task.late_finish = lf;
         task.total_slack = slack;
-        task.critical = slack <= 0 && !complete;
+        task.critical = slack <= 0 && !complete && !background[index];
     }
     // ALAP consumes only the slack that does not push a successor which is
     // neither ALAP nor held by its own date constraint.
-    schedule_alap(project, graph);
+    schedule_alap(project, graph, background);
 }
 
 fn late_leaf(
@@ -620,14 +655,8 @@ fn successor_late(
 /// An ALAP successor is placed first and the predecessor follows it. A successor
 /// SNET or MSO date is a ceiling: the predecessor may wait until that pin, and
 /// no later. Tasks with no successor use the project early finish.
-fn schedule_alap(project: &mut Project, graph: &Graph) {
-    let horizon = project
-        .tasks
-        .iter()
-        .filter(|t| !t.summary)
-        .map(|t| t.early_finish)
-        .max()
-        .unwrap_or(project.start);
+fn schedule_alap(project: &mut Project, graph: &Graph, background: &[bool]) {
+    let horizon = horizon(project, background);
     let mut placed: Dates = vec![None; project.tasks.len()];
     for &index in graph.order().iter().rev() {
         let task = &project.tasks[index];
@@ -767,7 +796,10 @@ fn calendar_for(project: &Project, calendar_id: Option<u32>) -> &crate::calendar
         .unwrap_or_else(|| project.calendar())
 }
 
-fn rollup(project: &mut Project) {
+/// Summary dates, slack, and the critical flag from the children. Late dates and the
+/// critical flag skip background series, so a meeting series inside a phase does not
+/// make the phase critical; a group of only background work is never critical.
+fn rollup(project: &mut Project, background: &[bool]) {
     let cal = project.calendar().clone();
     // A summary is done when every child is; a done group is never critical.
     let mut done: Vec<bool> = project.tasks.iter().map(tracking::is_complete).collect();
@@ -788,6 +820,8 @@ fn rollup(project: &mut Project) {
         if child_indexes.is_empty() {
             continue;
         }
+        let driving: Vec<usize> = child_indexes.iter().copied().filter(|j| !background[*j]).collect();
+        let driving = if driving.is_empty() { child_indexes.clone() } else { driving };
         let start = child_indexes
             .iter()
             .map(|j| project.tasks[*j].start)
@@ -808,17 +842,17 @@ fn rollup(project: &mut Project) {
             .map(|j| project.tasks[*j].early_finish)
             .max()
             .unwrap();
-        let late_start = child_indexes
+        let late_start = driving
             .iter()
             .map(|j| project.tasks[*j].late_start)
             .min()
             .unwrap();
-        let late_finish = child_indexes
+        let late_finish = driving
             .iter()
             .map(|j| project.tasks[*j].late_finish)
             .max()
             .unwrap();
-        let critical = child_indexes.iter().any(|j| project.tasks[*j].critical);
+        let critical = driving.iter().any(|j| project.tasks[*j].critical);
         done[index] = child_indexes.iter().all(|j| done[*j]);
         let task = &mut project.tasks[index];
         task.start = start;
@@ -829,7 +863,7 @@ fn rollup(project: &mut Project) {
         task.late_finish = late_finish;
         task.duration = cal.working_between(start, finish).max(0);
         task.total_slack = cal.working_between(early_start, late_start);
-        task.critical = (critical || task.total_slack <= 0) && !done[index];
+        task.critical = (critical || task.total_slack <= 0) && !done[index] && !background[index];
         task.milestone = false;
     }
 }

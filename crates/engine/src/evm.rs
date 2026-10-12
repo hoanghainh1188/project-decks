@@ -181,48 +181,108 @@ pub fn planned_fraction(project: &Project, task: &Task, baseline: &Baseline, sta
     }
 }
 
-/// Working-time window over which the recorded progress of `task` is assumed to have
-/// happened (see the module notes). `None` when the task has neither progress nor cost.
-pub fn progress_window(project: &Project, task: &Task) -> Option<(i64, i64)> {
+/// Working-time windows in which the recorded progress of `task` is assumed to have
+/// happened (see the module notes): the first p % of its work along its segments, so
+/// split gaps carry none, or all of it up to the actual finish once finished. `None`
+/// when the task has neither progress nor cost.
+pub fn progress_intervals(project: &Project, task: &Task) -> Option<Vec<(i64, i64)>> {
     let percent = task.percent_complete.clamp(0.0, 100.0);
     if percent <= 0.0 && task.actual_cost <= 0.0 {
         return None;
     }
+    let calendar = project.task_calendar(task);
     let start = task.actual_start.unwrap_or(task.start);
-    let finish = match task.actual_finish {
-        Some(finish) if percent >= 100.0 => finish,
-        _ => {
-            let done = (task.duration.max(0) as f64 * percent / 100.0).round() as i64;
-            project.task_calendar(task).add_working(start, done)
+    let intervals = split::work_intervals(task);
+    if let Some(finish) = task.actual_finish.filter(|_| percent >= 100.0) {
+        let worked: Vec<(i64, i64)> = intervals
+            .iter()
+            .map(|(low, high)| ((*low).max(start), (*high).min(finish)))
+            .filter(|(low, high)| high > low)
+            .collect();
+        return Some(if worked.is_empty() {
+            vec![(start, finish.max(start))]
+        } else {
+            starting_at(worked, start)
+        });
+    }
+    let mut left = (task.duration.max(0) as f64 * percent / 100.0).round() as i64;
+    let mut worked = Vec::new();
+    for (low, high) in intervals {
+        if left <= 0 {
+            break;
         }
-    };
-    Some((start, finish.max(start)))
+        let length = calendar.working_between(low, high).max(0);
+        if length >= left {
+            worked.push((low, calendar.add_working(low, left)));
+            left = 0;
+        } else {
+            worked.push((low, high));
+            left -= length;
+        }
+    }
+    match worked.last_mut() {
+        Some(last) if left > 0 => last.1 = calendar.add_working(last.1, left),
+        Some(_) => {}
+        None => worked.push((start, start)),
+    }
+    Some(starting_at(worked, start))
+}
+
+/// Progress begins at the actual start even when that is outside working time.
+fn starting_at(mut intervals: Vec<(i64, i64)>, start: i64) -> Vec<(i64, i64)> {
+    if let Some(first) = intervals.first_mut() {
+        first.0 = first.0.min(start);
+    }
+    intervals
+}
+
+/// Share of a cost incurred by `at` when it is spent over `intervals` with `accrual`:
+/// at the first start, at the last finish, or in step with the working time.
+fn accrued_over(calendar: &Calendar, accrual: Accrual, intervals: &[(i64, i64)], at: i64) -> f64 {
+    let first = intervals.iter().map(|(low, _)| *low).min().unwrap_or(at);
+    let last = intervals.iter().map(|(_, high)| *high).max().unwrap_or(at);
+    let reached = |instant: i64| if at >= instant { 1.0 } else { 0.0 };
+    match accrual {
+        Accrual::Start => reached(first),
+        Accrual::End => reached(last),
+        Accrual::Prorated => {
+            let total = split::working_within(calendar, intervals, i64::MIN, i64::MAX);
+            if total <= 0 {
+                return reached(last);
+            }
+            let elapsed = split::working_within(calendar, intervals, i64::MIN, at);
+            (elapsed as f64 / total as f64).clamp(0.0, 1.0)
+        }
+    }
 }
 
 /// Actual cost of `task` incurred by `at`: its current actual cost spread over the
-/// progress window with the task accrual.
+/// progress windows with the task accrual.
 pub fn actual_cost_at(project: &Project, task: &Task, at: i64) -> f64 {
-    let Some((start, finish)) = progress_window(project, task) else {
+    let Some(intervals) = progress_intervals(project, task) else {
         return 0.0;
     };
     let calendar = project.task_calendar(task);
-    task.actual_cost * accrued_fraction(calendar, task.fixed_cost_accrual, start, finish, at)
+    task.actual_cost * accrued_over(calendar, task.fixed_cost_accrual, &intervals, at)
 }
 
 /// Earned value of `task` by `at` for the S-curve. Earning follows progress, not the
-/// cost accrual, and the window is cut at the status date so the curve reaches the
+/// cost accrual, and the windows are cut at the status date so the curve reaches the
 /// reported EV (% complete × baseline cost) on that date.
 fn earned_at(project: &Project, task: &Task, baseline: &Baseline, at: i64, status: i64) -> f64 {
     let percent = task.percent_complete.clamp(0.0, 100.0);
     if percent <= 0.0 {
         return 0.0;
     }
-    let Some((start, finish)) = progress_window(project, task) else {
+    let Some(intervals) = progress_intervals(project, task) else {
         return 0.0;
     };
-    let (start, finish) = (start.min(status), finish.min(status));
+    let cut: Vec<(i64, i64)> = intervals
+        .iter()
+        .map(|(low, high)| ((*low).min(status), (*high).min(status)))
+        .collect();
     let calendar = project.task_calendar(task);
-    let fraction = accrued_fraction(calendar, Accrual::Prorated, start, finish, at);
+    let fraction = accrued_over(calendar, Accrual::Prorated, &cut, at);
     baseline.cost * percent / 100.0 * fraction
 }
 
@@ -478,7 +538,10 @@ pub fn s_curve(project: &Project) -> SCurveReport {
     };
     let mut start = baseline_start;
     if let Some(status) = status {
-        for (window_start, _) in leaves(project).filter_map(|task| progress_window(project, task)) {
+        let progress_starts = leaves(project)
+            .filter_map(|task| progress_intervals(project, task))
+            .filter_map(|intervals| intervals.first().map(|(low, _)| *low));
+        for window_start in progress_starts {
             start = start.min(window_start.min(status));
         }
     }

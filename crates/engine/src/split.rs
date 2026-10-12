@@ -84,6 +84,24 @@ pub fn layout(cal: &Calendar, start: i64, duration: i64, splits: &[Split]) -> Ve
     segments
 }
 
+/// When the work after the first `offset` working minutes goes on: inside a segment,
+/// the next working instant; at a split, the start of the next segment.
+pub fn resume_at(cal: &Calendar, task: &Task, offset: i64) -> i64 {
+    let segments = layout(cal, task.start, task.duration.max(0), &task.splits);
+    let mut done = 0i64;
+    for (index, segment) in segments.iter().enumerate() {
+        let length = cal.working_between(segment.start, segment.finish).max(0);
+        if offset < done + length {
+            return cal.next_work_start(cal.add_working(segment.start, offset - done));
+        }
+        done += length;
+        if offset == done {
+            return segments.get(index + 1).map_or(segment.finish, |next| next.start);
+        }
+    }
+    segments.last().map_or(task.start, |segment| segment.finish)
+}
+
 /// Time windows in which the task does work: its segments, or the whole bar when unsplit.
 pub fn work_intervals(task: &Task) -> Vec<(i64, i64)> {
     if task.segments.is_empty() {

@@ -670,6 +670,7 @@ fn splitting_an_occurrence_detaches_it() {
         calendar_id: None,
         resource_uids: Vec::new(),
         resources: Vec::new(),
+        background: false,
     };
     let mut doc = doc_with(vec![("Đầu", 480)], vec![]);
     doc.apply(Command::CreateRecurringTask {

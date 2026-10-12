@@ -1173,6 +1173,7 @@ fn recurring_spec(pattern: RecurrencePattern, end: RecurrenceEnd) -> RecurrenceS
         calendar_id: None,
         resource_uids: Vec::new(),
         resources: Vec::new(),
+        background: false,
     }
 }
 
