@@ -1130,8 +1130,10 @@ impl TaskBuilder {
         task.task_type = self.task_type;
         task.effort_driven = self.effort_driven || self.task_type == TaskType::FixedWork;
         task.percent_complete = self.percent;
-        task.actual_start = self.actual_start;
-        task.actual_finish = self.actual_finish;
+        // Progress without actual dates started (and finished) where it was scheduled.
+        task.actual_start = self.actual_start.or(self.start.filter(|_| self.percent > 0.0));
+        task.actual_finish =
+            self.actual_finish.or(self.finish.filter(|_| self.percent >= 100.0));
         task.remaining_duration = self.remaining_duration.unwrap_or(task.duration);
         if let Some(start) = self.start {
             task.start = start;

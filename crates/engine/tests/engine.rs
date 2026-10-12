@@ -980,19 +980,27 @@ fn predecessor_text_parses_lag_units() {
 fn late_when_any_of_status_baseline_or_deadline_is_missed() {
     let project = project_with(vec![("A", 480)], vec![]);
     let mut task = project.tasks[0].clone();
+    let cal = project.calendar().clone();
     let finish = task.finish;
     let start = task.start;
 
-    assert!(!task.is_late(None));
+    // Microsoft Project's rule: late only when less is done than is due by the status date.
+    assert!(!task.is_late(None, &cal));
     assert!(
-        !task.is_late(Some(finish)),
-        "finish equal to the status date is not late"
+        !task.is_late(Some(start), &cal),
+        "nothing is due yet at the start"
     );
-    assert!(task.is_late(Some(finish - 1)));
+    assert!(task.is_late(Some(finish), &cal), "nothing done by the finish");
+    task.percent_complete = 50.0;
+    assert!(
+        !task.is_late(Some(at(0, 13, 0)), &cal),
+        "half done by the half-way point is on time"
+    );
+    assert!(task.is_late(Some(at(0, 14, 0)), &cal));
 
     task.percent_complete = 100.0;
     assert!(
-        !task.is_late(Some(finish - 1)),
+        !task.is_late(Some(finish), &cal),
         "a complete task is not late from the status date alone"
     );
 
@@ -1004,7 +1012,7 @@ fn late_when_any_of_status_baseline_or_deadline_is_missed() {
         cost: 0.0,
         segments: Vec::new(),
     });
-    assert!(!task.is_late(None), "only baseline 0 counts");
+    assert!(!task.is_late(None, &cal), "only baseline 0 counts");
     task.baselines.push(projectdesk_engine::model::Baseline {
         number: 0,
         start,
@@ -1014,7 +1022,7 @@ fn late_when_any_of_status_baseline_or_deadline_is_missed() {
         segments: Vec::new(),
     });
     assert!(
-        !task.is_late(None),
+        !task.is_late(None, &cal),
         "finish equal to baseline 0 is not late"
     );
     task.baselines.retain(|baseline| baseline.number != 0);
@@ -1026,17 +1034,17 @@ fn late_when_any_of_status_baseline_or_deadline_is_missed() {
         cost: 0.0,
         segments: Vec::new(),
     });
-    assert!(task.is_late(None));
+    assert!(task.is_late(None, &cal));
 
     task.baselines.clear();
     task.deadline = Some(finish);
     assert!(
-        !task.is_late(None),
+        !task.is_late(None, &cal),
         "finish equal to the deadline is not late"
     );
     task.deadline = Some(finish - 1);
     assert!(
-        task.is_late(None),
+        task.is_late(None, &cal),
         "a deadline still counts after the task is complete"
     );
 }
@@ -1047,13 +1055,13 @@ fn schedule_publishes_late_from_status_date_and_baseline() {
     let finish = project.tasks[0].finish;
     let start = project.tasks[0].start;
 
+    project.status_date = Some(project.tasks[0].start);
+    schedule(&mut project).unwrap();
+    assert!(!project.tasks[0].late, "nothing is due at the start");
+
     project.status_date = Some(finish);
     schedule(&mut project).unwrap();
-    assert!(!project.tasks[0].late);
-
-    project.status_date = Some(finish - 1);
-    schedule(&mut project).unwrap();
-    assert!(project.tasks[0].late);
+    assert!(project.tasks[0].late, "nothing done by the finish");
 
     project.tasks[0].percent_complete = 100.0;
     schedule(&mut project).unwrap();

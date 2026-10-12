@@ -14,6 +14,8 @@ pub enum EngineError {
     AssignmentNotFound,
     #[error("Tiền nhiệm không hợp lệ: {0}")]
     BadPredecessor(String),
+    #[error("Ngày kết thúc thực tế phải sau ngày bắt đầu thực tế")]
+    ActualFinishBeforeStart,
     #[error("Lịch không có thời gian làm việc")]
     NoWorkingTime,
     #[error("Không đọc được tệp: {0}")]

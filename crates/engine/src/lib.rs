@@ -22,6 +22,7 @@ pub mod schedule;
 pub mod split;
 pub mod store;
 pub mod timeutil;
+pub mod tracking;
 pub mod work;
 
 pub use calendar::Calendar;

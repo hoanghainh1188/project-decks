@@ -12,7 +12,8 @@ use crate::model::Project;
 
 /// Bump when a change to the engine can move dates or derived fields for the same
 /// commands, so checkpoints written before the change are not trusted.
-pub const ENGINE_REVISION: u32 = 1;
+/// Revision 2: actual dates drive the schedule (phase 13).
+pub const ENGINE_REVISION: u32 = 2;
 
 /// A new checkpoint every this many commands while editing or replaying.
 pub const INTERVAL: usize = 25;

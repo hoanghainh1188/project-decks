@@ -63,8 +63,8 @@ todos:
     content: "Pha 12: nền tệp và hiệu năng (checkpoint, lệnh bất đồng bộ, tệp hỏng, báo đổi ngày, tự lưu, gộp lịch sử; PR #28, #29 và phần 3)"
     status: completed
   - id: actuals-drive-schedule
-    content: "Pha 13: theo dõi tiến độ (ngày thực tế điều khiển lịch, trễ hạn theo MS Project)"
-    status: pending
+    content: "Pha 13: theo dõi tiến độ. Phần 1 (ngày thực tế điều khiển lịch, trễ hạn theo MS Project) xong; còn dời phần chưa xong, AC/EV task tách, chuỗi lặp"
+    status: in_progress
   - id: macos-release
     content: "Pha 14: phát hành macOS (ký số, notarize, universal, kiểu tệp .pdproj, CSP)"
     status: pending
@@ -187,7 +187,7 @@ Pha 6–9 đã xong trên `main`.
 
 - Lọc bảng và Gantt theo ba tiêu chí: đường găng (total slack nhỏ hơn hoặc bằng 0), theo người được gán, task trễ hạn.
 - Trễ hạn: task bị coi là trễ nếu thỏa một trong các điều kiện: chưa xong và finish sau ngày trạng thái; finish sau finish của baseline 0; hoặc có đặt deadline và finish sau deadline. Deadline là một ngày tùy chọn của task, sửa bằng bộ chọn ngày, undo được, và không phải một kiểu ràng buộc.
-  - Ghi chú: điều kiện đầu khác MS Project. Khi đã đặt ngày trạng thái, mọi task chưa xong có finish trong tương lai đều bị tính là trễ (`Task::is_late` trong `model.rs`). MS Project chỉ tính trễ khi tiến độ thực tế ít hơn phần lẽ ra đã xong tại ngày trạng thái. Sửa ở Pha 13.
+  - Ghi chú (đã sửa ở Pha 13 phần 1): điều kiện đầu khác MS Project. Khi đã đặt ngày trạng thái, mọi task chưa xong có finish trong tương lai đều bị tính là trễ (`Task::is_late` trong `model.rs`). MS Project chỉ tính trễ khi tiến độ thực tế ít hơn phần lẽ ra đã xong tại ngày trạng thái. Sửa ở Pha 13.
 - Nhóm có hai kiểu: theo người và theo summary (WBS). Theo người: task có nhiều người hiện dưới từng người, task chưa gán ai nằm trong nhóm "Chưa gán". Theo summary: task lá nằm dưới summary cha gần nhất, tiêu đề nhóm là mã WBS và tên (ví dụ "1.2 Thiết kế"), task lá cấp cao nhất nằm trong nhóm "Không có summary"; nhóm và task trong nhóm giữ thứ tự outline. Nhóm chỉ đổi cách xếp hàng trên view, không ghi đè outline đã lưu.
 - Highlight tô đúng ba nhóm trên. Cờ đường găng và trễ hạn lấy từ engine. Bộ lọc và nhóm là trạng thái cửa sổ.
 
@@ -354,9 +354,22 @@ Còn lại của phần 1: undo sâu hơn khoảng 100 bước ngay sau khi mở
 
 Nghiệm thu: bench trong `crates/engine/benches` với 1.000 task, 10.000 lệnh: Undo dưới 100 ms, mở dưới 1 giây; test tệp có lệnh hỏng; test tắt app giữa chừng rồi khôi phục.
 
-### Pha 13 — theo dõi tiến độ (L, cần Pha 12)
+### Pha 13 — theo dõi tiến độ (L, cần Pha 12) — đang làm
 
 Mục tiêu: nhập tiến độ thực tế làm lịch thay đổi như MS Project.
+
+Chia 2 PR: (1) lõi lịch theo ngày thực tế, (2) lệnh dời phần chưa xong, AC/EV task tách, chuỗi lặp.
+
+**Phần 1 — đã xong.** Module `tracking.rs`:
+
+- Ngày bắt đầu thực tế ghim start, thắng phụ thuộc, ràng buộc, độ trễ cân bằng và ngày ghim tay của task lên lịch tay. Ngày kết thúc thực tế ghim finish. Chưa có ngày kết thúc thì phần còn lại nối liền từ ngày bắt đầu thực tế (task tách giữ khoảng nghỉ).
+- Task xong (có ngày kết thúc thực tế hoặc 100 %) và nhóm mà mọi task con đều xong không nằm trên đường găng. Task đã bắt đầu tính slack ở đầu kết thúc. ALAP và leveling bỏ qua task đã bắt đầu.
+- `SetRemainingDuration` và `SetRemainingWork` giữ phần đã làm: thời lượng (công) = phần đã làm + phần còn lại, % tính lại; còn lại 0 thì xong vào ngày phần việc chạy hết. Chưa bắt đầu thì đặt thẳng thời lượng (công) như trước. `SetActualFinish` đặt thời lượng bằng thời gian làm việc giữa hai ngày thực tế; kết thúc trước ngày bắt đầu thực tế thì bị từ chối. Đổi ngày bắt đầu thực tế của task đã xong thì giữ thời lượng và dời ngày kết thúc thực tế (như Project). Summary không nhận ngày thực tế.
+- `work.rs` không còn tự đặt ngày bắt đầu/kết thúc thực tế từ ngày đã tính; ngày thực tế là dữ liệu người dùng nhập.
+- Trễ hạn theo MS Project: chỉ trễ khi phần đã làm ít hơn phần lịch nói lẽ ra đã xong tại ngày trạng thái (task tách chỉ tính các đoạn). Mốc chưa đạt mà ngày trạng thái đã qua thì trễ. Summary trễ theo ngày trạng thái khi có task con trễ. Hai điều kiện baseline 0 và deadline giữ nguyên. Thay đổi này áp dụng cả cho dự án chưa có ngày thực tế: task chưa đến lúc bắt đầu không còn bị tính trễ chỉ vì finish sau ngày trạng thái.
+- Nhập MSPDI: task có % hoàn thành mà thiếu `ActualStart`/`ActualFinish` lấy ngày đã lên lịch làm ngày thực tế (trước đây `work.rs` làm việc này khi tính lịch).
+- `FORMAT_VERSION` = 2 (nghĩa lệnh đổi, app cũ sẽ replay ra ngày khác) và `ENGINE_REVISION` = 2: tệp cũ có ngày thực tế mở ra sẽ báo các task đổi ngày (Pha 12 phần 2).
+- `tests/tracking.rs`: 17 test bằng số tính tay. Bench không đổi.
 
 - Ngày bắt đầu thực tế ghim start, bỏ qua phụ thuộc và ràng buộc; ngày kết thúc thực tế ghim finish. Phần còn lại nối liền sau phần đã làm.
 - Lệnh "Dời phần chưa xong sau ngày trạng thái" dùng `split.rs` để tạo khoảng nghỉ, nên tất định và hoàn tác được.

@@ -15,8 +15,10 @@ use crate::recovery::{self, Damage, OpenReport, Recovery};
 /// File format version. Bump it when a new `Command` variant or a table an older app must
 /// read is added, so that app refuses the file with a clear message instead of failing
 /// halfway through. The `checkpoint` table needs no bump: it is only a cache, and an app
-/// that does not know it ignores it and replays the log.
-pub const FORMAT_VERSION: u32 = 1;
+/// that does not know it ignores it and replays the log. Version 2: actual dates drive the
+/// schedule and remaining-duration/work edits keep progress (phase 13), so an older app
+/// would replay the same commands to other dates.
+pub const FORMAT_VERSION: u32 = 2;
 
 /// Checkpoints a file keeps below the cursor, besides the one at the cursor. Each is
 /// a whole scheduled project (about 1 MB for 1,000 tasks), so only a few nearby ones.

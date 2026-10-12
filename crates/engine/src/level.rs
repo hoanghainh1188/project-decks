@@ -91,7 +91,9 @@ fn overlap_minutes(cal: &crate::calendar::Calendar, task: &Task, date: NaiveDate
 /// splits move with the task.
 pub fn level_project(project: &mut Project) -> Result<(), EngineError> {
     for task in &mut project.tasks {
+        // A started task is pinned by its actual start; leveling cannot move it.
         if task.manual
+            || task.actual_start.is_some()
             || matches!(
                 task.constraint_type,
                 ConstraintType::Mso | ConstraintType::Mfo
@@ -142,6 +144,7 @@ fn pick_victim(project: &Project, hit: &Overallocation) -> Option<u32> {
         };
         if task.summary
             || task.manual
+            || task.actual_start.is_some()
             || task.priority >= 1000
             || matches!(
                 task.constraint_type,
