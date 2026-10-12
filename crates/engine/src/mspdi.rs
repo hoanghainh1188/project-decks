@@ -9,11 +9,10 @@ use crate::model::{
     Accrual, Assignment, Baseline, ConstraintType, DepKind, Dependency, Project, Resource,
     ResourceKind, Task, TaskType,
 };
+use crate::mspdi_progress::{self, FileProgress, TaskProgress, TimephasedActual};
 use crate::schedule::schedule;
 use crate::split::Split;
-use crate::timeutil::{
-    format_duration_iso, format_iso, parse_duration_iso, parse_iso,
-};
+use crate::timeutil::{format_duration_iso, format_iso, parse_duration_iso, parse_iso};
 
 /// Write MSPDI XML for tasks, dependencies, calendars, resources, assignments, and baselines.
 pub fn write_mspdi(project: &Project) -> Result<String, EngineError> {
@@ -77,13 +76,20 @@ fn write_unassigned_splits(xml: &mut String, project: &Project) {
         el(xml, "Units", "1");
         el(xml, "Work", &format_duration_iso(task.work));
         write_timephased(xml, project, task, next_uid, task.work);
+        mspdi_progress::write_actual_timephased(xml, project, task, next_uid, task.actual_work);
         xml.push_str("</Assignment>\n");
         next_uid += 1;
     }
 }
 
 /// Planned work per segment (type 1), with a zero-work period for each gap.
-fn write_timephased(xml: &mut String, project: &Project, task: &Task, assignment_uid: u32, work: i64) {
+fn write_timephased(
+    xml: &mut String,
+    project: &Project,
+    task: &Task,
+    assignment_uid: u32,
+    work: i64,
+) {
     if task.segments.len() < 2 {
         return;
     }
@@ -122,9 +128,13 @@ fn write_period(xml: &mut String, assignment_uid: u32, start: i64, finish: i64, 
 }
 
 /// Rebuild splits from timephased work: gaps are working time with no work between pieces.
+/// Planned work (type 1) shapes the splits when present; actual work (type 2) only
+/// when there is no planned data, since a day with no actual work is not a split.
 fn splits_from_periods(cal: &Calendar, periods: &[Period]) -> Vec<Split> {
+    let planned = periods.iter().any(|period| period.kind == 1);
     let mut work: Vec<(i64, i64)> = periods
         .iter()
+        .filter(|period| !planned || period.kind == 1)
         .filter(|period| period.minutes > 0 && period.finish > period.start)
         .map(|period| (period.start, period.finish))
         .collect();
@@ -170,6 +180,8 @@ pub fn read_mspdi(xml: &str) -> Result<Project, EngineError> {
     let mut assignment: Option<AssignmentBuilder> = None;
     let mut period: Option<Period> = None;
     let mut timephased: BTreeMap<u32, Vec<Period>> = BTreeMap::new();
+    let mut file_progress: BTreeMap<u32, FileProgress> = BTreeMap::new();
+    let mut actuals: BTreeMap<u32, TimephasedActual> = BTreeMap::new();
 
     loop {
         match reader.read_event() {
@@ -311,6 +323,18 @@ pub fn read_mspdi(xml: &str) -> Result<Project, EngineError> {
                     "Task" => {
                         if let Some(builder) = task.take() {
                             if !builder.is_null && builder.uid != 0 {
+                                file_progress.insert(
+                                    builder.uid,
+                                    FileProgress {
+                                        progress: builder.progress.clone(),
+                                        duration: builder.duration,
+                                        remaining_duration: builder.remaining_duration,
+                                        actual_start: builder.actual_start,
+                                        actual_finish: builder.actual_finish,
+                                        start: builder.start,
+                                        percent: builder.percent,
+                                    },
+                                );
                                 let mut next_dep = project.next_dependency_uid;
                                 let (parsed, deps) = builder.into_task_and_links(&mut next_dep);
                                 project.next_dependency_uid = next_dep;
@@ -337,8 +361,17 @@ pub fn read_mspdi(xml: &str) -> Result<Project, EngineError> {
                     "Assignment" => {
                         if let Some(mut builder) = assignment.take() {
                             let periods = std::mem::take(&mut builder.periods);
+                            for item in periods.iter().filter(|item| item.kind == 2) {
+                                actuals
+                                    .entry(builder.task_uid)
+                                    .or_default()
+                                    .add(item.start, item.minutes);
+                            }
                             if builder.task_uid != 0 && !periods.is_empty() {
-                                timephased.entry(builder.task_uid).or_default().extend(periods);
+                                timephased
+                                    .entry(builder.task_uid)
+                                    .or_default()
+                                    .extend(periods);
                             }
                             if builder.task_uid != 0 && builder.resource_uid != 0 {
                                 project.assignments.push(builder.finish());
@@ -389,7 +422,13 @@ pub fn read_mspdi(xml: &str) -> Result<Project, EngineError> {
         .max()
         .unwrap_or(0)
         + 1;
-    project.next_calendar_uid = project.calendars.iter().map(|calendar| calendar.id).max().unwrap_or(0) + 1;
+    project.next_calendar_uid = project
+        .calendars
+        .iter()
+        .map(|calendar| calendar.id)
+        .max()
+        .unwrap_or(0)
+        + 1;
     for task in &mut project.tasks {
         let work: i64 = project
             .assignments
@@ -416,11 +455,19 @@ pub fn read_mspdi(xml: &str) -> Result<Project, EngineError> {
         .enumerate()
         .filter_map(|(index, task)| {
             let periods = timephased.get(&task.uid)?;
-            Some((index, splits_from_periods(project.task_calendar(task), periods)))
+            Some((
+                index,
+                splits_from_periods(project.task_calendar(task), periods),
+            ))
         })
         .collect();
     for (index, task_splits) in splits {
         project.tasks[index].splits = task_splits;
+    }
+    for task in &mut project.tasks {
+        if let Some(file) = file_progress.get(&task.uid) {
+            file.apply(task, actuals.get(&task.uid).copied());
+        }
     }
     project.start = project.calendar().next_work_start(project.start);
     schedule(&mut project)?;
@@ -754,6 +801,11 @@ fn apply_text(name: &str, parent: Option<&str>, text: &str, project: &mut Projec
                 assignment.overtime_work = parse_duration_iso(value).unwrap_or(0);
             }
         }
+        (Some("Task"), field) => {
+            if let Some(task) = task {
+                task.progress.read(field, value);
+            }
+        }
         _ => {}
     }
 }
@@ -818,11 +870,16 @@ fn write_task(xml: &mut String, project: &Project, task: &Task) {
     el(xml, "Start", &format_iso(task.start));
     el(xml, "Finish", &format_iso(task.finish));
     el(xml, "Duration", &format_duration_iso(task.duration));
+    mspdi_progress::write_stop_resume(xml, project, task);
     el(xml, "Manual", if task.manual { "1" } else { "0" });
     el(xml, "Milestone", if task.milestone { "1" } else { "0" });
     el(xml, "Summary", if task.summary { "1" } else { "0" });
     el(xml, "Critical", if task.critical { "1" } else { "0" });
-    el(xml, "EffortDriven", if task.effort_driven { "1" } else { "0" });
+    el(
+        xml,
+        "EffortDriven",
+        if task.effort_driven { "1" } else { "0" },
+    );
     if task.recurrence.is_some() {
         el(xml, "Recurring", "1");
     }
@@ -836,10 +893,15 @@ fn write_task(xml: &mut String, project: &Project, task: &Task) {
     if let Some(date) = task.constraint_date {
         el(xml, "ConstraintDate", &format_iso(date));
     }
+    mspdi_progress::write_deadline(xml, task);
     if let Some(calendar_id) = task.calendar_id {
         el(xml, "CalendarUID", &calendar_id.to_string());
     }
-    el(xml, "PercentComplete", &format_number(task.percent_complete));
+    el(
+        xml,
+        "PercentComplete",
+        &format_number(task.percent_complete),
+    );
     if let Some(start) = task.actual_start {
         el(xml, "ActualStart", &format_iso(start));
     }
@@ -851,6 +913,7 @@ fn write_task(xml: &mut String, project: &Project, task: &Task) {
         "RemainingDuration",
         &format_duration_iso(task.remaining_duration),
     );
+    mspdi_progress::write_task_progress(xml, task);
     el(xml, "FixedCost", &format_number(task.fixed_cost));
     el(
         xml,
@@ -861,7 +924,11 @@ fn write_task(xml: &mut String, project: &Project, task: &Task) {
             Accrual::End => "3",
         },
     );
-    el(xml, "LevelingDelay", &(task.leveling_delay * 10).to_string());
+    el(
+        xml,
+        "LevelingDelay",
+        &(task.leveling_delay * 10).to_string(),
+    );
     for dep in project
         .dependencies
         .iter()
@@ -924,6 +991,13 @@ fn write_assignment(xml: &mut String, project: &Project, assignment: &Assignment
     el(xml, "Cost", &format_number(assignment.cost));
     if let Some(task) = project.task(assignment.task_uid) {
         write_timephased(xml, project, task, assignment.uid, assignment.work);
+        mspdi_progress::write_actual_timephased(
+            xml,
+            project,
+            task,
+            assignment.uid,
+            assignment.actual_work,
+        );
     }
     xml.push_str("</Assignment>\n");
 }
@@ -1110,6 +1184,7 @@ struct TaskBuilder {
     accrual: Accrual,
     leveling_delay: i64,
     is_null: bool,
+    progress: TaskProgress,
     links: Vec<LinkBuilder>,
     baselines: Vec<Baseline>,
 }
@@ -1127,7 +1202,11 @@ impl TaskBuilder {
         task.milestone = self.milestone || task.duration == 0;
         task.manual = self.manual;
         task.notes = self.notes;
-        task.priority = if self.priority == 0 { 500 } else { self.priority };
+        task.priority = if self.priority == 0 {
+            500
+        } else {
+            self.priority
+        };
         if let Some(constraint) = self.constraint {
             task.constraint_type = constraint;
         }
@@ -1137,9 +1216,12 @@ impl TaskBuilder {
         task.effort_driven = self.effort_driven || self.task_type == TaskType::FixedWork;
         task.percent_complete = self.percent;
         // Progress without actual dates started (and finished) where it was scheduled.
-        task.actual_start = self.actual_start.or(self.start.filter(|_| self.percent > 0.0));
-        task.actual_finish =
-            self.actual_finish.or(self.finish.filter(|_| self.percent >= 100.0));
+        task.actual_start = self
+            .actual_start
+            .or(self.start.filter(|_| self.percent > 0.0));
+        task.actual_finish = self
+            .actual_finish
+            .or(self.finish.filter(|_| self.percent >= 100.0));
         task.remaining_duration = self.remaining_duration.unwrap_or(task.duration);
         if let Some(start) = self.start {
             task.start = start;
@@ -1150,6 +1232,7 @@ impl TaskBuilder {
         task.fixed_cost = self.fixed_cost;
         task.fixed_cost_accrual = self.accrual;
         task.leveling_delay = self.leveling_delay;
+        task.deadline = self.progress.deadline;
         task.work = task.duration;
         task.baselines = self.baselines;
         let dependencies = self.links;
@@ -1188,7 +1271,11 @@ impl ResourceBuilder {
                 self.name
             },
             kind,
-            max_units: if self.max_units <= 0.0 { 1.0 } else { self.max_units },
+            max_units: if self.max_units <= 0.0 {
+                1.0
+            } else {
+                self.max_units
+            },
             calendar_id: self.calendar_id,
             standard_rate: self.standard_rate,
             overtime_rate: self.overtime_rate,
@@ -1263,4 +1350,3 @@ impl TaskBuilder {
         (task, dependencies)
     }
 }
-
