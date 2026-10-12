@@ -83,6 +83,24 @@ export function openProject(): Promise<Snapshot> {
   return afterQueued(() => invoke<Snapshot>("open_project"));
 }
 
+/** File → Open Recent → the file at `index` (0 is the most recent). */
+export function openRecent(index: number): Promise<Snapshot> {
+  return afterQueued(() => invoke<Snapshot>("open_recent", { index }));
+}
+
+/**
+ * Open the next file the system asked to open (a double-clicked project). `null` when
+ * nothing is queued or a dialog is up; the file then stays queued for a later call.
+ */
+export function openPending(): Promise<Snapshot | null> {
+  return afterQueued(() => invoke<Snapshot | null>("open_pending"));
+}
+
+/** The system asked to open a project file; call `openPending` when no dialog is up. */
+export function onOpenFile(handler: () => void): Promise<UnlistenFn> {
+  return listen("open-file", () => handler());
+}
+
 export function saveProject(): Promise<Snapshot> {
   return afterQueued(() => invoke<Snapshot>("save_project"));
 }

@@ -66,6 +66,10 @@ class FakeBackend {
     // Window plugin calls such as setting the title.
     if (cmd.startsWith("plugin:")) return undefined;
     switch (cmd) {
+      case "open_pending":
+        // Nothing queued, as when the app is opened normally.
+        return null;
+      case "open_recent":
       case "project_state":
       case "new_project":
       case "open_project":

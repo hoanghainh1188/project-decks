@@ -12,6 +12,9 @@ pub struct Text {
     pub menu_project: &'static str,
     pub menu_language: &'static str,
     pub menu_help: &'static str,
+    pub open_recent: &'static str,
+    pub recent_clear: &'static str,
+    pub recent_empty: &'static str,
     pub about: &'static str,
     pub hide: &'static str,
     pub hide_others: &'static str,
@@ -47,6 +50,9 @@ pub static VI: Text = Text {
     menu_project: "Dự án",
     menu_language: "Ngôn ngữ",
     menu_help: "Trợ giúp",
+    open_recent: "Mở gần đây",
+    recent_clear: "Xóa danh sách",
+    recent_empty: "Chưa có tệp nào",
     about: "Giới thiệu Sheafly",
     hide: "Ẩn Sheafly",
     hide_others: "Ẩn ứng dụng khác",
@@ -87,6 +93,9 @@ pub static EN: Text = Text {
     menu_project: "Project",
     menu_language: "Language",
     menu_help: "Help",
+    open_recent: "Open Recent",
+    recent_clear: "Clear Menu",
+    recent_empty: "No Recent Files",
     about: "About Sheafly",
     hide: "Hide Sheafly",
     hide_others: "Hide Others",
@@ -336,6 +345,14 @@ pub fn settings_not_saved(lang: Lang, detail: &str) -> String {
     match lang {
         Lang::Vi => format!("Không lưu được thiết lập: {detail}"),
         Lang::En => format!("Could not save the settings: {detail}"),
+    }
+}
+
+/// A file from Open Recent (or opened from the system) that is no longer there.
+pub fn file_missing(lang: Lang, path: &str) -> String {
+    match lang {
+        Lang::Vi => format!("Không tìm thấy tệp “{path}”. Tệp đã được bỏ khỏi danh sách gần đây."),
+        Lang::En => format!("“{path}” could not be found. It has been removed from Open Recent."),
     }
 }
 
