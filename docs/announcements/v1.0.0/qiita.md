@@ -50,9 +50,9 @@ ignorePublish: false
 
 ### 1. 計算はエンジンだけが行う
 
-UI は日付を一切計算しません。編集はすべて `Command` としてエンジンに送り、エンジンは再スケジュールした結果の `Snapshot` を返します。ガントのバーの位置も、ネットワーク図のレイアウトもエンジンが決めます。
+UI は日付を一切計算しません。編集はすべて `Command` としてエンジンに送り、エンジンは再スケジュールした結果の `Snapshot` を返します。ガントに並ぶ日付も、ネットワーク図の配置もエンジンが決め、UI はそれを描くだけです。
 
-こうしておくと、計算のテストを Rust 側だけで完結できます。エンジンには 170 件を超える自動テストがあり、実績日付まわりなどは手で計算した日付と突き合わせています。
+こうしておくと、計算のテストを Rust 側だけで完結できます。エンジンには 180 件を超える自動テストがあり、実績日付まわりなどは手で計算した日付と突き合わせています。
 
 ### 2. 元に戻すはコマンド ログの再生
 
@@ -143,9 +143,9 @@ async fn await_pick<R: Runtime>(dialog: FileDialogBuilder<R>) -> Option<FilePath
 
 ### ベトナム語の重ね記号がずれる
 
-ベトナム語には「ế」「ố」のように記号を 2 つ重ねる文字があります。フォント指定を `-apple-system` だけにしていたところ、Chromium 系の WebView（Windows の WebView2 など）で記号が文字から離れて表示されました。macOS の WebKit では問題が出ないので、気づくのが遅れました。
+ベトナム語には「ế」「ố」のように記号を 2 つ重ねる文字があります。画面本体のフォント指定は問題なかったのですが、ネットワーク図とガントの canvas だけ `-apple-system, sans-serif` と書いていました。これが Chromium 系のエンジンでは記号を文字から離して描くフォントに解決され、「Thiết kế」が崩れて表示されました。アプリ本体が使う macOS の WebKit では再現しないので、Chromium でスクリーンショットを撮るまで気づきませんでした。
 
-`BlinkMacSystemFont` をスタックに加え、CSS と canvas（ガントとネットワーク図）で同じ定義を使うようにして解決しています。
+CSS 変数と canvas 用の定数で同じフォント スタックを 1 か所に定義し、すべての描画でそれを使うようにして解決しています。
 
 ```css
 --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
@@ -156,7 +156,7 @@ async fn await_pick<R: Runtime>(dialog: FileDialogBuilder<R>) -> Option<FilePath
 [GitHub の Releases](https://github.com/hoanghainh1188/project-decks/releases) から入手できます。macOS は Apple Silicon 用の `.dmg`、Windows は `.msi` または `-setup.exe`、Linux は `.AppImage` / `.deb` / `.rpm` です。
 
 :::note warn
-インストーラーにはまだコード署名がありません。macOS では「アプリケーション」フォルダーの ProjectDesk を右クリックして「開く」を選んでください。それでも開けない場合は次を実行します。
+インストーラーにはまだコード署名がありません。macOS では、一度 ProjectDesk を開こうとしてから「システム設定」→「プライバシーとセキュリティ」を開き、下に表示される「このまま開く」を選んでください（macOS 15 以降は、右クリックの「開く」では開けません）。ターミナルで次を実行しても開けるようになります。
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/ProjectDesk.app

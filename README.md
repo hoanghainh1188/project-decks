@@ -26,7 +26,7 @@ A Microsoft Project–style scheduler that runs on your own computer (macOS, Win
 
 Download an installer from [Releases](https://github.com/hoanghainh1188/project-decks/releases): `.dmg` for macOS (Apple Silicon), `.msi` or `-setup.exe` for Windows, `.AppImage`, `.deb` or `.rpm` for Linux.
 
-The installers are not code-signed yet. On macOS, the first time, right-click ProjectDesk in Applications and choose **Open**. If macOS still says the app is damaged, run:
+The installers are not code-signed yet. On macOS, try to open ProjectDesk once, then go to **System Settings → Privacy & Security** and click **Open Anyway** near the bottom (since macOS 15, right-click → Open no longer works for unsigned apps). If macOS says the app is damaged, run:
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/ProjectDesk.app

@@ -26,7 +26,7 @@
 
 Tải bản cài ở trang [Releases](https://github.com/hoanghainh1188/project-decks/releases): `.dmg` cho macOS (Apple Silicon), `.msi` hoặc `-setup.exe` cho Windows, `.AppImage`, `.deb` hoặc `.rpm` cho Linux.
 
-Bản cài chưa ký số. Trên macOS, lần đầu mở hãy nhấp chuột phải vào ProjectDesk trong Applications và chọn **Mở**. Nếu macOS vẫn báo ứng dụng bị hỏng, chạy:
+Bản cài chưa ký số. Trên macOS, hãy mở ProjectDesk một lần, rồi vào **Cài đặt hệ thống → Quyền riêng tư & Bảo mật** và bấm **Vẫn mở** ở phía dưới (từ macOS 15, nhấp chuột phải → Mở không còn dùng được cho app chưa ký). Nếu macOS báo ứng dụng bị hỏng, chạy:
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/ProjectDesk.app
