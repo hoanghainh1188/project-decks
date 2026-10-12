@@ -477,6 +477,10 @@ Chia 5 PR: (A) dọn dẹp và chỉnh nhỏ, (B) sơ đồ mạng, (C) thanh c�
 - Dọn 9 warning clippy của engine. (PR A)
 - Viết lại README: tính năng, cách cài bản phát hành, cách build; bỏ đường dẫn cứng. (PR A)
 
+### Tiếng Anh (sau v1.0.0) — đã xong
+
+Giao diện có tiếng Việt và tiếng Anh. Lần đầu mở theo ngôn ngữ hệ thống (máy tiếng Việt thì tiếng Việt, còn lại tiếng Anh, không lưu); Xem → Ngôn ngữ đổi ngay và lưu lựa chọn vào `settings.json`. Mỗi vùng giao diện có catalog `<Tên>.i18n.ts` (`defineMessages(vi, en)`, kiểu của `en` lấy từ `vi` nên thiếu khóa là lỗi biên dịch). Tiếng Anh dùng ngày ISO `2026-01-05 08:00`, dấu chấm thập phân, `7.5 days`, thuật ngữ Microsoft Project (As Soon As Possible, Fixed Units, Effort driven…). Ô nhập nhận cả hai kiểu ở cả hai ngôn ngữ. Menu, hộp hỏi lưu, hộp Giới thiệu, thông báo lỗi của engine và báo cáo khôi phục tệp theo ngôn ngữ đang chọn (`src-tauri/src/i18n.rs`, `EngineError::message(lang)`). Tên mặc định engine ghi vào tệp ("Công việc 1", "Chuẩn"…) là dữ liệu, không đổi theo ngôn ngữ, để replay và tệp đã lưu không phụ thuộc ngôn ngữ; tên mặc định do giao diện tạo (mốc, lịch, chuỗi lặp mới) theo ngôn ngữ lúc tạo.
+
 ### Ngoài phạm vi
 
-Reader tệp nhị phân `.mpp` (xem pha 5), nhiều người dùng, server, công thức trường tùy chỉnh, ký số bản Windows/Linux, dựng lại chuỗi lặp khi nhập MSPDI. Giao diện chỉ có tiếng Việt; đa ngôn ngữ cần quyết định riêng trước khi đưa vào lộ trình.
+Reader tệp nhị phân `.mpp` (xem pha 5), nhiều người dùng, server, công thức trường tùy chỉnh, ký số bản Windows/Linux, dựng lại chuỗi lặp khi nhập MSPDI. Ngôn ngữ ngoài tiếng Việt và tiếng Anh (ví dụ tiếng Nhật) chưa có; thêm một ngôn ngữ chỉ cần thêm cột trong các catalog và trong `src-tauri/src/i18n.rs`.
