@@ -7,6 +7,9 @@ import {
   loadMetrics,
   loadNetworkLayout,
   loadState,
+  openProject,
+  redo,
+  saveProject,
   savePdf,
   undo,
 } from "./api";
@@ -54,6 +57,46 @@ describe("api over the fake backend", () => {
   it("surfaces backend errors as rejected promises", async () => {
     fakeBackend.failNext("undo", "Không còn gì để hoàn tác");
     await expect(undo()).rejects.toBe("Không còn gì để hoàn tác");
+  });
+});
+
+describe("call order", () => {
+  it("sends an edit only after the one before it has finished", async () => {
+    const release = fakeBackend.holdNext("apply_command");
+    const first = applyCommand({ type: "rename_project", name: "Một" });
+    const second = undo();
+    await Promise.resolve();
+    expect(fakeBackend.calls.map((call) => call.cmd)).toEqual(["apply_command"]);
+    release();
+    await Promise.all([first, second]);
+    expect(fakeBackend.calls.map((call) => call.cmd)).toEqual(["apply_command", "undo"]);
+  });
+
+  it("keeps going after a failed edit", async () => {
+    fakeBackend.failNext("undo", "Không còn gì để hoàn tác");
+    const failed = undo();
+    const next = redo();
+    await expect(failed).rejects.toBe("Không còn gì để hoàn tác");
+    await expect(next).resolves.toBeDefined();
+  });
+
+  it("saves after queued edits, without holding later edits behind a dialog", async () => {
+    const release = fakeBackend.holdNext("apply_command");
+    const edit = applyCommand({ type: "rename_project", name: "Lưu tôi" });
+    const save = saveProject();
+    await Promise.resolve();
+    expect(fakeBackend.calls.map((call) => call.cmd)).toEqual(["apply_command"]);
+    release();
+    await Promise.all([edit, save]);
+    expect(fakeBackend.calls.map((call) => call.cmd)).toEqual(["apply_command", "save_project"]);
+
+    const dialog = fakeBackend.holdNext("open_project");
+    const open = openProject();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await applyCommand({ type: "rename_project", name: "Trong lúc mở" });
+    expect(fakeBackend.calls.map((call) => call.cmd).slice(-2)).toEqual(["open_project", "apply_command"]);
+    dialog();
+    await open;
   });
 });
 

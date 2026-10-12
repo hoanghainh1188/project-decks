@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use crate::checkpoint::Checkpoints;
 use crate::command::{self, Command};
 use crate::error::EngineError;
 use crate::evm::{self, BurndownSnapshot, ProjectMetrics};
@@ -26,6 +27,9 @@ pub struct Document {
     pub dirty: bool,
     /// Burn-down samples, oldest first. Kept outside the command log so undo does not drop them.
     pub burndown: Vec<BurndownSnapshot>,
+    /// Scheduled states part-way through `commands`. Valid only while `base` and the
+    /// commands before each state stay as they are.
+    pub checkpoints: Checkpoints,
 }
 
 impl Document {
@@ -49,6 +53,7 @@ impl Document {
             path: None,
             dirty: false,
             burndown: Vec::new(),
+            checkpoints: Checkpoints::default(),
         }
     }
 
@@ -65,6 +70,7 @@ impl Document {
     pub fn apply(&mut self, command: Command) -> Result<Snapshot, EngineError> {
         if self.cursor < self.commands.len() {
             self.commands.truncate(self.cursor);
+            self.checkpoints.drop_after(self.cursor);
         }
         let mut trial = self.project.clone();
         command::apply_one(&mut trial, &command)?;
@@ -73,6 +79,7 @@ impl Document {
         self.commands.push(command);
         self.cursor = self.commands.len();
         self.project = trial;
+        self.checkpoints.record(self.cursor, &self.project);
         self.dirty = true;
         if let Some(status) = self.project.status_date.filter(|_| status_changed) {
             self.record_burndown(status);
@@ -95,8 +102,8 @@ impl Document {
         if self.cursor == 0 {
             return Ok(self.snapshot());
         }
+        self.project = self.project_at(self.cursor - 1)?;
         self.cursor -= 1;
-        self.project = replay(&self.base, &self.commands[..self.cursor])?;
         self.dirty = true;
         Ok(self.snapshot())
     }
@@ -105,8 +112,8 @@ impl Document {
         if self.cursor >= self.commands.len() {
             return Ok(self.snapshot());
         }
+        self.project = self.project_at(self.cursor + 1)?;
         self.cursor += 1;
-        self.project = replay(&self.base, &self.commands[..self.cursor])?;
         self.dirty = true;
         Ok(self.snapshot())
     }
@@ -121,7 +128,28 @@ impl Document {
         self.path = path;
         self.dirty = false;
         self.burndown.clear();
+        self.checkpoints.clear();
         Ok(self.snapshot())
+    }
+
+    /// The scheduled project after the first `applied` commands, replayed from the
+    /// nearest checkpoint. States passed on the way are kept for the next undo.
+    pub fn project_at(&mut self, applied: usize) -> Result<Project, EngineError> {
+        let applied = applied.min(self.commands.len());
+        let (from, mut project) = match self.checkpoints.nearest(applied) {
+            Some((from, project)) => (from, project.clone()),
+            None => (0, self.base.clone()),
+        };
+        if from == 0 && applied == 0 {
+            // A saved base with no replayed commands still needs the derived late flag.
+            mark_late(&mut project);
+        }
+        for step in from..applied {
+            command::apply_one(&mut project, &self.commands[step])?;
+            schedule(&mut project)?;
+            self.checkpoints.record(step + 1, &project);
+        }
+        Ok(project)
     }
 }
 

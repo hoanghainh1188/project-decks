@@ -11,8 +11,13 @@ chrono = { version = "0.4", default-features = false, features = ["std", "serde"
 quick-xml = "0.37"
 rusqlite = { version = "0.32", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+# Checkpoints are stored as JSON and must read back to the exact f64 that was written.
+serde_json = { version = "1", features = ["float_roundtrip"] }
 thiserror = "2"
 
 [dev-dependencies]
 chrono = { version = "0.4", default-features = false, features = ["std"] }
+
+[[bench]]
+name = "large_project"
+harness = false

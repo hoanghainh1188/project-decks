@@ -1,8 +1,9 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 
 use crate::error::EngineError;
+use crate::graph::Graph;
 use crate::level::publish_overallocations;
-use crate::model::{ConstraintType, DepKind, Project, Task};
+use crate::model::{ConstraintType, DepKind, Project};
 use crate::split;
 use crate::work::publish_costs_and_usage;
 
@@ -21,7 +22,7 @@ pub fn schedule(project: &mut Project) -> Result<(), EngineError> {
     {
         return Err(EngineError::NoWorkingTime);
     }
-    detect_cycles(project)?;
+    let graph = Graph::build(project)?;
 
     let project_start = project.calendar().next_work_start(project.start);
     project.start = project_start;
@@ -29,20 +30,24 @@ pub fn schedule(project: &mut Project) -> Result<(), EngineError> {
     let mut shift: HashMap<u32, i64> = HashMap::new();
     // A handful of passes covers summary finish constraints that push a group later.
     let passes = project.tasks.len().max(1) + 2;
+    let mut settled = false;
     for _ in 0..passes {
-        forward(project, &shift)?;
-        if !push_summary_finish(project, &mut shift) {
+        forward(project, &graph, &shift);
+        if !push_summary_finish(project, &graph, &mut shift) {
+            settled = true;
             break;
         }
     }
-    forward(project, &shift)?;
-    backward(project);
+    if !settled {
+        forward(project, &graph, &shift);
+    }
+    backward(project, &graph);
     rollup(project);
-    free_slack(project);
+    free_slack(project, &graph);
     split::publish_segments(project);
     publish_costs_and_usage(project);
     publish_overallocations(project);
-    publish_predecessor_text(project);
+    publish_predecessor_text(project, &graph);
     mark_late(project);
     Ok(())
 }
@@ -55,18 +60,27 @@ pub fn mark_late(project: &mut Project) {
     }
 }
 
-fn publish_predecessor_text(project: &mut Project) {
-    let deps = project.dependencies.clone();
-    let ids: HashMap<u32, u32> = project.tasks.iter().map(|task| (task.uid, task.id)).collect();
-    for task in &mut project.tasks {
-        let mut parts = Vec::new();
-        for dep in deps.iter().filter(|dep| dep.successor_uid == task.uid) {
-            let Some(id) = ids.get(&dep.predecessor_uid) else {
-                continue;
-            };
-            parts.push(format_predecessor(*id, dep.kind, dep.lag));
-        }
-        task.predecessors = parts.join(",");
+fn publish_predecessor_text(project: &mut Project, graph: &Graph) {
+    let texts: Vec<String> = (0..project.tasks.len())
+        .map(|position| {
+            graph
+                .preds(position)
+                .iter()
+                .filter_map(|&link| {
+                    let dep = &project.dependencies[link];
+                    let pred = graph.position(dep.predecessor_uid)?;
+                    Some(format_predecessor(
+                        project.tasks[pred].id,
+                        dep.kind,
+                        dep.lag,
+                    ))
+                })
+                .collect::<Vec<_>>()
+                .join(",")
+        })
+        .collect();
+    for (task, text) in project.tasks.iter_mut().zip(texts) {
+        task.predecessors = text;
     }
 }
 
@@ -140,116 +154,14 @@ pub fn normalize_outline(project: &mut Project) {
     }
 }
 
-fn detect_cycles(project: &Project) -> Result<(), EngineError> {
-    let nodes = leaf_uids(project);
-    let edges = expanded_edges(project)?;
-    if topo(&nodes, &edges).is_none() {
-        return Err(EngineError::DependencyCycle);
-    }
-    Ok(())
-}
+/// Leaf dates by task position, filled as a pass reaches each leaf.
+type Dates = Vec<Option<(i64, i64)>>;
 
-fn leaf_uids(project: &Project) -> Vec<u32> {
-    project
-        .tasks
-        .iter()
-        .filter(|t| !t.summary)
-        .map(|t| t.uid)
-        .collect()
-}
-
-fn expanded_edges(project: &Project) -> Result<Vec<(u32, u32)>, EngineError> {
-    let mut edges = Vec::new();
-    for dep in &project.dependencies {
-        let pred_nodes = endpoint_leaves(project, dep.predecessor_uid);
-        let succ_nodes = endpoint_leaves(project, dep.successor_uid);
-        for pred in &pred_nodes {
-            for succ in &succ_nodes {
-                if pred == succ {
-                    return Err(EngineError::DependencyCycle);
-                }
-                edges.push((*pred, *succ));
-            }
-        }
-    }
-    Ok(edges)
-}
-
-fn endpoint_leaves(project: &Project, uid: u32) -> Vec<u32> {
-    let Some(index) = project.index_of(uid) else {
-        return Vec::new();
-    };
-    if !project.tasks[index].summary {
-        return vec![uid];
-    }
-    descendant_leaves(project, index)
-        .into_iter()
-        .map(|i| project.tasks[i].uid)
-        .collect()
-}
-
-fn descendant_leaves(project: &Project, summary: usize) -> Vec<usize> {
-    let level = project.tasks[summary].outline_level;
-    let mut out = Vec::new();
-    for j in summary + 1..project.tasks.len() {
-        if project.tasks[j].outline_level <= level {
-            break;
-        }
-        if !project.tasks[j].summary {
-            out.push(j);
-        }
-    }
-    out
-}
-
-fn topo(nodes: &[u32], edges: &[(u32, u32)]) -> Option<Vec<u32>> {
-    let mut indeg: HashMap<u32, usize> = nodes.iter().map(|n| (*n, 0)).collect();
-    let mut adj: HashMap<u32, Vec<u32>> = HashMap::new();
-    for &(pred, succ) in edges {
-        if !indeg.contains_key(&pred) || !indeg.contains_key(&succ) {
-            continue;
-        }
-        adj.entry(pred).or_default().push(succ);
-        *indeg.entry(succ).or_insert(0) += 1;
-    }
-    let mut queue: VecDeque<u32> = nodes
-        .iter()
-        .copied()
-        .filter(|n| indeg.get(n).copied().unwrap_or(0) == 0)
-        .collect();
-    let mut order = Vec::with_capacity(nodes.len());
-    while let Some(node) = queue.pop_front() {
-        order.push(node);
-        if let Some(nexts) = adj.get(&node) {
-            for next in nexts {
-                if let Some(degree) = indeg.get_mut(next) {
-                    *degree = degree.saturating_sub(1);
-                    if *degree == 0 {
-                        queue.push_back(*next);
-                    }
-                }
-            }
-        }
-    }
-    if order.len() == nodes.len() {
-        Some(order)
-    } else {
-        None
-    }
-}
-
-fn forward(project: &mut Project, shift: &HashMap<u32, i64>) -> Result<(), EngineError> {
-    let nodes = leaf_uids(project);
-    let edges = expanded_edges(project)?;
-    let order = topo(&nodes, &edges).ok_or(EngineError::DependencyCycle)?;
-    let mut early: HashMap<u32, (i64, i64)> = HashMap::new();
-
-    for uid in order {
-        let Some(index) = project.index_of(uid) else {
-            continue;
-        };
-        let (es, ef, conflict) = schedule_leaf(project, index, &early, shift);
-        early.insert(uid, (es, ef));
+fn forward(project: &mut Project, graph: &Graph, shift: &HashMap<u32, i64>) {
+    let mut early: Dates = vec![None; project.tasks.len()];
+    for &index in graph.order() {
+        let (es, ef, conflict) = schedule_leaf(project, graph, index, &early, shift);
+        early[index] = Some((es, ef));
         let task = &mut project.tasks[index];
         task.early_start = es;
         task.early_finish = ef;
@@ -261,7 +173,6 @@ fn forward(project: &mut Project, shift: &HashMap<u32, i64>) -> Result<(), Engin
         }
     }
     rollup_partial(project);
-    Ok(())
 }
 
 fn rollup_partial(project: &mut Project) {
@@ -282,8 +193,16 @@ fn rollup_partial(project: &mut Project) {
         if children.is_empty() {
             continue;
         }
-        let start = children.iter().map(|j| project.tasks[*j].start).min().unwrap();
-        let finish = children.iter().map(|j| project.tasks[*j].finish).max().unwrap();
+        let start = children
+            .iter()
+            .map(|j| project.tasks[*j].start)
+            .min()
+            .unwrap();
+        let finish = children
+            .iter()
+            .map(|j| project.tasks[*j].finish)
+            .max()
+            .unwrap();
         let task = &mut project.tasks[index];
         task.start = start;
         task.finish = finish;
@@ -294,8 +213,9 @@ fn rollup_partial(project: &mut Project) {
 
 fn schedule_leaf(
     project: &Project,
+    graph: &Graph,
     index: usize,
-    early: &HashMap<u32, (i64, i64)>,
+    early: &Dates,
     shift: &HashMap<u32, i64>,
 ) -> (i64, i64, bool) {
     let task = &project.tasks[index];
@@ -306,7 +226,7 @@ fn schedule_leaf(
         return (start, finish, false);
     }
 
-    let (bound_start, bound_finish) = collect_bounds(project, index, early);
+    let (bound_start, bound_finish) = collect_bounds(project, graph, index, early);
     let extra = task.leveling_delay.max(0) + shift.get(&task.uid).copied().unwrap_or(0).max(0);
     let mut es = if extra > 0 {
         cal.add_lag(bound_start, extra)
@@ -395,28 +315,28 @@ fn span_from_start(cal: &crate::calendar::Calendar, start: i64, duration: i64) -
 
 fn collect_bounds(
     project: &Project,
+    graph: &Graph,
     index: usize,
-    early: &HashMap<u32, (i64, i64)>,
+    early: &Dates,
 ) -> (i64, Option<i64>) {
     let task = &project.tasks[index];
     let cal = project.task_calendar(task);
     let mut min_start = cal.next_work_start(project.start);
     let mut min_finish: Option<i64> = None;
 
-    let mut chain = vec![task.uid];
+    let mut chain = vec![index];
     let mut parent = task.parent_uid;
-    while let Some(uid) = parent {
-        chain.push(uid);
-        parent = project.task(uid).and_then(|t| t.parent_uid);
+    while let Some(position) = parent.and_then(|uid| graph.position(uid)) {
+        chain.push(position);
+        parent = project.tasks[position].parent_uid;
     }
 
-    for uid in chain {
-        for dep in project
-            .dependencies
-            .iter()
-            .filter(|d| d.successor_uid == uid)
-        {
-            let Some((pred_es, pred_ef)) = predecessor_dates(project, dep.predecessor_uid, early)
+    for node_index in chain {
+        for &link in graph.preds(node_index) {
+            let dep = &project.dependencies[link];
+            let Some((pred_es, pred_ef)) = graph
+                .position(dep.predecessor_uid)
+                .and_then(|pred| predecessor_dates(project, graph, pred, early))
             else {
                 continue;
             };
@@ -433,13 +353,15 @@ fn collect_bounds(
                 }
             }
         }
-        if let Some(node) = project.task(uid) {
-            if matches!(node.constraint_type, ConstraintType::Snet | ConstraintType::Mso) {
-                if let Some(date) = node.constraint_date {
-                    // MSO on an ancestor pins the group's start; on the leaf it is applied later.
-                    if node.constraint_type == ConstraintType::Snet || uid != task.uid {
-                        min_start = min_start.max(cal.next_work_start(date));
-                    }
+        let node = &project.tasks[node_index];
+        if matches!(
+            node.constraint_type,
+            ConstraintType::Snet | ConstraintType::Mso
+        ) {
+            if let Some(date) = node.constraint_date {
+                // MSO on an ancestor pins the group's start; on the leaf it is applied later.
+                if node.constraint_type == ConstraintType::Snet || node_index != index {
+                    min_start = min_start.max(cal.next_work_start(date));
                 }
             }
         }
@@ -449,43 +371,37 @@ fn collect_bounds(
 
 fn predecessor_dates(
     project: &Project,
-    uid: u32,
-    early: &HashMap<u32, (i64, i64)>,
+    graph: &Graph,
+    index: usize,
+    early: &Dates,
 ) -> Option<(i64, i64)> {
-    let index = project.index_of(uid)?;
     if project.tasks[index].summary {
-        summary_span(project, index, early)
+        span_of(
+            graph
+                .leaves_under(project, index)
+                .filter_map(|leaf| early[leaf]),
+        )
     } else {
-        early.get(&uid).copied()
+        early[index]
     }
 }
 
-fn summary_span(
-    project: &Project,
-    summary: usize,
-    early: &HashMap<u32, (i64, i64)>,
-) -> Option<(i64, i64)> {
-    let mut start = None;
-    let mut finish = None;
-    for index in descendant_leaves(project, summary) {
-        let uid = project.tasks[index].uid;
-        let Some((es, ef)) = early.get(&uid).copied() else {
-            continue;
-        };
-        start = Some(start.map_or(es, |cur: i64| cur.min(es)));
-        finish = Some(finish.map_or(ef, |cur: i64| cur.max(ef)));
-    }
-    Some((start?, finish?))
+/// Earliest start and latest finish of a set of dates.
+fn span_of(dates: impl Iterator<Item = (i64, i64)>) -> Option<(i64, i64)> {
+    dates.fold(None, |span, (start, finish)| match span {
+        None => Some((start, finish)),
+        Some((low, high)) => Some((low.min(start), high.max(finish))),
+    })
 }
 
 /// Shift descendant leaves when a summary must finish later (FF/SF/FNET/MFO).
-fn push_summary_finish(project: &Project, shift: &mut HashMap<u32, i64>) -> bool {
+fn push_summary_finish(project: &Project, graph: &Graph, shift: &mut HashMap<u32, i64>) -> bool {
     let mut changed = false;
     for index in (0..project.tasks.len()).rev() {
         if !project.tasks[index].summary {
             continue;
         }
-        let Some(required) = summary_required_finish(project, index) else {
+        let Some(required) = summary_required_finish(project, graph, index) else {
             continue;
         };
         let current = project.tasks[index].finish;
@@ -493,7 +409,9 @@ fn push_summary_finish(project: &Project, shift: &mut HashMap<u32, i64>) -> bool
             continue;
         }
         let cal = project.calendar();
-        let duration = cal.working_between(project.tasks[index].start, current).max(0);
+        let duration = cal
+            .working_between(project.tasks[index].start, current)
+            .max(0);
         let (target_start, _) = if duration > 0 {
             cal.place_by_finish(required, duration)
         } else {
@@ -506,7 +424,7 @@ fn push_summary_finish(project: &Project, shift: &mut HashMap<u32, i64>) -> bool
         if bump <= 0 {
             continue;
         }
-        for leaf in descendant_leaves(project, index) {
+        for leaf in graph.leaves_under(project, index) {
             let uid = project.tasks[leaf].uid;
             let entry = shift.entry(uid).or_insert(0);
             *entry += bump;
@@ -518,16 +436,13 @@ fn push_summary_finish(project: &Project, shift: &mut HashMap<u32, i64>) -> bool
     changed
 }
 
-fn summary_required_finish(project: &Project, index: usize) -> Option<i64> {
+fn summary_required_finish(project: &Project, graph: &Graph, index: usize) -> Option<i64> {
     let task = &project.tasks[index];
     let cal = project.calendar();
     let mut required: Option<i64> = None;
-    for dep in project
-        .dependencies
-        .iter()
-        .filter(|d| d.successor_uid == task.uid)
-    {
-        let pred = project.task(dep.predecessor_uid)?;
+    for &link in graph.preds(index) {
+        let dep = &project.dependencies[link];
+        let pred = &project.tasks[graph.position(dep.predecessor_uid)?];
         let (pes, pef) = (pred.early_start, pred.early_finish);
         let finish = match dep.kind {
             DepKind::Ff => Some(cal.finish_not_before(pef, dep.lag)),
@@ -549,29 +464,22 @@ fn summary_required_finish(project: &Project, index: usize) -> Option<i64> {
     required
 }
 
-fn backward(project: &mut Project) {
+fn backward(project: &mut Project, graph: &Graph) {
     let horizon = project
         .tasks
         .iter()
         .map(|t| t.early_finish)
         .max()
         .unwrap_or(project.start);
-    let nodes = leaf_uids(project);
-    let edges = expanded_edges(project).unwrap_or_default();
-    let Some(order) = topo(&nodes, &edges) else {
-        return;
-    };
-    let mut late: HashMap<u32, (i64, i64)> = HashMap::new();
+    let mut late: Dates = vec![None; project.tasks.len()];
 
-    for uid in order.into_iter().rev() {
-        let Some(index) = project.index_of(uid) else {
-            continue;
-        };
-        let (ls, lf) = late_leaf(project, index, horizon, &late);
-        late.insert(uid, (ls, lf));
-        let cal = project.task_calendar(&project.tasks[index]).clone();
-        let early_start = project.tasks[index].early_start;
-        let slack = cal.working_between(early_start, ls);
+    for &index in graph.order().iter().rev() {
+        let (ls, lf) = late_leaf(project, graph, index, horizon, &late);
+        late[index] = Some((ls, lf));
+        let task = &project.tasks[index];
+        let slack = project
+            .task_calendar(task)
+            .working_between(task.early_start, ls);
         let task = &mut project.tasks[index];
         task.late_start = ls;
         task.late_finish = lf;
@@ -580,14 +488,15 @@ fn backward(project: &mut Project) {
     }
     // ALAP consumes only the slack that does not push a successor which is
     // neither ALAP nor held by its own date constraint.
-    schedule_alap(project);
+    schedule_alap(project, graph);
 }
 
 fn late_leaf(
     project: &Project,
+    graph: &Graph,
     index: usize,
     horizon: i64,
-    late: &HashMap<u32, (i64, i64)>,
+    late: &Dates,
 ) -> (i64, i64) {
     let task = &project.tasks[index];
     let cal = project.task_calendar(task);
@@ -598,12 +507,12 @@ fn late_leaf(
 
     let mut lf_cap = horizon;
     let mut ls_cap: Option<i64> = None;
-    for dep in project
-        .dependencies
-        .iter()
-        .filter(|d| d.predecessor_uid == task.uid)
-    {
-        let Some((succ_ls, succ_lf)) = successor_late(project, dep.successor_uid, late) else {
+    for &link in graph.succs(index) {
+        let dep = &project.dependencies[link];
+        let Some((succ_ls, succ_lf)) = graph
+            .position(dep.successor_uid)
+            .and_then(|succ| successor_late(project, graph, succ, late))
+        else {
             continue;
         };
         match dep.kind {
@@ -663,24 +572,19 @@ fn late_leaf(
 
 fn successor_late(
     project: &Project,
-    uid: u32,
-    late: &HashMap<u32, (i64, i64)>,
+    graph: &Graph,
+    index: usize,
+    late: &Dates,
 ) -> Option<(i64, i64)> {
-    let index = project.index_of(uid)?;
-    if !project.tasks[index].summary {
-        return late.get(&uid).copied();
+    if project.tasks[index].summary {
+        span_of(
+            graph
+                .leaves_under(project, index)
+                .filter_map(|leaf| late[leaf]),
+        )
+    } else {
+        late[index]
     }
-    let mut ls = None;
-    let mut lf = None;
-    for leaf in descendant_leaves(project, index) {
-        let uid = project.tasks[leaf].uid;
-        let Some((leaf_ls, leaf_lf)) = late.get(&uid).copied() else {
-            continue;
-        };
-        ls = Some(ls.map_or(leaf_ls, |cur: i64| cur.min(leaf_ls)));
-        lf = Some(lf.map_or(leaf_lf, |cur: i64| cur.max(leaf_lf)));
-    }
-    Some((ls?, lf?))
 }
 
 /// Place ALAP tasks on the late dates they can actually use.
@@ -690,55 +594,7 @@ fn successor_late(
 /// An ALAP successor is placed first and the predecessor follows it. A successor
 /// SNET or MSO date is a ceiling: the predecessor may wait until that pin, and
 /// no later. Tasks with no successor use the project early finish.
-fn schedule_alap(project: &mut Project) {
-    let nodes = leaf_uids(project);
-    let edges = expanded_edges(project).unwrap_or_default();
-    let Some(order) = topo(&nodes, &edges) else {
-        return;
-    };
-    let mut placed: HashMap<u32, (i64, i64)> = HashMap::new();
-    for uid in order.into_iter().rev() {
-        let Some(index) = project.index_of(uid) else {
-            continue;
-        };
-        let (skip, duration, early_start, early_finish, calendar_id) = {
-            let task = &project.tasks[index];
-            (
-                task.summary || task.manual || task.constraint_type != ConstraintType::Alap,
-                split::span(task),
-                task.early_start,
-                task.early_finish,
-                task.calendar_id,
-            )
-        };
-        if skip {
-            continue;
-        }
-        let cal = calendar_for(project, calendar_id).clone();
-        let (ls, lf) = alap_dates(project, uid, duration, early_start, early_finish, &placed);
-        placed.insert(uid, (ls, lf));
-        let slack = cal.working_between(early_start, ls).max(0);
-        if let Some(task) = project.task_mut(uid) {
-            task.start = ls;
-            task.finish = lf;
-            task.late_start = ls;
-            task.late_finish = lf;
-            task.total_slack = slack;
-            task.critical = slack <= 0;
-        }
-    }
-}
-
-fn alap_dates(
-    project: &Project,
-    uid: u32,
-    duration: i64,
-    early_start: i64,
-    early_finish: i64,
-    placed: &HashMap<u32, (i64, i64)>,
-) -> (i64, i64) {
-    let task = project.task(uid).unwrap();
-    let cal = project.task_calendar(task);
+fn schedule_alap(project: &mut Project, graph: &Graph) {
     let horizon = project
         .tasks
         .iter()
@@ -746,10 +602,48 @@ fn alap_dates(
         .map(|t| t.early_finish)
         .max()
         .unwrap_or(project.start);
+    let mut placed: Dates = vec![None; project.tasks.len()];
+    for &index in graph.order().iter().rev() {
+        let task = &project.tasks[index];
+        if task.summary || task.manual || task.constraint_type != ConstraintType::Alap {
+            continue;
+        }
+        let (ls, lf) = alap_dates(project, graph, index, horizon, &placed);
+        placed[index] = Some((ls, lf));
+        let task = &project.tasks[index];
+        let slack = project
+            .task_calendar(task)
+            .working_between(task.early_start, ls)
+            .max(0);
+        let task = &mut project.tasks[index];
+        task.start = ls;
+        task.finish = lf;
+        task.late_start = ls;
+        task.late_finish = lf;
+        task.total_slack = slack;
+        task.critical = slack <= 0;
+    }
+}
+
+fn alap_dates(
+    project: &Project,
+    graph: &Graph,
+    index: usize,
+    horizon: i64,
+    placed: &Dates,
+) -> (i64, i64) {
+    let task = &project.tasks[index];
+    let cal = project.task_calendar(task);
+    let duration = split::span(task);
+    let (early_start, early_finish) = (task.early_start, task.early_finish);
     let mut lf_cap = horizon;
     let mut ls_cap: Option<i64> = None;
-    for dep in project.dependencies.iter().filter(|d| d.predecessor_uid == uid) {
-        let Some((succ_es, succ_ef)) = successor_anchor(project, dep.successor_uid, placed) else {
+    for &link in graph.succs(index) {
+        let dep = &project.dependencies[link];
+        let Some((succ_es, succ_ef)) = graph
+            .position(dep.successor_uid)
+            .and_then(|succ| successor_anchor(project, graph, succ, placed))
+        else {
             continue;
         };
         match dep.kind {
@@ -797,55 +691,44 @@ fn alap_dates(
 /// include the constraint, and MSO is also clamped to the pinned instant.
 fn successor_anchor(
     project: &Project,
-    uid: u32,
-    placed: &HashMap<u32, (i64, i64)>,
+    graph: &Graph,
+    index: usize,
+    placed: &Dates,
 ) -> Option<(i64, i64)> {
-    let index = project.index_of(uid)?;
     if project.tasks[index].summary {
-        let mut start = None;
-        let mut finish = None;
-        for leaf in descendant_leaves(project, index) {
-            let (es, ef) = leaf_anchor(project, leaf, placed);
-            start = Some(start.map_or(es, |cur: i64| cur.min(es)));
-            finish = Some(finish.map_or(ef, |cur: i64| cur.max(ef)));
-        }
-        return Some((start?, finish?));
+        return span_of(
+            graph
+                .leaves_under(project, index)
+                .map(|leaf| leaf_anchor(project, leaf, placed)),
+        );
     }
     Some(leaf_anchor(project, index, placed))
 }
 
-fn leaf_anchor(project: &Project, index: usize, placed: &HashMap<u32, (i64, i64)>) -> (i64, i64) {
-    let (uid, manual, constraint, date, early_start, early_finish, calendar_id) = {
-        let task = &project.tasks[index];
-        (
-            task.uid,
-            task.manual,
-            task.constraint_type,
-            task.constraint_date,
-            task.early_start,
-            task.early_finish,
-            task.calendar_id,
-        )
-    };
-    if !manual && constraint == ConstraintType::Alap {
-        if let Some(dates) = placed.get(&uid) {
-            return *dates;
+fn leaf_anchor(project: &Project, index: usize, placed: &Dates) -> (i64, i64) {
+    let task = &project.tasks[index];
+    if !task.manual && task.constraint_type == ConstraintType::Alap {
+        if let Some(dates) = placed[index] {
+            return dates;
         }
     }
-    let mut start = early_start;
-    if matches!(constraint, ConstraintType::Snet | ConstraintType::Mso) {
-        if let Some(date) = date {
-            let pinned = calendar_for(project, calendar_id).next_work_start(date);
-            if constraint == ConstraintType::Mso && start > pinned {
+    let mut start = task.early_start;
+    if matches!(
+        task.constraint_type,
+        ConstraintType::Snet | ConstraintType::Mso
+    ) {
+        if let Some(date) = task.constraint_date {
+            let pinned = calendar_for(project, task.calendar_id).next_work_start(date);
+            if task.constraint_type == ConstraintType::Mso && start > pinned {
                 // Must-start-on is a hard ceiling even if the forward pass drifted later.
                 start = pinned;
-            } else if constraint == ConstraintType::Snet && start < pinned {
+            } else if task.constraint_type == ConstraintType::Snet && start < pinned {
                 // Start-no-earlier-than holds the successor, which caps this predecessor.
                 start = pinned;
             }
         }
     }
-    (start, early_finish)
+    (start, task.early_finish)
 }
 
 fn calendar_for(project: &Project, calendar_id: Option<u32>) -> &crate::calendar::Calendar {
@@ -855,6 +738,7 @@ fn calendar_for(project: &Project, calendar_id: Option<u32>) -> &crate::calendar
 }
 
 fn rollup(project: &mut Project) {
+    let cal = project.calendar().clone();
     for index in (0..project.tasks.len()).rev() {
         if !project.tasks[index].summary {
             continue;
@@ -902,10 +786,7 @@ fn rollup(project: &mut Project) {
             .map(|j| project.tasks[*j].late_finish)
             .max()
             .unwrap();
-        let critical = child_indexes
-            .iter()
-            .any(|j| project.tasks[*j].critical);
-        let cal = project.calendar().clone();
+        let critical = child_indexes.iter().any(|j| project.tasks[*j].critical);
         let task = &mut project.tasks[index];
         task.start = start;
         task.finish = finish;
@@ -920,19 +801,24 @@ fn rollup(project: &mut Project) {
     }
 }
 
-fn free_slack(project: &mut Project) {
-    let snapshot: Vec<Task> = project.tasks.clone();
-    let deps = project.dependencies.clone();
+fn free_slack(project: &mut Project, graph: &Graph) {
     let mut leaf_slack = Vec::new();
-    for task in snapshot.iter().filter(|task| !task.summary) {
-        let cal = project.task_calendar(task).clone();
+    for (index, task) in project
+        .tasks
+        .iter()
+        .enumerate()
+        .filter(|(_, task)| !task.summary)
+    {
+        let cal = project.task_calendar(task);
         let mut gap = task.total_slack;
-        let mut saw = false;
-        for dep in deps.iter().filter(|dep| dep.predecessor_uid == task.uid) {
-            let Some(succ) = snapshot.iter().find(|item| item.uid == dep.successor_uid) else {
+        for &link in graph.succs(index) {
+            let dep = &project.dependencies[link];
+            let Some(succ) = graph
+                .position(dep.successor_uid)
+                .map(|succ| &project.tasks[succ])
+            else {
                 continue;
             };
-            saw = true;
             let piece = match dep.kind {
                 DepKind::Fs => {
                     let imposed = cal.add_lag(task.early_finish, dep.lag);
@@ -953,15 +839,10 @@ fn free_slack(project: &mut Project) {
             };
             gap = gap.min(piece);
         }
-        if !saw {
-            gap = task.total_slack;
-        }
-        leaf_slack.push((task.uid, gap.max(0)));
+        leaf_slack.push((index, gap.max(0)));
     }
-    for (uid, gap) in leaf_slack {
-        if let Some(task) = project.task_mut(uid) {
-            task.free_slack = gap;
-        }
+    for (index, gap) in leaf_slack {
+        project.tasks[index].free_slack = gap;
     }
     for index in (0..project.tasks.len()).rev() {
         if !project.tasks[index].summary {

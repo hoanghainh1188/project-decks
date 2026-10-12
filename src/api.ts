@@ -7,6 +7,23 @@ export function inTauri(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
+// Edits, undo, redo, and reads of the open project run on the backend's thread pool,
+// so two calls in flight could finish in either order. Each waits for the one before,
+// which keeps the project in step with the keys the user pressed.
+let documentQueue: Promise<unknown> = Promise.resolve();
+
+function inOrder<T>(work: () => Promise<T>): Promise<T> {
+  const result = documentQueue.then(work);
+  documentQueue = result.catch(() => undefined);
+  return result;
+}
+
+// File commands may show a dialog. They wait for queued edits so a save includes them,
+// but later calls do not wait behind the dialog: the backend refuses edits while it is open.
+function afterQueued<T>(work: () => Promise<T>): Promise<T> {
+  return documentQueue.then(work);
+}
+
 export function errorMessage(error: unknown): string {
   if (typeof error === "string") return error;
   if (error instanceof Error) return error.message;
@@ -14,51 +31,51 @@ export function errorMessage(error: unknown): string {
 }
 
 export function loadState(): Promise<Snapshot> {
-  return invoke<Snapshot>("project_state");
+  return inOrder(() => invoke<Snapshot>("project_state"));
 }
 
 export function loadMetrics(): Promise<ProjectMetrics> {
-  return invoke<ProjectMetrics>("project_metrics");
+  return inOrder(() => invoke<ProjectMetrics>("project_metrics"));
 }
 
 export function loadNetworkLayout(options: NetworkOptions): Promise<NetworkLayout> {
-  return invoke<NetworkLayout>("network_layout", { options });
+  return inOrder(() => invoke<NetworkLayout>("network_layout", { options }));
 }
 
 export function applyCommand(command: Command): Promise<Snapshot> {
-  return invoke<Snapshot>("apply_command", { command });
+  return inOrder(() => invoke<Snapshot>("apply_command", { command }));
 }
 
 export function undo(): Promise<Snapshot> {
-  return invoke<Snapshot>("undo");
+  return inOrder(() => invoke<Snapshot>("undo"));
 }
 
 export function redo(): Promise<Snapshot> {
-  return invoke<Snapshot>("redo");
+  return inOrder(() => invoke<Snapshot>("redo"));
 }
 
 export function newProject(): Promise<Snapshot> {
-  return invoke<Snapshot>("new_project");
+  return afterQueued(() => invoke<Snapshot>("new_project"));
 }
 
 export function openProject(): Promise<Snapshot> {
-  return invoke<Snapshot>("open_project");
+  return afterQueued(() => invoke<Snapshot>("open_project"));
 }
 
 export function saveProject(): Promise<Snapshot> {
-  return invoke<Snapshot>("save_project");
+  return afterQueued(() => invoke<Snapshot>("save_project"));
 }
 
 export function saveProjectAs(): Promise<Snapshot> {
-  return invoke<Snapshot>("save_project_as");
+  return afterQueued(() => invoke<Snapshot>("save_project_as"));
 }
 
 export function importMspdi(): Promise<Snapshot> {
-  return invoke<Snapshot>("import_mspdi");
+  return afterQueued(() => invoke<Snapshot>("import_mspdi"));
 }
 
 export function exportMspdi(): Promise<void> {
-  return invoke<void>("export_mspdi");
+  return afterQueued(() => invoke<void>("export_mspdi"));
 }
 
 export function savePdf(bytes: Uint8Array, fileName: string): Promise<void> {
