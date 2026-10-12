@@ -1,3 +1,4 @@
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
@@ -50,6 +51,7 @@ import type {
 import { projectFinish } from "./projectFinish";
 import { isEditableTarget, runFieldAction, shortcutId, shouldRunAction, trackCommittedText } from "./shortcuts";
 import { buildViewRows, type FilterMode, type GroupMode, type HighlightMode } from "./viewRows";
+import { fileName, windowTitle } from "./windowTitle";
 import "./styles.css";
 
 export default function App() {
@@ -197,6 +199,15 @@ export default function App() {
   );
 
   useEffect(() => trackCommittedText(document), []);
+
+  const title = windowTitle(snap);
+  useEffect(() => {
+    document.title = title;
+    if (!inTauri()) return;
+    getCurrentWindow()
+      .setTitle(title)
+      .catch((err) => setError(errorMessage(err)));
+  }, [title]);
 
   useEffect(() => {
     if (!inTauri()) {
@@ -454,105 +465,110 @@ export default function App() {
           </label>
         </div>
       )}
-      <main className="workspace">
-        {project && (view === "gantt" || view === "tracking") && (
-          <>
-            <TaskSheet
-              rows={rows}
-              calendars={project.calendars}
-              assignments={project.assignments}
-              resources={project.resources}
-              selected={selected}
-              tracking={view === "tracking"}
-              bodyRef={sheetRef}
-              onSelect={setSelected}
-              onRename={(uid, name) => send({ type: "rename_task", uid, name })}
-              onDuration={(uid, minutes) => send({ type: "set_duration", uid, minutes })}
-              onStart={(uid, start) => send({ type: "move_task", uid, start })}
-              onPredecessors={(uid, text) => send({ type: "set_predecessors", uid, text })}
-              onPercent={(uid, percent) => send({ type: "set_percent_complete", uid, percent })}
-              onRemaining={(uid, minutes) => send({ type: "set_remaining_duration", uid, minutes })}
-              onActualStart={(uid, start) => send({ type: "set_actual_start", uid, start })}
-              onActualFinish={(uid, finish) => send({ type: "set_actual_finish", uid, finish })}
-              onRemainingWork={(uid, minutes) => send({ type: "set_remaining_work", uid, minutes })}
-              onOvertime={(uid, minutes) => send({ type: "set_overtime_work", uid, minutes })}
-              onCalendar={(uid, calendarId) => send({ type: "set_task_calendar", uid, calendar_id: calendarId })}
-              onEditSeries={(uid) => {
-                setSelected(uid);
-                setSeriesDialog(uid);
-              }}
-              onScroll={() => syncScroll("sheet")}
-            />
-            <GanttChart
-              project={project}
-              rows={rows}
-              scale={scale}
-              selected={selected}
-              tracking={view === "tracking"}
-              bodyRef={ganttRef}
-              onSelect={setSelected}
-              onMove={(uid, start) => send({ type: "move_task", uid, start })}
-              onResize={(uid, finish) => send({ type: "resize_task", uid, finish })}
-              onLink={(from, to) => send({ type: "add_dependency", predecessor_uid: from, successor_uid: to, kind: "fs", lag: 0 })}
-              onScroll={() => syncScroll("gantt")}
-            />
-            {evmOpen && (
-              <EvmPanel
-                metrics={metrics}
-                onOpenProjectInfo={() => setInfoOpen(true)}
-                onOpenBaseline={() => setBaselineOpen(true)}
-                onClose={() => setEvmOpen(false)}
+      {/* EVM sits beside the Gantt and the inspector so its burn-down chart keeps the full height. */}
+      <div className="work-area">
+        <div className="work-column">
+          <main className="workspace">
+            {project && (view === "gantt" || view === "tracking") && (
+              <>
+                <TaskSheet
+                  rows={rows}
+                  calendars={project.calendars}
+                  assignments={project.assignments}
+                  resources={project.resources}
+                  selected={selected}
+                  tracking={view === "tracking"}
+                  bodyRef={sheetRef}
+                  onSelect={setSelected}
+                  onRename={(uid, name) => send({ type: "rename_task", uid, name })}
+                  onDuration={(uid, minutes) => send({ type: "set_duration", uid, minutes })}
+                  onStart={(uid, start) => send({ type: "move_task", uid, start })}
+                  onPredecessors={(uid, text) => send({ type: "set_predecessors", uid, text })}
+                  onPercent={(uid, percent) => send({ type: "set_percent_complete", uid, percent })}
+                  onRemaining={(uid, minutes) => send({ type: "set_remaining_duration", uid, minutes })}
+                  onActualStart={(uid, start) => send({ type: "set_actual_start", uid, start })}
+                  onActualFinish={(uid, finish) => send({ type: "set_actual_finish", uid, finish })}
+                  onRemainingWork={(uid, minutes) => send({ type: "set_remaining_work", uid, minutes })}
+                  onOvertime={(uid, minutes) => send({ type: "set_overtime_work", uid, minutes })}
+                  onCalendar={(uid, calendarId) => send({ type: "set_task_calendar", uid, calendar_id: calendarId })}
+                  onEditSeries={(uid) => {
+                    setSelected(uid);
+                    setSeriesDialog(uid);
+                  }}
+                  onScroll={() => syncScroll("sheet")}
+                />
+                <GanttChart
+                  project={project}
+                  rows={rows}
+                  scale={scale}
+                  selected={selected}
+                  tracking={view === "tracking"}
+                  bodyRef={ganttRef}
+                  onSelect={setSelected}
+                  onMove={(uid, start) => send({ type: "move_task", uid, start })}
+                  onResize={(uid, finish) => send({ type: "resize_task", uid, finish })}
+                  onLink={(from, to) => send({ type: "add_dependency", predecessor_uid: from, successor_uid: to, kind: "fs", lag: 0 })}
+                  onScroll={() => syncScroll("gantt")}
+                />
+              </>
+            )}
+            {project && view === "resources" && (
+              <ResourceSheet
+                resources={project.resources}
+                calendars={project.calendars}
+                overallocations={project.overallocations}
+                onAdd={(kind) => send({ type: "add_resource", name: "", kind })}
+                onChange={(resource) => send(resourceCommand(resource))}
+                onDelete={(uid) => send({ type: "delete_resource", uid })}
+                onEditCalendar={setCalendarEditId}
+                onCreateCalendar={(resource) => {
+                  const name = resource.name.trim() ? `Lịch ${resource.name.trim()}` : "Lịch nguồn lực";
+                  void createCalendar(name, (id) => resourceCommand({ ...resource, calendar_id: id }), true);
+                }}
               />
             )}
-          </>
-        )}
-        {project && view === "resources" && (
-          <ResourceSheet
-            resources={project.resources}
-            calendars={project.calendars}
-            overallocations={project.overallocations}
-            onAdd={(kind) => send({ type: "add_resource", name: "", kind })}
-            onChange={(resource) => send(resourceCommand(resource))}
-            onDelete={(uid) => send({ type: "delete_resource", uid })}
-            onEditCalendar={setCalendarEditId}
-            onCreateCalendar={(resource) => {
-              const name = resource.name.trim() ? `Lịch ${resource.name.trim()}` : "Lịch nguồn lực";
-              void createCalendar(name, (id) => resourceCommand({ ...resource, calendar_id: id }), true);
-            }}
+            {project && view === "usage" && <TaskUsage project={project} />}
+            {project && view === "network" && (
+              <NetworkDiagram
+                project={project}
+                layout={networkLayout}
+                selected={selected}
+                highlighted={networkHighlighted}
+                onSelect={setSelected}
+                onEdit={(uid) => {
+                  setSelected(uid);
+                  setEditUid(uid);
+                }}
+              />
+            )}
+          </main>
+          {project && task && (view === "gantt" || view === "tracking") && (
+            <Inspector
+              project={project}
+              task={task}
+              send={send}
+              onEditSeries={setSeriesDialog}
+              onSplit={setSplitDialog}
+              onEditCalendar={setCalendarEditId}
+              onCreateCalendar={() => {
+                const name = task.name.trim() ? `Lịch ${task.name.trim()}` : "Lịch công việc";
+                void createCalendar(name, (id) => ({ type: "set_task_calendar", uid: task.uid, calendar_id: id }), true);
+              }}
+            />
+          )}
+        </div>
+        {project && evmOpen && (view === "gantt" || view === "tracking") && (
+          <EvmPanel
+            metrics={metrics}
+            onOpenProjectInfo={() => setInfoOpen(true)}
+            onOpenBaseline={() => setBaselineOpen(true)}
+            onClose={() => setEvmOpen(false)}
           />
         )}
-        {project && view === "usage" && <TaskUsage project={project} />}
-        {project && view === "network" && (
-          <NetworkDiagram
-            project={project}
-            layout={networkLayout}
-            selected={selected}
-            highlighted={networkHighlighted}
-            onSelect={setSelected}
-            onEdit={(uid) => {
-              setSelected(uid);
-              setEditUid(uid);
-            }}
-          />
-        )}
-      </main>
-      {project && task && (view === "gantt" || view === "tracking") && (
-        <Inspector
-          project={project}
-          task={task}
-          send={send}
-          onEditSeries={setSeriesDialog}
-          onSplit={setSplitDialog}
-          onEditCalendar={setCalendarEditId}
-          onCreateCalendar={() => {
-            const name = task.name.trim() ? `Lịch ${task.name.trim()}` : "Lịch công việc";
-            void createCalendar(name, (id) => ({ type: "set_task_calendar", uid: task.uid, calendar_id: id }), true);
-          }}
-        />
-      )}
+      </div>
       <footer className="status">
         <span>{snap?.dirty ? "Chưa lưu" : "Đã lưu"}</span>
-        <span>{snap?.path ?? "Chưa có tệp"}</span>
+        <span title={snap?.path ?? undefined}>{snap?.path ? fileName(snap.path) : "Chưa có tệp"}</span>
         <span>{project?.tasks.length ?? 0} công việc</span>
         <span>{criticalCount} việc găng</span>
         <span className="status-finish" title="Công việc kết thúc muộn nhất quyết định ngày kết thúc dự án">

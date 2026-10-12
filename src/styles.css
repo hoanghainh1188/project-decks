@@ -52,6 +52,8 @@ button.on { background: #0a84ff; color: white; border-color: #0a84ff; }
 }
 .segmented { display: flex; gap: 2px; }
 .banner { background: #fff4e5; color: #8a4b08; padding: 6px 10px; }
+.work-area { flex: 1; min-height: 0; display: flex; }
+.work-column { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .workspace { flex: 1; min-height: 0; display: flex; }
 .sheet { width: 52%; min-width: 420px; display: flex; flex-direction: column; border-right: 1px solid #d8d8de; background: white; }
 .sheet-head-clip {
@@ -357,6 +359,13 @@ tr.child td:first-child { padding-left: 22px; color: #3a3a3c; }
 .sheet .datetime-field { gap: 1px; }
 .sheet .datetime-field button { padding: 0 3px; border-color: transparent; background: transparent; }
 .sheet .datetime-field button:hover { border-color: #d0d0d5; background: white; }
+/* One picker button per row is noise in a long table: show it on the row in hand only.
+   Hidden with opacity, so it stays in the accessibility tree and reachable by Tab. */
+.sheet .sheet-row .datetime-field button { opacity: 0; }
+.sheet .sheet-row:hover .datetime-field button,
+.sheet .sheet-row.selected .datetime-field button,
+.sheet .datetime-field:focus-within button,
+.sheet .datetime-field button:focus-visible { opacity: 1; }
 .exception-form .datetime-field input { width: 96px; }
 .range-row .datetime-field input { width: 56px; }
 

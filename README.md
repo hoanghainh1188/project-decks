@@ -1,15 +1,65 @@
 # ProjectDesk
 
-Ứng dụng lịch trình kiểu Microsoft Project cho macOS (Tauri 2, React, Rust).
+Ứng dụng lập lịch dự án kiểu Microsoft Project, chạy trên máy (macOS, Windows, Linux). Giao diện tiếng Việt. Xây bằng Tauri 2, React 19 và một engine lập lịch viết bằng Rust.
 
-## Chạy
+## Tính năng
 
-Cần Rust (`rustup`) và pnpm.
+- **Lập lịch:** đường găng (CPM) với liên kết FS/SS/FF/SF và độ trễ, ràng buộc (sớm nhất, muộn nhất, bắt đầu/kết thúc không sớm/muộn hơn, phải bắt đầu/kết thúc vào), hạn chót, task lên lịch tay, task tách, công việc lặp.
+- **Lịch:** tuần làm việc, ngày nghỉ và ngoại lệ; lịch dự án, lịch riêng cho task và cho nguồn lực.
+- **Nguồn lực:** người và máy, đơn vị tối đa, đơn giá, kiểu task (đơn vị/thời lượng/công cố định), phát hiện quá tải theo giờ trùng nhau, cân bằng nguồn lực.
+- **Theo dõi:** baseline 0–10, % hoàn thành, ngày bắt đầu/kết thúc thực tế điều khiển lịch như Project, dời phần chưa xong sau ngày trạng thái, cờ trễ hạn, chi phí.
+- **Báo cáo:** EVM (PV, EV, AC, SPI, CPI, EAC…), burn-down và đường cong S.
+- **Các view:** Gantt, Gantt theo dõi, bảng nguồn lực, sử dụng công việc, sơ đồ mạng; lọc, nhóm, tô sáng; xuất PDF.
+- **Tệp:** định dạng `.pdproj` (SQLite) lưu cả lịch sử hoàn tác; lưu an toàn, tự lưu và khôi phục sau khi app tắt đột ngột; mở được tệp hỏng một phần. Nhập/xuất MSPDI (`.xml`) để trao đổi với Microsoft Project; không đọc được tệp `.mpp`.
+
+## Cài bản phát hành
+
+Tải bản cài ở trang [Releases](https://github.com/hoanghainh1188/project-decks/releases): `.dmg` cho macOS (Apple Silicon), `.msi` hoặc `-setup.exe` cho Windows, `.AppImage`, `.deb` hoặc `.rpm` cho Linux.
+
+Bản cài chưa ký số. Trên macOS, lần đầu mở hãy nhấp chuột phải vào ProjectDesk trong Applications và chọn **Mở**. Nếu macOS vẫn báo ứng dụng bị hỏng, chạy:
 
 ```bash
-cd ~/Projects/projectdesk
-pnpm install
-pnpm tauri dev
+xattr -dr com.apple.quarantine /Applications/ProjectDesk.app
 ```
 
-Tệp dự án dùng đuôi `.pdproj`. Xuất/nhập lịch qua MSPDI (`.xml`).
+Trên Windows, SmartScreen có thể hỏi; chọn **More info → Run anyway**.
+
+## Build từ mã nguồn
+
+Cần [Rust](https://rustup.rs) (bản stable), Node.js 22 (hoặc 20.19 trở lên) và [pnpm](https://pnpm.io). Trên Linux cần thêm các gói hệ thống của Tauri (xem [hướng dẫn của Tauri](https://tauri.app/start/prerequisites/)).
+
+```bash
+pnpm install
+pnpm tauri dev      # chạy app khi phát triển
+pnpm tauri build    # tạo bản cài trong target/release/bundle
+```
+
+Giao diện chỉ chạy được bên trong cửa sổ Tauri; mở `localhost:1420` bằng trình duyệt thường sẽ không tải được dự án.
+
+## Kiểm thử
+
+```bash
+cargo test -p projectdesk-engine      # engine lập lịch
+pnpm exec tsc --noEmit                # kiểm tra kiểu
+pnpm test                             # giao diện (Vitest)
+cargo bench -p projectdesk-engine --bench large_project              # 1.000 task, 10.000 lệnh
+cargo bench -p projectdesk-engine --bench large_project -- leveling  # cân bằng 500 task
+```
+
+## Cấu trúc
+
+- `crates/engine`: engine lập lịch, không phụ thuộc Tauri. Mọi ngày, slack, đường găng, chi phí và EVM đều tính ở đây.
+- `src-tauri`: lớp vỏ Tauri, menu macOS, hộp thoại tệp, tự lưu.
+- `src`: giao diện React; chỉ hiển thị kết quả engine trả về.
+- `.cursor/plans/projectdesk_macos_da6c3154.plan.md`: kế hoạch, quyết định của từng pha và lộ trình.
+- `CLAUDE.md`: ghi chú kiến trúc cho người (và công cụ) sửa code.
+
+## Giới hạn đã biết
+
+- Không đọc tệp `.mpp`; dùng MSPDI (`.xml`) để trao đổi với Project.
+- Bản cài chưa ký số và chưa notarize; macOS mới có bản cho Apple Silicon.
+- Một người dùng, một cửa sổ; chưa có giao diện tối.
+
+## Giấy phép
+
+MIT. Phông Be Vietnam Pro dùng cho xuất PDF theo giấy phép SIL Open Font License (`src/fonts/OFL.txt`).

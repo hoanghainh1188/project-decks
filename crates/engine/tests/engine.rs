@@ -583,7 +583,7 @@ fn mspdi_roundtrip_covers_phase_fields() {
     let imported = read_mspdi(&xml).unwrap();
     assert_eq!(imported.tasks.len(), 2);
     assert_eq!(imported.tasks[0].name, "Thiết kế");
-    assert_eq!(imported.tasks[1].predecessors.contains("1FS"), true);
+    assert!(imported.tasks[1].predecessors.contains("1FS"));
     assert!(imported.calendar().exceptions.contains_key("2026-01-07"));
     assert_eq!(imported.resources.len(), 1);
     assert_eq!(imported.resources[0].name, "Bình");
@@ -948,7 +948,7 @@ fn task_calendar_overrides_project_calendar() {
         calendar_id: Some(calendar_id),
     })
     .unwrap();
-    assert!(doc.project.calendar().exceptions.get("2026-01-05").is_none());
+    assert!(!doc.project.calendar().exceptions.contains_key("2026-01-05"));
     assert_eq!(doc.project.tasks[0].start, at(1, 8, 0));
     assert_eq!(doc.project.tasks[0].finish, at(1, 17, 0));
 

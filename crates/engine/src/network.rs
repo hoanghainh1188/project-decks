@@ -4,6 +4,11 @@
 //! predecessor). Rows come from a layered heuristic: edges spanning several
 //! columns get waypoints, then barycenter sweeps reorder each column to reduce
 //! crossings. Coordinates are pixels at zoom 1; the UI only draws them.
+//!
+//! A recurring series is one box, its summary, so a weekly meeting does not fill the
+//! first column with every occurrence. With summaries hidden, a link to or from a
+//! summary is drawn to the tasks inside it: from those that end the group (no
+//! successor inside it) and to those that start it (no predecessor inside it).
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
@@ -49,7 +54,10 @@ pub struct Point {
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct NetworkEdge {
+    /// The link drawn. A link to a hidden summary can be drawn as several edges.
     pub uid: u32,
+    /// The boxes the edge joins, which differ from the link's own tasks when it was
+    /// moved down from a hidden summary or up to a recurring series.
     pub from_uid: u32,
     pub to_uid: u32,
     pub kind: DepKind,
@@ -73,26 +81,38 @@ pub fn layout(project: &Project, options: &NetworkOptions) -> NetworkLayout {
         .visible_uids
         .as_ref()
         .map(|uids| uids.iter().copied().collect());
+    let boxes = Boxes::new(project, options.include_summary);
+    // A series box shows when its summary or any of its occurrences passes the filter.
+    let shown: HashSet<u32> = project
+        .tasks
+        .iter()
+        .filter(|task| allowed.as_ref().is_none_or(|set| set.contains(&task.uid)))
+        .filter_map(|task| boxes.drawn_as(project, task.uid))
+        .collect();
     let tasks: Vec<u32> = project
         .tasks
         .iter()
-        .filter(|task| options.include_summary || !task.summary)
-        .filter(|task| allowed.as_ref().map_or(true, |set| set.contains(&task.uid)))
+        .filter(|task| {
+            boxes.drawn_as(project, task.uid) == Some(task.uid) && shown.contains(&task.uid)
+        })
         .map(|task| task.uid)
         .collect();
     let index: HashMap<u32, usize> = tasks.iter().enumerate().map(|(i, uid)| (*uid, i)).collect();
     let n = tasks.len();
 
-    let deps: Vec<(usize, usize, usize)> = project
-        .dependencies
-        .iter()
-        .enumerate()
-        .filter_map(|(dep_index, dep)| {
-            let from = *index.get(&dep.predecessor_uid)?;
-            let to = *index.get(&dep.successor_uid)?;
-            (from != to).then_some((dep_index, from, to))
-        })
-        .collect();
+    let mut seen = HashSet::new();
+    let mut deps: Vec<(usize, usize, usize)> = Vec::new();
+    for (dep_index, dep) in project.dependencies.iter().enumerate() {
+        let froms = boxes.ends(project, dep.predecessor_uid, Side::Exit, &index);
+        let tos = boxes.ends(project, dep.successor_uid, Side::Entry, &index);
+        for &from in &froms {
+            for &to in &tos {
+                if from != to && seen.insert((from, to)) {
+                    deps.push((dep_index, from, to));
+                }
+            }
+        }
+    }
 
     let depth = depths(n, &deps);
     // Scheduling rejects cycles, so every kept edge points to a deeper column.
@@ -209,8 +229,8 @@ pub fn layout(project: &Project, options: &NetworkOptions) -> NetworkLayout {
             });
             NetworkEdge {
                 uid: dep.uid,
-                from_uid: dep.predecessor_uid,
-                to_uid: dep.successor_uid,
+                from_uid: tasks[*from],
+                to_uid: tasks[*to],
                 kind: dep.kind,
                 lag: dep.lag,
                 points,
@@ -234,6 +254,110 @@ pub fn layout(project: &Project, options: &NetworkOptions) -> NetworkLayout {
         width,
         height,
         crossings,
+    }
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum Side {
+    /// The predecessor end of a link: the tasks that end a group.
+    Exit,
+    /// The successor end of a link: the tasks that start a group.
+    Entry,
+}
+
+/// Which box stands for each task.
+struct Boxes {
+    position: HashMap<u32, usize>,
+    series: HashSet<u32>,
+    include_summary: bool,
+}
+
+impl Boxes {
+    fn new(project: &Project, include_summary: bool) -> Self {
+        Self {
+            position: project
+                .tasks
+                .iter()
+                .enumerate()
+                .map(|(i, task)| (task.uid, i))
+                .collect(),
+            series: project
+                .tasks
+                .iter()
+                .filter(|task| task.recurrence.is_some())
+                .map(|task| task.uid)
+                .collect(),
+            include_summary,
+        }
+    }
+
+    /// The box a task is drawn as: itself, its recurring series, or none for a hidden
+    /// summary.
+    fn drawn_as(&self, project: &Project, uid: u32) -> Option<u32> {
+        self.box_of(project, *self.position.get(&uid)?)
+    }
+
+    /// Box positions a link end is drawn at. A hidden summary gives the boxes inside it
+    /// that end the group (`Exit`) or start it (`Entry`).
+    fn ends(
+        &self,
+        project: &Project,
+        uid: u32,
+        side: Side,
+        index: &HashMap<u32, usize>,
+    ) -> Vec<usize> {
+        let Some(&position) = self.position.get(&uid) else {
+            return Vec::new();
+        };
+        if let Some(drawn) = self.box_of(project, position) {
+            return index.get(&drawn).copied().into_iter().collect();
+        }
+        let level = project.tasks[position].outline_level;
+        let mut inside: Vec<usize> = project.tasks[position + 1..]
+            .iter()
+            .take_while(|child| child.outline_level > level)
+            .enumerate()
+            .filter_map(|(offset, _)| self.box_of(project, position + 1 + offset))
+            .filter_map(|drawn| index.get(&drawn).copied())
+            .collect();
+        let mut once = HashSet::new();
+        inside.retain(|member| once.insert(*member));
+        let members: HashSet<usize> = inside.iter().copied().collect();
+        let linked: Vec<(usize, usize)> = project
+            .dependencies
+            .iter()
+            .filter_map(|dep| {
+                let from = self.box_of(project, *self.position.get(&dep.predecessor_uid)?)?;
+                let to = self.box_of(project, *self.position.get(&dep.successor_uid)?)?;
+                Some((*index.get(&from)?, *index.get(&to)?))
+            })
+            .filter(|(from, to)| from != to && members.contains(from) && members.contains(to))
+            .collect();
+        let ends: Vec<usize> = inside
+            .iter()
+            .copied()
+            .filter(|member| match side {
+                Side::Exit => !linked.iter().any(|(from, _)| from == member),
+                Side::Entry => !linked.iter().any(|(_, to)| to == member),
+            })
+            .collect();
+        if ends.is_empty() {
+            inside
+        } else {
+            ends
+        }
+    }
+
+    /// The box the task at `position` is drawn as.
+    fn box_of(&self, project: &Project, position: usize) -> Option<u32> {
+        let task = &project.tasks[position];
+        if let Some(series) = task.series_uid.filter(|uid| self.series.contains(uid)) {
+            return Some(series);
+        }
+        if task.summary && !self.include_summary && !self.series.contains(&task.uid) {
+            return None;
+        }
+        Some(task.uid)
     }
 }
 
@@ -292,8 +416,8 @@ fn order_layers(
         if best_crossings == 0 {
             break;
         }
-        for layer in 1..layers.len() {
-            sort_by_barycenter(&mut layers[layer], up, &mut position);
+        for layer in layers.iter_mut().skip(1) {
+            sort_by_barycenter(layer, up, &mut position);
         }
         for layer in (0..layers.len().saturating_sub(1)).rev() {
             sort_by_barycenter(&mut layers[layer], down, &mut position);
@@ -441,6 +565,99 @@ mod tests {
         );
         assert!(shown.nodes.iter().any(|node| node.uid == 1));
         assert_eq!(shown.edges.len(), 2);
+    }
+
+    /// Tasks given as (uid, outline level); a task is a summary when the next is deeper.
+    fn outline(tasks: &[(u32, u32)], deps: &[(u32, u32)]) -> Project {
+        let mut p = project(
+            &tasks
+                .iter()
+                .map(|(uid, _)| (*uid, false))
+                .collect::<Vec<_>>(),
+            deps,
+        );
+        for (task, (_, level)) in p.tasks.iter_mut().zip(tasks) {
+            task.outline_level = *level;
+        }
+        for index in 0..p.tasks.len() {
+            let next = p.tasks.get(index + 1).map(|task| task.outline_level);
+            p.tasks[index].summary = next.is_some_and(|level| level > p.tasks[index].outline_level);
+        }
+        p
+    }
+
+    fn links(layout: &NetworkLayout) -> Vec<(u32, u32)> {
+        let mut links: Vec<(u32, u32)> = layout
+            .edges
+            .iter()
+            .map(|e| (e.from_uid, e.to_uid))
+            .collect();
+        links.sort_unstable();
+        links
+    }
+
+    #[test]
+    fn links_of_a_hidden_summary_move_to_the_tasks_inside() {
+        // Group 1 holds 2 -> 3; the group is linked to 4 and from 5.
+        let p = outline(
+            &[(5, 1), (1, 1), (2, 2), (3, 2), (4, 1)],
+            &[(2, 3), (1, 4), (5, 1)],
+        );
+        let hidden = layout(&p, &NetworkOptions::default());
+        assert_eq!(links(&hidden), vec![(2, 3), (3, 4), (5, 2)]);
+        let shown = layout(
+            &p,
+            &NetworkOptions {
+                include_summary: true,
+                visible_uids: None,
+            },
+        );
+        assert_eq!(links(&shown), vec![(1, 4), (2, 3), (5, 1)]);
+    }
+
+    #[test]
+    fn a_recurring_series_is_one_box() {
+        use crate::recurrence::{Recurrence, RecurrenceEnd, RecurrencePattern, RecurrenceSpec};
+        // Series 10 with occurrences 11 and 12; the last meeting leads to task 1.
+        let mut p = outline(&[(1, 1), (10, 1), (11, 2), (12, 2)], &[(12, 1)]);
+        p.tasks[1].recurrence = Some(Recurrence {
+            spec: RecurrenceSpec {
+                name: "Họp".into(),
+                duration: 60,
+                start: 0,
+                pattern: RecurrencePattern::Daily { every: 1 },
+                end: RecurrenceEnd::Count { count: 2 },
+                calendar_id: None,
+                resource_uids: Vec::new(),
+                resources: Vec::new(),
+                background: false,
+            },
+            skipped: Vec::new(),
+        });
+        for task in &mut p.tasks[2..] {
+            task.series_uid = Some(10);
+        }
+        let diagram = layout(&p, &NetworkOptions::default());
+        let mut uids: Vec<u32> = diagram.nodes.iter().map(|node| node.uid).collect();
+        uids.sort_unstable();
+        assert_eq!(uids, vec![1, 10]);
+        assert_eq!(links(&diagram), vec![(10, 1)]);
+        // Filtered to one meeting, the series still shows.
+        let filtered = layout(
+            &p,
+            &NetworkOptions {
+                include_summary: false,
+                visible_uids: Some(vec![11]),
+            },
+        );
+        assert_eq!(
+            filtered
+                .nodes
+                .iter()
+                .map(|node| node.uid)
+                .collect::<Vec<_>>(),
+            vec![10]
+        );
     }
 
     #[test]

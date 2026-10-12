@@ -5,9 +5,10 @@ use crate::recurrence::Recurrence;
 use crate::split::{Segment, Split};
 use crate::timeutil::MINUTES_PER_DAY;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ConstraintType {
+    #[default]
     Asap,
     Alap,
     Snet,
@@ -18,15 +19,10 @@ pub enum ConstraintType {
     Mfo,
 }
 
-impl Default for ConstraintType {
-    fn default() -> Self {
-        Self::Asap
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DepKind {
+    #[default]
     Fs,
     Ss,
     Ff,
@@ -54,32 +50,22 @@ impl DepKind {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TaskType {
+    #[default]
     FixedUnits,
     FixedDuration,
     FixedWork,
 }
 
-impl Default for TaskType {
-    fn default() -> Self {
-        Self::FixedUnits
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Accrual {
     Start,
+    #[default]
     Prorated,
     End,
-}
-
-impl Default for Accrual {
-    fn default() -> Self {
-        Self::Prorated
-    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

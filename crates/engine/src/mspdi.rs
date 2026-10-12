@@ -230,15 +230,17 @@ pub fn read_mspdi(xml: &str) -> Result<Project, EngineError> {
                     parent,
                     &text,
                     &mut project,
-                    calendar.as_mut(),
-                    weekday.as_mut(),
-                    working.as_mut(),
-                    exception.as_mut(),
-                    task.as_mut(),
-                    link.as_mut(),
-                    baseline.as_mut(),
-                    resource.as_mut(),
-                    assignment.as_mut(),
+                    Open {
+                        calendar: calendar.as_mut(),
+                        weekday: weekday.as_mut(),
+                        working: working.as_mut(),
+                        exception: exception.as_mut(),
+                        task: task.as_mut(),
+                        link: link.as_mut(),
+                        baseline: baseline.as_mut(),
+                        resource: resource.as_mut(),
+                        assignment: assignment.as_mut(),
+                    },
                 );
                 match name.as_str() {
                     "WorkingTime" => {
@@ -425,21 +427,31 @@ pub fn read_mspdi(xml: &str) -> Result<Project, EngineError> {
     Ok(project)
 }
 
-fn apply_text(
-    name: &str,
-    parent: Option<&str>,
-    text: &str,
-    project: &mut Project,
-    calendar: Option<&mut CalendarBuilder>,
-    weekday: Option<&mut WeekdayBuilder>,
-    working: Option<&mut TimeRange>,
-    exception: Option<&mut ExceptionBuilder>,
-    task: Option<&mut TaskBuilder>,
-    link: Option<&mut LinkBuilder>,
-    baseline: Option<&mut Baseline>,
-    resource: Option<&mut ResourceBuilder>,
-    assignment: Option<&mut AssignmentBuilder>,
-) {
+/// The elements being read when a text node arrives; at most a few are open at once.
+struct Open<'a> {
+    calendar: Option<&'a mut CalendarBuilder>,
+    weekday: Option<&'a mut WeekdayBuilder>,
+    working: Option<&'a mut TimeRange>,
+    exception: Option<&'a mut ExceptionBuilder>,
+    task: Option<&'a mut TaskBuilder>,
+    link: Option<&'a mut LinkBuilder>,
+    baseline: Option<&'a mut Baseline>,
+    resource: Option<&'a mut ResourceBuilder>,
+    assignment: Option<&'a mut AssignmentBuilder>,
+}
+
+fn apply_text(name: &str, parent: Option<&str>, text: &str, project: &mut Project, open: Open<'_>) {
+    let Open {
+        calendar,
+        weekday,
+        working,
+        exception,
+        task,
+        link,
+        baseline,
+        resource,
+        assignment,
+    } = open;
     let value = text.trim();
     if value.is_empty() {
         return;
@@ -843,7 +855,7 @@ fn write_task(xml: &mut String, project: &Project, task: &Task) {
     el(
         xml,
         "FixedCostAccrual",
-        &match task.fixed_cost_accrual {
+        match task.fixed_cost_accrual {
             Accrual::Start => "1",
             Accrual::Prorated => "2",
             Accrual::End => "3",
@@ -1071,12 +1083,6 @@ struct LinkBuilder {
     predecessor: u32,
     kind: DepKind,
     lag: i64,
-}
-
-impl Default for DepKind {
-    fn default() -> Self {
-        Self::Fs
-    }
 }
 
 #[derive(Default)]
