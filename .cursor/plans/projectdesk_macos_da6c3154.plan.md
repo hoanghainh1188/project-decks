@@ -1,6 +1,6 @@
 ---
 name: ProjectDesk macOS
-overview: "ProjectDesk là ứng dụng desktop Tauri (Rust + React) quản lý dự án theo hướng Microsoft Project. Pha 1–11 đã xong, Pha 12 đang làm (phần 1–2 xong). Sau pha 10 đã thêm: bản cài đa nền tảng (PR #17), test frontend (PR #18), phần còn lại của pha 9–10 (PR #19), sơ đồ mạng (PR #20), tách công việc (PR #21), CLAUDE.md (PR #22) và an toàn dữ liệu (PR #23). Việc tiếp theo là Pha 12–17 ở mục Lộ trình."
+overview: "ProjectDesk là ứng dụng desktop Tauri (Rust + React) quản lý dự án theo hướng Microsoft Project. Pha 1–12 đã xong. Sau pha 10 đã thêm: bản cài đa nền tảng (PR #17), test frontend (PR #18), phần còn lại của pha 9–10 (PR #19), sơ đồ mạng (PR #20), tách công việc (PR #21), CLAUDE.md (PR #22) và an toàn dữ liệu (PR #23). Việc tiếp theo là Pha 13–17 ở mục Lộ trình."
 todos:
   - id: scaffold
     content: Tauri 2 + React + crate engine
@@ -60,8 +60,8 @@ todos:
     content: "Bản v0.1.0: draft release, chưa ký số, macOS chỉ arm64"
     status: in_progress
   - id: file-performance
-    content: "Pha 12: nền tệp và hiệu năng. Phần 1 (hiệu năng, checkpoint, lệnh bất đồng bộ, PR #28) và phần 2 (tệp hỏng, báo đổi ngày khi đổi engine) xong; còn autosave, khôi phục sau crash, gộp lịch sử"
-    status: in_progress
+    content: "Pha 12: nền tệp và hiệu năng (checkpoint, lệnh bất đồng bộ, tệp hỏng, báo đổi ngày, tự lưu, gộp lịch sử; PR #28, #29 và phần 3)"
+    status: completed
   - id: actuals-drive-schedule
     content: "Pha 13: theo dõi tiến độ (ngày thực tế điều khiển lịch, trễ hạn theo MS Project)"
     status: pending
@@ -305,7 +305,7 @@ Mục tiêu: màn hình chính đọc đúng và đủ thông tin mà không ph�
 
 Nghiệm thu: test Vitest cho định dạng thời lượng, nhãn ngày và cột mới; chụp màn hình dự án mẫu trước và sau.
 
-### Pha 12 — nền tệp và hiệu năng (L) — đang làm
+### Pha 12 — nền tệp và hiệu năng (L) — đã xong (PR #28, #29, phần 3)
 
 Mục tiêu: undo, mở tệp và sửa không làm đứng UI ở dự án lớn, và tệp hỏng một phần vẫn mở được.
 
@@ -328,20 +328,27 @@ Chia 3 PR: (1) hiệu năng và checkpoint, (2) tệp hỏng một phần và b�
 
 Còn lại của phần 1: undo sâu hơn khoảng 100 bước ngay sau khi mở tệp dài vẫn phải replay từ `base` một lần (khoảng 14 giây ở 10.000 lệnh); gộp lịch sử ở phần 3 sẽ rút ngắn.
 
-**Phần 2 — đã xong.**
+**Phần 2 — đã xong (PR #29).**
 
 - `store::open` không còn từ chối tệp có lệnh hỏng (JSON hỏng, lệnh lạ của bản mới hơn, hoặc lệnh không áp dụng lại được). Thay vì chế độ chỉ đọc như dự kiến, app mở một **bản sao chưa lưu** (không có đường dẫn, đánh dấu đã sửa) ở trạng thái gần nhất dựng lại được: checkpoint do chính engine này lưu sau chỗ hỏng nếu có (khi đó không có lịch sử hoàn tác), không thì phần log trước chỗ hỏng kèm lịch sử hoàn tác. Tệp gốc giữ nguyên; "Lưu" hỏi chỗ lưu mới. Người dùng sửa tiếp được ngay, không phải đi qua "Lưu thành" trước. Hỏng chỉ ở các lệnh làm lại sau cursor thì mở chính tệp đó (trạng thái đã lưu còn nguyên) và báo các lệnh đó sẽ bị bỏ khi lưu. Cursor hoặc bảng burn-down hỏng vẫn mở được. Chỉ `base` hỏng, bảng log không đọc được hoặc định dạng mới hơn mới là lỗi.
 - Mở tệp mà checkpoint tại cursor do engine khác ghi: replay rồi so với checkpoint đó, báo các task lá đổi ngày bắt đầu hoặc kết thúc (tối đa 10 tên, ngày cũ → mới). Không đổi thì không báo.
 - Cả hai cảnh báo hiện bằng sheet native sau khi mở (`OpenReport::message`, `recovery.rs`). Bỏ lỗi `UnknownCommand`.
 - Vòng lặp `n+2` lượt cho ràng buộc kết thúc của summary: đo ở 1.000 task, 100 summary đều có FNET buộc dời: 107 ms mỗi lần `schedule()` (không ràng buộc: 1,6 ms). Mỗi lần dời một summary chạy lại cả lượt xuôi. Kết quả phụ thuộc thứ tự dời, nên muốn nhanh mà giữ đúng lịch phải tính lại tăng dần (ước chừng nhanh gấp 2 ở trường hợp xấu nhất); đổi thuật toán thì phải tăng `ENGINE_REVISION` và lịch tệp cũ có thể đổi. Chưa làm; dự án thường chỉ có vài ràng buộc như vậy, mỗi cái thêm khoảng 1 ms.
 
+**Phần 3 — đã xong.**
+
+- Tự lưu: cứ 30 giây, nếu dự án có thay đổi mới chưa lưu, một luồng nền ghi vào một ô duy nhất trong thư mục dữ liệu của app (`autosave/autosave.pdproj` và `autosave.json` ghi tên dự án và đường dẫn tệp gốc). Lệch so với dự kiến "tệp ẩn cạnh tệp thật": thư mục cạnh tệp có thể chỉ đọc hoặc nằm trong Dropbox/iCloud, và dự án mới chưa có tệp; app chỉ có một cửa sổ nên một ô là đủ.
+- Lưu, chọn "Không lưu", mở/tạo/nhập dự án khác và thoát bình thường đều xóa ô tự lưu. Crash thì ô còn lại; lần mở app sau hỏi "Khôi phục / Bỏ bản tự lưu". Khôi phục mở dự án như thay đổi chưa lưu của tệp gốc, kèm lịch sử hoàn tác; tệp gốc chưa bị ghi. Mỗi lần chạy app chỉ hỏi một lần; trước khi hỏi, luồng tự lưu không ghi đè bản của lần crash. Bản tự lưu cũ hơn tệp gốc (lưu xong mà xóa ô thất bại) bị bỏ, không hỏi.
+- Gộp lịch sử: menu "Dự án → Gộp lịch sử hoàn tác…" giữ 100 thao tác gần nhất, gộp phần cũ hơn vào `base` (`Document::compact_history`, checkpoint đánh số lại). Có hộp xác nhận; không hoàn tác được. Không tự động gộp.
+- Còn mở: không tự lưu khi lỗi ghi (chỉ ghi stderr, chưa báo trên giao diện).
+
 - Hiện trạng đo được: dự án 600 task, 1.800 lệnh thì mỗi lần Undo mất khoảng 3,7 giây, mở tệp tương tự; thời gian tăng gần bậc hai (100 task 71 ms, 300 task 0,72 giây). `apply_command`, `undo`, `redo` là lệnh Tauri đồng bộ nên chạy trên luồng chính.
 - Checkpoint `Project` trong bộ nhớ (khoảng 32 mốc) và trong tệp (bảng `checkpoint`, mỗi 50 lệnh và tại cursor khi lưu). `base` và log vẫn là nguồn sự thật; checkpoint chỉ là bộ đệm, bỏ qua khi khác phiên bản engine. Xong ở phần 1 (số mốc khác, xem trên).
 - Lệnh Tauri sửa và hoàn tác chạy bất đồng bộ, ngoài luồng chính. Xong ở phần 1.
 - Chỉ mục UID → vị trí; `collect_bounds` không quét toàn bộ phụ thuộc cho mỗi task lá. Xong ở phần 1.
 - Một lệnh lỗi khi replay không làm mất cả tệp: mở ở checkpoint gần nhất, chỉ đọc, kèm cảnh báo. Xong ở phần 2 (bản sao chưa lưu thay cho chỉ đọc).
-- Autosave và khôi phục sau crash vào tệp ẩn cạnh tệp thật.
-- Tùy chọn gộp lịch sử cũ để log không phình mãi.
+- Autosave và khôi phục sau crash vào tệp ẩn cạnh tệp thật. Xong ở phần 3 (thư mục dữ liệu của app).
+- Tùy chọn gộp lịch sử cũ để log không phình mãi. Xong ở phần 3.
 - Engine đổi logic thì tệp cũ có thể âm thầm ra ngày khác: khi mở tệp của phiên bản engine khác, so lịch replay với checkpoint đã lưu và báo người dùng những task đổi ngày. Xong ở phần 2.
 - `schedule()`: bỏ vòng lặp `n+2` lượt cho ràng buộc kết thúc của summary, và không bung liên kết giữa hai summary thành tích chéo các task lá. Phần sau xong ở phần 1; vòng lặp `n+2` còn lại.
 

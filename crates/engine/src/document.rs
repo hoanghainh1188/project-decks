@@ -142,6 +142,21 @@ impl Document {
         Ok(self.snapshot())
     }
 
+    /// Fold all but the last `keep` undo steps into `base`, so the log and the file stop
+    /// growing. Redo steps stay. Returns how many commands were folded. Cannot be undone.
+    pub fn compact_history(&mut self, keep: usize) -> Result<usize, EngineError> {
+        let start = self.cursor.saturating_sub(keep);
+        if start == 0 {
+            return Ok(0);
+        }
+        self.base = self.project_at(start)?;
+        self.commands.drain(..start);
+        self.cursor -= start;
+        self.checkpoints.rebase(start);
+        self.dirty = true;
+        Ok(start)
+    }
+
     /// The scheduled project after the first `applied` commands, replayed from the
     /// nearest checkpoint. States passed on the way are kept for the next undo.
     pub fn project_at(&mut self, applied: usize) -> Result<Project, EngineError> {

@@ -68,6 +68,16 @@ impl Checkpoints {
         self.states.split_off(&(applied + 1));
     }
 
+    /// Renumber after the first `start` commands become the new base: the state at
+    /// `start + n` is now the state at `n`, and earlier ones are gone.
+    pub fn rebase(&mut self, start: usize) {
+        let kept = self.states.split_off(&(start + 1));
+        self.states = kept
+            .into_iter()
+            .map(|(applied, project)| (applied - start, project))
+            .collect();
+    }
+
     /// The latest state at or before `applied`.
     pub fn nearest(&self, applied: usize) -> Option<(usize, &Project)> {
         self.states
@@ -134,6 +144,16 @@ mod tests {
             checkpoints.iter().map(|(key, _)| key).collect::<Vec<_>>(),
             vec![25, 50]
         );
+    }
+
+    #[test]
+    fn rebase_renumbers_the_states_after_the_new_base() {
+        let mut checkpoints = Checkpoints::default();
+        for applied in [25, 50, 75] {
+            checkpoints.insert(applied, project("p"));
+        }
+        checkpoints.rebase(50);
+        assert_eq!(checkpoints.iter().map(|(key, _)| key).collect::<Vec<_>>(), vec![25]);
     }
 
     #[test]

@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   applyCommand,
+  checkAutosave,
+  compactHistory,
   errorMessage,
   inTauri,
   loadMetrics,
@@ -97,6 +99,25 @@ describe("call order", () => {
     expect(fakeBackend.calls.map((call) => call.cmd).slice(-2)).toEqual(["open_project", "apply_command"]);
     dialog();
     await open;
+  });
+});
+
+describe("autosave and history", () => {
+  it("returns null when there is no autosave to restore", async () => {
+    await expect(checkAutosave()).resolves.toBeNull();
+    expect(fakeBackend.calls.map((call) => call.cmd)).toEqual(["check_autosave"]);
+  });
+
+  it("returns the restored snapshot when the user takes the autosave back", async () => {
+    fakeBackend.autosave = makeSnapshot(makeProject({ name: "Khôi phục" }));
+    const restored = await checkAutosave();
+    expect(restored?.project.name).toBe("Khôi phục");
+  });
+
+  it("compacts history through the backend and returns the next snapshot", async () => {
+    const next = await compactHistory();
+    expect(fakeBackend.calls.map((call) => call.cmd)).toEqual(["compact_history"]);
+    expect(next.project).toBeDefined();
   });
 });
 
