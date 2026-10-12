@@ -1,11 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { setCurrentLang } from "./i18n";
 import {
   barBox,
   barColor,
   buildTimescale,
   dayLabel,
   dayLabelParts,
+  groupLabel,
   holidayKeys,
   resourceLabelX,
   isWeekend,
@@ -131,5 +133,31 @@ describe("resourceLabelX", () => {
 
   it("keeps it on the right when it fits neither side", () => {
     expect(resourceLabelX(10, 990, 40, 1000)).toBe(996);
+  });
+});
+
+describe("timescale labels in English", () => {
+  const days = Array.from({ length: 70 }, (_, index) => at(2026, 1, 25) + index * DAY_MS);
+
+  beforeEach(() => setCurrentLang("en"));
+  afterEach(() => setCurrentLang("vi"));
+
+  it("names month bands in full on the day scale, with the same day counts", () => {
+    const bands = timescaleBands(days, pixelsPerDay("day"));
+    expect(bands.map((band) => band.label)).toEqual(["January 2026", "February 2026", "March 2026", "April 2026"]);
+    expect(bands[0].count).toBe(7);
+  });
+
+  it("names weeks on the week scale and short months on the month scale", () => {
+    expect(groupLabel(at(2026, 9, 14), pixelsPerDay("week"))).toMatch(/^Week \d+$/);
+    expect(groupLabel(at(2026, 9, 14), pixelsPerDay("month"))).toBe("Sep 2026");
+  });
+
+  it("uses three-letter weekdays where Vietnamese shows T2 to CN", () => {
+    const monday = at(2026, 1, 5);
+    const sunday = at(2026, 1, 11);
+    expect(dayLabel(monday, 28)).toBe("Mon 5");
+    expect(dayLabelParts(sunday, 20)).toEqual({ weekday: "Sun", date: "11" });
+    expect(dayLabelParts(monday, 14)).toEqual({ weekday: "", date: "5" });
   });
 });

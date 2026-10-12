@@ -1,4 +1,6 @@
+import { pick } from "./i18n";
 import type { Assignment, Project, Resource, Task } from "./types";
+import { viewRowsMessages } from "./viewRows.i18n";
 
 export type FilterMode = "none" | "critical" | "resource" | "late";
 export type GroupMode = "none" | "resource" | "summary";
@@ -22,7 +24,8 @@ export type ViewRow = TaskViewRow | GroupViewRow;
 /**
  * Filter hides non-matching rows but keeps a summary when any descendant matches.
  * Highlight only tints rows that remain visible. Group then reorders those rows.
- * None of this rewrites WBS codes or the saved task order.
+ * None of this rewrites WBS codes or the saved task order. Group headers it names itself
+ * are in the current interface language.
  */
 export function buildViewRows(
   project: Project,
@@ -104,14 +107,14 @@ function groupByResource(project: Project, tasks: Task[], highlight: HighlightMo
     rows.push({
       kind: "group",
       key: `group-${resource.uid}`,
-      label: resource.name.trim() || `NL ${resource.uid}`,
+      label: resource.name.trim() || pick(viewRowsMessages).resourceFallback(resource.uid),
     });
     for (const task of list) {
       rows.push(taskRow(`group-${resource.uid}-task-${task.uid}`, task, highlight));
     }
   }
   if (unassigned.length > 0) {
-    rows.push({ kind: "group", key: "group-unassigned", label: "Chưa gán" });
+    rows.push({ kind: "group", key: "group-unassigned", label: pick(viewRowsMessages).unassigned });
     for (const task of unassigned) {
       rows.push(taskRow(`group-unassigned-task-${task.uid}`, task, highlight));
     }
@@ -148,7 +151,7 @@ function groupBySummary(project: Project, tasks: Task[], highlight: HighlightMod
     }
   }
   if (orphans.length > 0) {
-    rows.push({ kind: "group", key: "group-no-summary", label: "Không có summary" });
+    rows.push({ kind: "group", key: "group-no-summary", label: pick(viewRowsMessages).noSummary });
     for (const task of orphans) {
       rows.push(taskRow(`group-no-summary-task-${task.uid}`, task, highlight));
     }
@@ -168,7 +171,7 @@ function nearestSummary(task: Task, byUid: Map<number, Task>): Task | null {
 }
 
 function summaryLabel(summary: Task): string {
-  const name = summary.name.trim() || `Task ${summary.uid}`;
+  const name = summary.name.trim() || pick(viewRowsMessages).taskFallback(summary.uid);
   return summary.wbs ? `${summary.wbs} ${name}` : name;
 }
 

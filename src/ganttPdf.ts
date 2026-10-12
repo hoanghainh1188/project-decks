@@ -2,6 +2,7 @@ import { jsPDF } from "jspdf";
 
 import fontDataUrl from "./fonts/BeVietnamPro-Regular.ttf?inline";
 import { formatInstant } from "./format";
+import { pdfMessages } from "./ganttPdf.i18n";
 import {
   HEAD,
   ROW,
@@ -18,6 +19,7 @@ import {
   progressWidths,
   splitPieces,
 } from "./ganttLayout";
+import { pick } from "./i18n";
 import type { Project, Scale, Segment, Task } from "./types";
 import type { ViewRow } from "./viewRows";
 
@@ -63,7 +65,7 @@ export function embeddedFont(): string {
 /** Suggested save-dialog name: the project name plus ".pdf". */
 export function pdfSuggestedName(projectName: string): string {
   const trimmed = projectName.trim();
-  const base = trimmed.length > 0 ? trimmed : "Dự án";
+  const base = trimmed.length > 0 ? trimmed : pick(pdfMessages).untitled;
   const safe = base.replace(/[\\/:*?"<>|]/g, "-");
   return safe.toLowerCase().endsWith(".pdf") ? safe : `${safe}.pdf`;
 }
@@ -79,7 +81,7 @@ export function renderGanttPdf(input: GanttPdfInput, fontData: string): Uint8Arr
   doc.addFileToVFS("BeVietnamPro-Regular.ttf", fontData);
   doc.addFont("BeVietnamPro-Regular.ttf", FONT, "normal");
   doc.setFont(FONT, "normal");
-  const title = input.project.name.trim() || "Dự án";
+  const title = input.project.name.trim() || pick(pdfMessages).untitled;
   doc.setProperties({ title, creator: "ProjectDesk" });
 
   const timescale = buildTimescale(input.project);
@@ -186,7 +188,7 @@ function drawPage(doc: jsPDF, input: GanttPdfInput, geom: PageGeom) {
 
   doc.setFontSize(8);
   setText(doc, "#6d6d72");
-  doc.text(`Trang ${geom.pageNumber}/${geom.pageCount}`, PAGE_W - MARGIN_X, PAGE_H - MARGIN_BOTTOM + 1.5, {
+  doc.text(pick(pdfMessages).page(geom.pageNumber, geom.pageCount), PAGE_W - MARGIN_X, PAGE_H - MARGIN_BOTTOM + 1.5, {
     align: "right",
     baseline: "middle",
   });
@@ -198,9 +200,10 @@ function paintSheetHeader(doc: jsPDF, geom: PageGeom) {
   doc.setFontSize(8);
   setText(doc, "#1d1d1f");
   const mid = geom.headerTop + geom.headMm / 2;
-  doc.text("Tên", MARGIN_X + 1.6, mid, { baseline: "middle" });
-  doc.text("Bắt đầu", MARGIN_X + NAME_W + 1.2, mid, { baseline: "middle" });
-  doc.text("Kết thúc", MARGIN_X + NAME_W + DATE_W + 1.2, mid, { baseline: "middle" });
+  const m = pick(pdfMessages);
+  doc.text(m.name, MARGIN_X + 1.6, mid, { baseline: "middle" });
+  doc.text(m.start, MARGIN_X + NAME_W + 1.2, mid, { baseline: "middle" });
+  doc.text(m.finish, MARGIN_X + NAME_W + DATE_W + 1.2, mid, { baseline: "middle" });
   setDraw(doc, "#d5d5da");
   doc.setLineWidth(0.15);
   doc.line(MARGIN_X + NAME_W, geom.headerTop, MARGIN_X + NAME_W, geom.headerTop + geom.headMm);

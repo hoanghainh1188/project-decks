@@ -21,9 +21,11 @@ import {
   type Timescale,
 } from "../ganttLayout";
 import { ganttKeyAction } from "../ganttKeys";
+import { useLang, useMessages } from "../i18n";
 import { UI_FONT_FAMILY } from "../uiFont";
 import type { Project, Scale, Segment, Task } from "../types";
 import type { ViewRow } from "../viewRows";
+import { ganttChartMessages } from "./GanttChart.i18n";
 
 interface DragState {
   kind: "move" | "resize" | "link";
@@ -73,7 +75,10 @@ export function GanttChart({
   const [drag, setDrag] = useState<DragState | null>(null);
   const px = pixelsPerDay(scale);
   const model = useMemo(() => buildTimescale(project), [project]);
-  const bands = useMemo(() => timescaleBands(model.days, px), [model.days, px]);
+  const m = useMessages(ganttChartMessages);
+  // Band labels are in the interface language, so they are rebuilt when it changes.
+  const lang = useLang();
+  const bands = useMemo(() => timescaleBands(model.days, px), [model.days, px, lang]);
   const timelineWidth = model.days.length * px;
   const names = useMemo(
     () => resourceNamesByTask(project.assignments, project.resources),
@@ -157,7 +162,7 @@ export function GanttChart({
         ref={bodyRef}
         tabIndex={0}
         role="group"
-        aria-label="Biểu đồ Gantt. Mũi tên lên, xuống chọn công việc; Alt và mũi tên trái, phải dời một ngày làm việc; thêm Shift để dời ngày kết thúc; Enter để sửa."
+        aria-label={m.chart}
         onKeyDown={(event) => {
           // A held key would send the same edit again before the new dates arrive.
           if (event.repeat && event.altKey) return;

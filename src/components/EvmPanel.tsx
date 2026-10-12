@@ -2,8 +2,10 @@ import { CalendarClock, Flag, Maximize2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { formatDateOnly, formatMoney } from "../format";
+import { getLang, pick, useMessages } from "../i18n";
 import type { BurndownReport, EvmMetrics, ProjectMetrics, SCurveReport } from "../types";
 import { Button } from "./Button";
+import { evmMessages } from "./EvmPanel.i18n";
 import { Modal } from "./Modal";
 
 interface EvmPanelProps {
@@ -15,32 +17,49 @@ interface EvmPanelProps {
 
 type MetricKey = keyof EvmMetrics;
 
-const ROWS: { key: MetricKey; label: string; kind: "money" | "variance" | "index" }[] = [
-  { key: "pv", label: "Giá trị kế hoạch (PV, BCWS)", kind: "money" },
-  { key: "ev", label: "Giá trị đạt được (EV, BCWP)", kind: "money" },
-  { key: "ac", label: "Chi phí thực tế (AC, ACWP)", kind: "money" },
-  { key: "sv", label: "Chênh lệch tiến độ (SV)", kind: "variance" },
-  { key: "cv", label: "Chênh lệch chi phí (CV)", kind: "variance" },
-  { key: "spi", label: "Chỉ số tiến độ (SPI)", kind: "index" },
-  { key: "cpi", label: "Chỉ số chi phí (CPI)", kind: "index" },
-  { key: "bac", label: "Ngân sách khi hoàn thành (BAC)", kind: "money" },
-  { key: "eac", label: "Ước tính khi hoàn thành (EAC)", kind: "money" },
-  { key: "etc", label: "Ước tính phần còn lại (ETC)", kind: "money" },
-  { key: "vac", label: "Chênh lệch khi hoàn thành (VAC)", kind: "variance" },
+// Each metric's label is the message with the same key in evmMessages.
+const ROWS: { key: MetricKey; kind: "money" | "variance" | "index" }[] = [
+  { key: "pv", kind: "money" },
+  { key: "ev", kind: "money" },
+  { key: "ac", kind: "money" },
+  { key: "sv", kind: "variance" },
+  { key: "cv", kind: "variance" },
+  { key: "spi", kind: "index" },
+  { key: "cpi", kind: "index" },
+  { key: "bac", kind: "money" },
+  { key: "eac", kind: "money" },
+  { key: "etc", kind: "money" },
+  { key: "vac", kind: "variance" },
 ];
 
-const UNDEFINED_HINT = "Không xác định: mẫu số không lớn hơn 0";
-
-function formatIndex(value: number): string {
-  return new Intl.NumberFormat("vi-VN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
+/** Number locale of the interface language: "1,25" in Vietnamese, "1.25" in English. */
+function numberLocale(): string {
+  return getLang() === "en" ? "en-US" : "vi-VN";
 }
 
-function formatWorkHours(minutes: number): string {
-  const hours = new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 1 }).format(minutes / 60);
-  return `${hours} giờ`;
+function formatIndex(value: number): string {
+  return new Intl.NumberFormat(numberLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value);
+}
+
+/** Work in hours: "12,5 giờ" in Vietnamese, "12.5 hrs" in English. */
+export function formatWorkHours(minutes: number): string {
+  const hours = new Intl.NumberFormat(numberLocale(), { maximumFractionDigits: 1 }).format(minutes / 60);
+  return pick(evmMessages).hours(hours);
+}
+
+/** A chart axis date: "05/01" in Vietnamese, "Jan 5" in English. */
+export function formatTickDate(ms: number): string {
+  const date = new Date(ms);
+  return pick(evmMessages).tickDate(date.getUTCDate(), date.getUTCMonth() + 1);
+}
+
+/** Axis money: "8,4 Tr" in Vietnamese, "8.4M" or "120K" in English. */
+export function formatCompactMoney(value: number): string {
+  return new Intl.NumberFormat(numberLocale(), { notation: "compact", maximumFractionDigits: 1 }).format(value);
 }
 
 export function EvmPanel({ metrics, onOpenProjectInfo, onOpenBaseline, onClose }: EvmPanelProps) {
+  const m = useMessages(evmMessages);
   const evm = metrics?.evm;
   const [large, setLarge] = useState(false);
   // A dialog hidden because metrics went away must not come back on its own.
@@ -48,41 +67,41 @@ export function EvmPanel({ metrics, onOpenProjectInfo, onOpenBaseline, onClose }
     if (!metrics) setLarge(false);
   }, [metrics]);
   return (
-    <aside className="evm-panel" aria-label="Chỉ số EVM và burn-down">
+    <aside className="evm-panel" aria-label={m.panel}>
       <div className="evm-head">
-        <strong>Chỉ số EVM</strong>
+        <strong>{m.heading}</strong>
         <span className="evm-head-actions">
           <Button
             Icon={Maximize2}
             disabled={!metrics}
             aria-haspopup="dialog"
-            title="Xem burn-down và đường cong S cỡ lớn"
+            title={m.enlargeTitle}
             onClick={() => setLarge(true)}
           >
-            Phóng to
+            {m.enlarge}
           </Button>
-          <Button Icon={X} onClick={onClose} aria-label="Đóng bảng EVM">Đóng</Button>
+          <Button Icon={X} onClick={onClose} aria-label={m.closePanel}>{m.close}</Button>
         </span>
       </div>
       {large && metrics && (
         <ChartsDialog metrics={metrics} onClose={() => setLarge(false)} />
       )}
-      {!metrics && <p className="evm-note">Đang tải số liệu…</p>}
+      {!metrics && <p className="evm-note">{m.loading}</p>}
       {evm && (
         <>
           <p className="evm-note">
-            {evm.status_date != null ? `Tính đến ngày trạng thái ${formatDateOnly(evm.status_date)}.` : ""}
+            {evm.status_date != null ? m.asOf(formatDateOnly(evm.status_date)) : ""}
           </p>
           {!evm.has_baseline && (
             <div className="evm-empty">
-              Chưa có đường cơ sở 0, nên chưa tính được EVM và đường lý tưởng.
-              <Button Icon={Flag} onClick={onOpenBaseline}>Đặt đường cơ sở…</Button>
+              {m.noBaseline}
+              <Button Icon={Flag} onClick={onOpenBaseline}>{m.setBaseline}</Button>
             </div>
           )}
           {evm.status_date == null && (
             <div className="evm-empty">
-              Chưa có ngày trạng thái, nên chưa tính được giá trị kế hoạch.
-              <Button Icon={CalendarClock} onClick={onOpenProjectInfo}>Đặt ngày trạng thái…</Button>
+              {m.noStatusDate}
+              <Button Icon={CalendarClock} onClick={onOpenProjectInfo}>{m.setStatusDate}</Button>
             </div>
           )}
           {evm.metrics && <MetricTable metrics={evm.metrics} />}
@@ -96,10 +115,11 @@ export function EvmPanel({ metrics, onOpenProjectInfo, onOpenBaseline, onClose }
 
 /** Burn-down and S-curve at a readable size, over the window. */
 function ChartsDialog({ metrics, onClose }: { metrics: ProjectMetrics; onClose: () => void }) {
+  const m = useMessages(evmMessages);
   const status = metrics.evm.status_date;
   return (
-    <Modal title="Burn-down và đường cong S" className="charts-dialog" onClose={onClose}>
-      {status != null && <p className="evm-note">Tính đến ngày trạng thái {formatDateOnly(status)}.</p>}
+    <Modal title={m.chartsDialog} className="charts-dialog" onClose={onClose}>
+      {status != null && <p className="evm-note">{m.asOf(formatDateOnly(status))}</p>}
       <BurndownSection report={metrics.burndown} box={LARGE_CHART} />
       <SCurveSection report={metrics.s_curve} box={LARGE_CHART} />
     </Modal>
@@ -107,6 +127,7 @@ function ChartsDialog({ metrics, onClose }: { metrics: ProjectMetrics; onClose: 
 }
 
 function MetricTable({ metrics }: { metrics: EvmMetrics }) {
+  const m = useMessages(evmMessages);
   return (
     <table className="evm-table">
       <tbody>
@@ -115,8 +136,8 @@ function MetricTable({ metrics }: { metrics: EvmMetrics }) {
           const negative = row.kind === "variance" ? value != null && value < 0 : row.kind === "index" && value != null && value < 1;
           return (
             <tr key={row.key}>
-              <th scope="row">{row.label}</th>
-              <td className={negative ? "bad" : undefined} title={value == null ? UNDEFINED_HINT : undefined}>
+              <th scope="row">{m[row.key]}</th>
+              <td className={negative ? "bad" : undefined} title={value == null ? m.undefinedHint : undefined}>
                 {value == null ? "—" : row.kind === "index" ? formatIndex(value) : formatMoney(value)}
               </td>
             </tr>
@@ -142,30 +163,28 @@ const CHART: ChartBox = { width: 280, height: 180, left: 44, right: 10, top: 10,
 const LARGE_CHART: ChartBox = { width: 880, height: 340, left: 56, right: 16, top: 14, bottom: 30 };
 
 function BurndownSection({ report, box }: { report: BurndownReport; box?: ChartBox }) {
+  const m = useMessages(evmMessages);
   const hasIdeal = report.ideal.length >= 2;
   const hasActual = report.actual.length > 0;
   return (
     <section className="burndown">
-      <strong>Burn-down</strong>
+      <strong>{m.burndown}</strong>
       <p className="evm-note">
-        Việc còn lại hiện tại: {formatWorkHours(report.current_remaining_work)}
-        {hasIdeal ? ` · Công việc baseline: ${formatWorkHours(report.baseline_work)}` : ""}
+        {m.remainingNow(formatWorkHours(report.current_remaining_work))}
+        {hasIdeal ? m.baselineWork(formatWorkHours(report.baseline_work)) : ""}
       </p>
       {!hasIdeal && !hasActual ? (
-        <div className="evm-empty">
-          Chưa có dữ liệu. Đặt đường cơ sở 0 để có đường lý tưởng; đường thực tế thêm một điểm mỗi lần lưu tệp hoặc đổi ngày trạng thái.
-        </div>
+        <div className="evm-empty">{m.burndownEmpty}</div>
       ) : (
         <BurndownChart report={report} box={box} />
       )}
-      {hasIdeal && !hasActual && (
-        <p className="evm-note">Chưa có điểm thực tế. Lưu tệp hoặc đổi ngày trạng thái để ghi điểm đầu tiên.</p>
-      )}
+      {hasIdeal && !hasActual && <p className="evm-note">{m.noActualPoints}</p>}
     </section>
   );
 }
 
 function BurndownChart({ report, box = CHART }: { report: BurndownReport; box?: ChartBox }) {
+  const m = useMessages(evmMessages);
   const dates = [
     ...report.ideal.map((point) => point.date),
     ...report.actual.map((point) => point.date),
@@ -193,7 +212,7 @@ function BurndownChart({ report, box = CHART }: { report: BurndownReport; box?: 
         height={box.height}
         viewBox={`0 0 ${box.width} ${box.height}`}
         role="img"
-        aria-label="Biểu đồ burn-down: việc còn lại theo ngày"
+        aria-label={m.burndownChart}
       >
         <rect x={box.left} y={box.top} width={plotW} height={plotH} fill="#fafafa" stroke="#e4e4e8" />
         {yTicks.map((tick) => (
@@ -213,10 +232,10 @@ function BurndownChart({ report, box = CHART }: { report: BurndownReport; box?: 
             fontSize="10"
             fill="#6e6e73"
           >
-            {formatDateOnly(tick).slice(0, 5)}
+            {formatTickDate(tick)}
           </text>
         ))}
-        <text x={4} y={box.top + 8} fontSize="10" fill="#6e6e73">giờ</text>
+        <text x={4} y={box.top + 8} fontSize="10" fill="#6e6e73">{m.hoursAxis}</text>
         {report.status_date != null && (
           <line
             x1={x(report.status_date)}
@@ -238,41 +257,36 @@ function BurndownChart({ report, box = CHART }: { report: BurndownReport; box?: 
             <path d={path(report.actual)} fill="none" stroke="#0a84ff" strokeWidth={2} />
             {report.actual.map((point) => (
               <circle key={point.date} cx={x(point.date)} cy={y(point.remaining_work)} r={3} fill="#0a84ff">
-                <title>{`${formatDateOnly(point.date)}: còn ${formatWorkHours(point.remaining_work)}`}</title>
+                <title>{m.remainingAt(formatDateOnly(point.date), formatWorkHours(point.remaining_work))}</title>
               </circle>
             ))}
           </>
         )}
       </svg>
       <figcaption className="burndown-legend">
-        <span><i className="swatch ideal" /> Lý tưởng (baseline 0)</span>
+        <span><i className="swatch ideal" /> {m.ideal}</span>
         {report.planned.length >= 2 && (
-          <span title="Việc baseline 0 còn lại theo giờ làm việc; đi ngang ở ngày nghỉ và khoảng ngắt của công việc tách">
-            <i className="swatch planned" /> Kế hoạch theo lịch
+          <span title={m.plannedTitle}>
+            <i className="swatch planned" /> {m.planned}
           </span>
         )}
-        <span><i className="swatch actual" /> Thực tế</span>
-        {report.status_date != null && <span><i className="swatch status" /> Ngày trạng thái</span>}
+        <span><i className="swatch actual" /> {m.actual}</span>
+        {report.status_date != null && <span><i className="swatch status" /> {m.statusDate}</span>}
       </figcaption>
     </figure>
   );
 }
 
-function formatCompactMoney(value: number): string {
-  return new Intl.NumberFormat("vi-VN", { notation: "compact", maximumFractionDigits: 1 }).format(value);
-}
-
 function SCurveSection({ report, box }: { report: SCurveReport; box?: ChartBox }) {
+  const m = useMessages(evmMessages);
   return (
     <section className="burndown">
-      <strong>Đường cong S</strong>
+      <strong>{m.sCurve}</strong>
       {report.points.length < 2 ? (
-        <div className="evm-empty">Cần đường cơ sở 0 để vẽ đường cong S.</div>
+        <div className="evm-empty">{m.sCurveEmpty}</div>
       ) : (
         <>
-          <p className="evm-note">
-            Giá trị cộng dồn theo {report.step === "day" ? "ngày" : "tuần"}. EV và AC tính đến ngày trạng thái.
-          </p>
+          <p className="evm-note">{m.sCurveNote(report.step !== "day")}</p>
           <SCurveChart report={report} box={box} />
         </>
       )}
@@ -282,13 +296,15 @@ function SCurveSection({ report, box }: { report: SCurveReport; box?: ChartBox }
 
 type CurveKey = "pv" | "ev" | "ac";
 
-const CURVES: { key: CurveKey; label: string; color: string; dash?: string }[] = [
-  { key: "pv", label: "PV (kế hoạch)", color: "#8e8e93", dash: "5 4" },
-  { key: "ev", label: "EV (đạt được)", color: "#34a853" },
-  { key: "ac", label: "AC (thực tế)", color: "#e8890c" },
+// Each curve's legend is the message named by `label` in evmMessages.
+const CURVES: { key: CurveKey; label: "curvePv" | "curveEv" | "curveAc"; color: string; dash?: string }[] = [
+  { key: "pv", label: "curvePv", color: "#8e8e93", dash: "5 4" },
+  { key: "ev", label: "curveEv", color: "#34a853" },
+  { key: "ac", label: "curveAc", color: "#e8890c" },
 ];
 
 function SCurveChart({ report, box = CHART }: { report: SCurveReport; box?: ChartBox }) {
+  const m = useMessages(evmMessages);
   const points = report.points;
   const minX = points[0].date;
   const maxX = Math.max(points[points.length - 1].date, minX + 24 * 60 * 60 * 1000);
@@ -314,7 +330,7 @@ function SCurveChart({ report, box = CHART }: { report: SCurveReport; box?: Char
         height={box.height}
         viewBox={`0 0 ${box.width} ${box.height}`}
         role="img"
-        aria-label="Đường cong S: PV, EV và AC cộng dồn theo thời gian"
+        aria-label={m.sCurveChart}
       >
         <rect x={box.left} y={box.top} width={plotW} height={plotH} fill="#fafafa" stroke="#e4e4e8" />
         {yTicks.map((tick) => (
@@ -334,7 +350,7 @@ function SCurveChart({ report, box = CHART }: { report: SCurveReport; box?: Char
             fontSize="10"
             fill="#6e6e73"
           >
-            {formatDateOnly(tick).slice(0, 5)}
+            {formatTickDate(tick)}
           </text>
         ))}
         {report.status_date != null && (
@@ -381,9 +397,9 @@ function SCurveChart({ report, box = CHART }: { report: SCurveReport; box?: Char
       </svg>
       <figcaption className="burndown-legend">
         {CURVES.map((curve) => (
-          <span key={curve.key}><i className={`swatch ${curve.key}`} /> {curve.label}</span>
+          <span key={curve.key}><i className={`swatch ${curve.key}`} /> {m[curve.label]}</span>
         ))}
-        {report.status_date != null && <span><i className="swatch status" /> Ngày trạng thái</span>}
+        {report.status_date != null && <span><i className="swatch status" /> {m.statusDate}</span>}
       </figcaption>
     </figure>
   );
