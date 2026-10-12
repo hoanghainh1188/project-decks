@@ -1,8 +1,9 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { makeAssignment, makeProject, makeResource, makeTask } from "../../test/fixtures";
+import { I18nProvider, setCurrentLang } from "../../i18n";
+import { at, makeAssignment, makeProject, makeResource, makeTask } from "../../test/fixtures";
 import type { Project, Task } from "../../types";
 import { Inspector } from "./Inspector";
 
@@ -100,5 +101,108 @@ describe("Inspector", () => {
       constraint_type: "snet",
       date: leaf.constraint_date,
     });
+  });
+});
+
+describe("Inspector in English", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+  afterEach(() => setCurrentLang("vi"));
+
+  function renderEnglish(task: Task, project: Project = makeProject({ tasks: [task] })) {
+    const send = vi.fn();
+    render(
+      <I18nProvider lang="en">
+        <Inspector
+          project={project}
+          task={task}
+          send={send}
+          onEditSeries={vi.fn()}
+          onSplit={vi.fn()}
+          onEditCalendar={vi.fn()}
+          onCreateCalendar={vi.fn()}
+        />
+      </I18nProvider>,
+    );
+    return { send };
+  }
+
+  it("groups and labels the fields in English", () => {
+    renderEnglish(leaf);
+    expect(screen.getByRole("region", { name: "Task information" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Task details" })).toHaveAttribute("title", "Collapse");
+    for (const name of ["Schedule", "Tracking", "Cost", "Resources", "Notes"]) {
+      expect(screen.getByRole("group", { name })).toBeInTheDocument();
+    }
+    for (const label of ["Actual start", "Actual finish", "Work", "Remaining work", "Overtime work", "Deadline", "Priority"]) {
+      expect(screen.getByLabelText(label)).toBeInTheDocument();
+    }
+    expect(screen.getByText("Manually scheduled")).toBeInTheDocument();
+    expect(screen.getByText("Effort driven")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "New task calendar" })).toBeInTheDocument();
+  });
+
+  it("uses Project's names for constraints, task types and accrual", () => {
+    renderEnglish(leaf);
+    const constraint = within(screen.getByLabelText("Constraint"));
+    for (const name of [
+      "As Soon As Possible",
+      "As Late As Possible",
+      "Start No Earlier Than",
+      "Start No Later Than",
+      "Finish No Earlier Than",
+      "Finish No Later Than",
+      "Must Start On",
+      "Must Finish On",
+    ]) {
+      expect(constraint.getByRole("option", { name })).toBeInTheDocument();
+    }
+    const taskType = within(screen.getByLabelText("Task type"));
+    for (const name of ["Fixed Units", "Fixed Duration", "Fixed Work"]) {
+      expect(taskType.getByRole("option", { name })).toBeInTheDocument();
+    }
+    const accrual = within(screen.getByLabelText("Accrue at"));
+    for (const name of ["Start", "Prorated", "End"]) {
+      expect(accrual.getByRole("option", { name })).toBeInTheDocument();
+    }
+    expect(within(screen.getByLabelText("Task calendar")).getByRole("option", { name: "Project calendar" })).toBeInTheDocument();
+  });
+
+  it("writes the header facts in English", () => {
+    renderEnglish({ ...summary, late: true, name: "" });
+    expect(screen.getByRole("heading", { name: "(Untitled)" })).toBeInTheDocument();
+    expect(screen.getByText(/ID 1 · WBS 2 · Summary task/)).toBeInTheDocument();
+    expect(screen.getByText(/^Cost .* · Actual .* · Late$/)).toBeInTheDocument();
+  });
+
+  it("edits assignments and splits in English", () => {
+    const split = {
+      ...leaf,
+      splits: [{ offset: 480, gap: 480 }],
+      segments: [
+        { start: at(2026, 1, 5, 8), finish: at(2026, 1, 5, 17) },
+        { start: at(2026, 1, 7, 8), finish: at(2026, 1, 7, 17) },
+      ],
+    };
+    const project = makeProject({
+      tasks: [split],
+      resources: [makeResource({ uid: 10, name: "An" })],
+      assignments: [makeAssignment({ uid: 1, task_uid: 2, resource_uid: 10 })],
+    });
+    renderEnglish(split, project);
+    const resources = within(screen.getByRole("group", { name: "Resources" }));
+    expect(resources.getByText("Assign resources")).toBeInTheDocument();
+    expect(resources.getByLabelText("Units for An")).toBeInTheDocument();
+    expect(resources.getByLabelText("Units to assign")).toBeInTheDocument();
+    expect(resources.getByRole("button", { name: "Remove" })).toBeInTheDocument();
+    expect(resources.getByRole("option", { name: "Choose…" })).toBeInTheDocument();
+    expect(screen.getByText("Split task")).toBeInTheDocument();
+    expect(screen.getByText("Part 1: 2026-01-05 08:00 – 2026-01-05 17:00")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Join with part 2" })).toHaveAttribute(
+      "title",
+      "Gap of 1 day of working time",
+    );
+    expect(screen.getByRole("button", { name: "Join all parts" })).toBeInTheDocument();
   });
 });

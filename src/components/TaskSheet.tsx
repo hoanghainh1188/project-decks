@@ -2,9 +2,11 @@ import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 
 import { DateTimeField } from "./DateTimeField";
 import { formatDuration, formatInstant, parseDuration } from "../format";
+import { useMessages } from "../i18n";
 import { resourceNamesByTask } from "../resourceNames";
 import type { Assignment, Calendar, Resource, Task } from "../types";
 import type { ViewRow } from "../viewRows";
+import { taskSheetMessages } from "./TaskSheet.i18n";
 
 const ROW = 28;
 /** Keep in sync with .sheet-head / .sheet-row column-gap and horizontal padding. */
@@ -12,37 +14,39 @@ const COLUMN_GAP = 4;
 const COLUMN_PAD = 12;
 const NAME_WIDTH = 200;
 
+type SheetMessages = (typeof taskSheetMessages)["vi"];
+
 interface SheetColumn {
   label: string;
   width: number;
 }
 
-function sheetColumns(tracking: boolean, nameWidth: number): SheetColumn[] {
+function sheetColumns(m: SheetMessages, tracking: boolean, nameWidth: number): SheetColumn[] {
   return [
-    { label: "ID", width: 42 },
-    { label: "WBS", width: 72 },
-    { label: "Tên", width: nameWidth },
-    { label: "Thời lượng", width: 100 },
+    { label: m.id, width: 42 },
+    { label: m.wbs, width: 72 },
+    { label: m.name, width: nameWidth },
+    { label: m.duration, width: 100 },
     ...(tracking
       ? [
-          { label: "%", width: 52 },
-          { label: "Còn lại", width: 84 },
+          { label: m.percent, width: 52 },
+          { label: m.remaining, width: 84 },
         ]
       : []),
-    { label: "Bắt đầu", width: 168 },
-    { label: "Kết thúc", width: 168 },
+    { label: m.start, width: 168 },
+    { label: m.finish, width: 168 },
     ...(tracking
       ? [
-          { label: "Bắt đầu thực", width: 168 },
-          { label: "Kết thúc thực", width: 168 },
-          { label: "Việc còn lại", width: 96 },
-          { label: "Làm thêm", width: 84 },
-          { label: "Lịch", width: 120 },
+          { label: m.actualStart, width: 168 },
+          { label: m.actualFinish, width: 168 },
+          { label: m.remainingWork, width: 96 },
+          { label: m.overtime, width: 84 },
+          { label: m.calendar, width: 120 },
         ]
       : []),
-    { label: "Tiền nhiệm", width: 120 },
-    { label: "Nguồn lực", width: 160 },
-    { label: "Trễ", width: 80 },
+    { label: m.predecessors, width: 120 },
+    { label: m.resources, width: 160 },
+    { label: m.slack, width: 80 },
   ];
 }
 
@@ -76,13 +80,14 @@ interface Props {
 }
 
 export function TaskSheet(props: Props) {
+  const m = useMessages(taskSheetMessages);
   const headRef = useRef<HTMLDivElement>(null);
   const [windowRange, setWindowRange] = useState({ start: 0, end: 40 });
   const [paneWidth, setPaneWidth] = useState(0);
-  const baseColumns = sheetColumns(props.tracking, NAME_WIDTH);
+  const baseColumns = sheetColumns(m, props.tracking, NAME_WIDTH);
   const baseWidth = sheetWidthOf(baseColumns);
   const nameWidth = NAME_WIDTH + Math.max(0, paneWidth - baseWidth);
-  const columns = sheetColumns(props.tracking, nameWidth);
+  const columns = sheetColumns(m, props.tracking, nameWidth);
   const template = columns.map((column) => `${column.width}px`).join(" ");
   // Header and body use this same pixel width so tracks, including columns past the viewport, stay aligned.
   const sheetWidth = sheetWidthOf(columns);
@@ -220,7 +225,7 @@ export function TaskSheet(props: Props) {
                       props.onCalendar(task.uid, event.target.value ? Number(event.target.value) : null)
                     }
                   >
-                    <option value="">Lịch dự án</option>
+                    <option value="">{m.projectCalendar}</option>
                     {props.calendars.map((calendar) => (
                       <option key={calendar.id} value={calendar.id}>{calendar.name}</option>
                     ))}
@@ -252,6 +257,7 @@ function NameCell({
   onRename: (uid: number, name: string) => void;
   onEditSeries: (uid: number) => void;
 }) {
+  const m = useMessages(taskSheetMessages);
   const [value, setValue] = useState(task.name);
   const [editing, setEditing] = useState(false);
   const shown = editing ? value : task.name;
@@ -260,8 +266,8 @@ function NameCell({
     <button
       type="button"
       className="series-icon"
-      title="Công việc lặp — bấm để sửa cả chuỗi"
-      aria-label="Sửa chuỗi lặp"
+      title={m.seriesTip}
+      aria-label={m.editSeries}
       onClick={(event) => {
         event.stopPropagation();
         onEditSeries(task.uid);
@@ -272,7 +278,7 @@ function NameCell({
   ) : task.series_uid != null ? (
     <span
       className={`series-icon occurrence${task.detached ? " detached" : ""}`}
-      title={task.detached ? "Lần lặp đã sửa riêng, không theo chuỗi khi sinh lại" : "Một lần của chuỗi lặp"}
+      title={task.detached ? m.detachedTip : m.occurrenceTip}
     >
       {task.detached ? "↺" : "·"}
     </span>
@@ -378,7 +384,8 @@ function OptionalDateCell({
   disabled?: boolean;
   onCommit: (ms: number | null) => void;
 }) {
-  return <DateTimeField optional value={value} disabled={disabled} ariaLabel="Ngày thực" onCommit={onCommit} />;
+  const m = useMessages(taskSheetMessages);
+  return <DateTimeField optional value={value} disabled={disabled} ariaLabel={m.actualDate} onCommit={onCommit} />;
 }
 
 function DateCell({
@@ -390,11 +397,12 @@ function DateCell({
   disabled?: boolean;
   onCommit: (ms: number) => void;
 }) {
+  const m = useMessages(taskSheetMessages);
   return (
     <DateTimeField
       value={value}
       disabled={disabled}
-      ariaLabel="Bắt đầu"
+      ariaLabel={m.start}
       onCommit={(ms) => {
         if (ms != null) onCommit(ms);
       }}

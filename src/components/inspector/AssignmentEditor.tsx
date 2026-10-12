@@ -1,6 +1,8 @@
 import { useState } from "react";
 
+import { useMessages } from "../../i18n";
 import type { Command, Project, Task } from "../../types";
+import { assignmentEditorMessages } from "./AssignmentEditor.i18n";
 
 export function AssignmentEditor({
   project,
@@ -11,24 +13,25 @@ export function AssignmentEditor({
   task: Task;
   send: (command: Command) => void;
 }) {
+  const m = useMessages(assignmentEditorMessages);
   const [units, setUnits] = useState("1");
   const rows = project.assignments.filter((item) => item.task_uid === task.uid);
   return (
     <div className="assign">
-      <label>Gán nguồn lực</label>
+      <label>{m.assign}</label>
       {rows.length > 0 && (
         <ul className="assign-list">
           {rows.map((assignment) => {
             const name =
               project.resources.find((resource) => resource.uid === assignment.resource_uid)?.name ??
-              `NL ${assignment.resource_uid}`;
+              m.resourceFallback(assignment.resource_uid);
             return (
               <li key={assignment.uid}>
                 <span>{name}</span>
                 <label>
-                  Đơn vị
+                  {m.units}
                   <input
-                    aria-label={`Đơn vị ${name}`}
+                    aria-label={m.unitsOf(name)}
                     disabled={task.summary}
                     defaultValue={String(assignment.units)}
                     key={`${assignment.uid}-${assignment.units}`}
@@ -51,7 +54,7 @@ export function AssignmentEditor({
                   disabled={task.summary}
                   onClick={() => send({ type: "remove_assignment", uid: assignment.uid })}
                 >
-                  Bỏ
+                  {m.remove}
                 </button>
               </li>
             );
@@ -60,9 +63,9 @@ export function AssignmentEditor({
       )}
       <div className="assign-add">
         <label>
-          Đơn vị
+          {m.units}
           <input
-            aria-label="Đơn vị gán"
+            aria-label={m.newUnits}
             disabled={task.summary}
             value={units}
             onChange={(event) => setUnits(event.target.value)}
@@ -85,7 +88,7 @@ export function AssignmentEditor({
             event.target.value = "";
           }}
         >
-          <option value="">Chọn…</option>
+          <option value="">{m.choose}</option>
           {project.resources.map((resource) => (
             <option key={resource.uid} value={resource.uid}>{resource.name}</option>
           ))}

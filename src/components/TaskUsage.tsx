@@ -1,7 +1,10 @@
 import { formatHours } from "../format";
+import { useMessages } from "../i18n";
 import type { Project } from "../types";
+import { taskUsageMessages } from "./TaskUsage.i18n";
 
 export function TaskUsage({ project }: { project: Project }) {
+  const m = useMessages(taskUsageMessages);
   const dates = Array.from(
     new Set(project.usage.flatMap((row) => row.days.map((day) => day.date))),
   ).sort();
@@ -11,9 +14,9 @@ export function TaskUsage({ project }: { project: Project }) {
       <table>
         <thead>
           <tr>
-            <th>Công việc / nguồn lực</th>
+            <th>{m.head}</th>
             {dates.map((date) => (
-              <th key={date}>{date.slice(8)}/{date.slice(5, 7)}</th>
+              <th key={date}>{m.day(date)}</th>
             ))}
           </tr>
         </thead>
@@ -36,7 +39,7 @@ export function TaskUsage({ project }: { project: Project }) {
           ))}
           {project.usage.length === 0 && (
             <tr>
-              <td className="empty">Chưa có công việc.</td>
+              <td className="empty">{m.empty}</td>
             </tr>
           )}
         </tbody>
