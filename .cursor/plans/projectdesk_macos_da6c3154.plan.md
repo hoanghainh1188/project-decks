@@ -1,6 +1,6 @@
 ---
 name: ProjectDesk macOS
-overview: "ProjectDesk là ứng dụng desktop Tauri (Rust + React) quản lý dự án theo hướng Microsoft Project. Pha 1–13 đã xong. Sau pha 10 đã thêm: bản cài đa nền tảng (PR #17), test frontend (PR #18), phần còn lại của pha 9–10 (PR #19), sơ đồ mạng (PR #20), tách công việc (PR #21), CLAUDE.md (PR #22) và an toàn dữ liệu (PR #23). Việc tiếp theo là Pha 14–17 ở mục Lộ trình."
+overview: "ProjectDesk là ứng dụng desktop Tauri (Rust + React) quản lý dự án theo hướng Microsoft Project. Pha 1–13 đã xong. Sau pha 10 đã thêm: bản cài đa nền tảng (PR #17), test frontend (PR #18), phần còn lại của pha 9–10 (PR #19), sơ đồ mạng (PR #20), tách công việc (PR #21), CLAUDE.md (PR #22), an toàn dữ liệu (PR #23), giao diện cơ bản (Pha 11, PR #25), nền tệp và hiệu năng (Pha 12, PR #28–#30), theo dõi tiến độ (Pha 13, PR #31–#32) và sửa giao diện sau khi chụp màn hình dự án mẫu (PR #33). Việc tiếp theo là Pha 14–17 ở mục Lộ trình; còn nợ vài bước kiểm tra thủ công trong app thật (xem đầu mục Lộ trình)."
 todos:
   - id: scaffold
     content: Tauri 2 + React + crate engine
@@ -54,10 +54,10 @@ todos:
     content: "Hỏi lưu khi còn thay đổi, lưu file nguyên tử, kiểm tra phiên bản tệp, phím tắt không cướp ô nhập (PR #23)"
     status: completed
   - id: ui-basics
-    content: "Pha 11: giao diện cơ bản (PR #25; còn kiểm tra bằng mắt)"
+    content: "Pha 11: giao diện cơ bản (PR #25; kiểm tra bằng mắt sau Pha 13, sửa ở PR #33)"
     status: completed
   - id: release-0-1-0
-    content: "Bản v0.1.0: draft release, chưa ký số, macOS chỉ arm64"
+    content: "Bản v0.1.0: draft release, chưa ký số, macOS chỉ arm64. Build trước Pha 12–13 (định dạng tệp 1, nay là 3); bản phát hành tiếp theo đi cùng Pha 14"
     status: in_progress
   - id: file-performance
     content: "Pha 12: nền tệp và hiệu năng (checkpoint, lệnh bất đồng bộ, tệp hỏng, báo đổi ngày, tự lưu, gộp lịch sử; PR #28, #29 và phần 3)"
@@ -291,11 +291,20 @@ Panel nhỏ cạnh Gantt, nhãn tiếng Việt và viết tắt trong ngoặc:
 
 Theo đánh giá độc lập sau PR #23 (đối chiếu từng mục với code) và kiểm tra giao diện trên một dự án mẫu 21 dòng. Pha 11 làm trước vì nhỏ và người dùng thấy ngay; Pha 12 là nền cho Pha 13 và 16. Pha 14 chạy song song khi có tài khoản Apple Developer.
 
+Trạng thái (12/10/2026): Pha 11–13 đã xong. Pha 15 và 16 đã đủ điều kiện (Pha 12–13 xong). Pha 14 cần tài khoản Apple Developer cho phần ký số và notarize; phần gắn kiểu tệp, CSP, bản universal làm được trước.
+
+Kiểm tra thủ công còn nợ trong `pnpm tauri dev` (các PR #28–#33 mới được kiểm bằng test, bench và ảnh chụp trình duyệt):
+
+- Tự lưu và khôi phục: sửa, chờ 30 giây, tắt hẳn tiến trình, mở lại, thử "Khôi phục" và "Bỏ bản tự lưu"; thoát bình thường với "Không lưu" thì lần sau không hỏi.
+- Mở tệp có dòng log hỏng: sheet cảnh báo, bản sao chưa có tên, "Lưu" hỏi chỗ lưu mới.
+- Nhập ngày thực tế và % trong panel thuộc tính, xem task sau dời theo; "Dời phần chưa xong sau ngày trạng thái"; chuỗi họp có ô "Chuỗi nền".
+- "Gộp lịch sử hoàn tác" trên dự án hơn 100 bước.
+
 ### Pha 11 — giao diện cơ bản (S–M) — đã xong (PR #25)
 
-Còn lại: kiểm tra bằng mắt trên dự án mẫu (chưa chụp được màn hình khi merge).
+Kiểm tra bằng mắt: đã chụp sau Pha 13 trên một dự án mẫu 25 dòng (5 giai đoạn, 3 nguồn lực, baseline, tiến độ thực tế, task tách, chuỗi họp nền), ở 8 view: Gantt, Theo dõi, Nguồn lực, Sử dụng, Sơ đồ mạng, EVM, Gantt thang tuần tô đường găng, lọc trễ hạn. Ảnh chụp giao diện React thật với dữ liệu engine thật trong Chromium và WebKit, chưa chụp cửa sổ Tauri (không có hộp thoại native).
 
-Sửa sau khi chụp màn hình dự án mẫu (sau Pha 13): tiêu đề ô sơ đồ mạng tách dấu của "ế" trên Chromium vì CSS chỉ khai `-apple-system`; mọi chỗ đặt phông giờ dùng `--font-ui` / `UI_FONT_FAMILY` (thêm `BlinkMacSystemFont`). Thang tuần của Gantt chỉ ghi ngày thứ Hai, vì cột 14 px không đủ chỗ cho mọi ngày hai chữ số.
+Sửa sau khi chụp (PR #33): tiêu đề ô sơ đồ mạng tách dấu của "ế" trên Chromium vì CSS chỉ khai `-apple-system`; mọi chỗ đặt phông giờ dùng `--font-ui` / `UI_FONT_FAMILY` (thêm `BlinkMacSystemFont`). WebKit (app trên macOS) không bị; bản Windows (WebView2) thì có. Thang tuần của Gantt chỉ ghi ngày thứ Hai, vì cột 14 px không đủ chỗ cho mọi ngày hai chữ số. Các điểm khác thấy khi chụp đã đưa vào Pha 16 và Pha 17.
 
 Mục tiêu: màn hình chính đọc đúng và đủ thông tin mà không phải đoán.
 
@@ -423,6 +432,7 @@ Rủi ro: cần tài khoản Apple Developer; CSP có thể làm hỏng xuất P
 - Bỏ giới hạn 3.660 ngày khi tính quá tải (`level.rs`).
 - Lưu độ trễ cân bằng thành giá trị cụ thể trong log, để replay không chạy lại heuristic.
 - Nghiệm thu: hai task cùng ngày nhưng khác giờ không bị báo quá tải; bench 500 task dưới 1 giây.
+- Ví dụ thấy khi chụp dự án mẫu: An bị báo quá tải ngày 15/10 dù chỉ 0,8 + 7,2 = 8 giờ, vì hai task nối tiếp nhau trong cùng ngày.
 
 ### Pha 17 — UX ngang MS Project (L, tách 2–3 PR)
 
@@ -439,7 +449,8 @@ Rủi ro: cần tài khoản Apple Developer; CSP có thể làm hỏng xuất P
   - Đưa các view thành thanh điều hướng riêng; thang ngày/tuần/tháng, lọc, nhóm và tô sáng là điều khiển theo view ở hàng phụ.
   - Thêm test cho trạng thái bật/tắt của từng lệnh theo task được chọn và view hiện tại.
 - Tiêu đề cửa sổ là tên dự án kèm dấu đã sửa; thanh trạng thái chỉ hiện tên tệp.
-- View Sử dụng chỉ tô quá tải ở ô có giờ; định dạng số thống nhất; bớt biểu tượng lịch lặp lại ở mỗi dòng.
+- View Sử dụng chỉ tô quá tải ở ô có giờ; định dạng số thống nhất (đang lẫn "7.2" với "2,5 ngày"); bớt biểu tượng lịch lặp lại ở mỗi dòng.
+- Bảng EVM: biểu đồ burn-down bị ép gần hết khi panel thuộc tính đang mở; cho bảng EVM chiếm đủ chiều cao hoặc thu panel lại khi mở EVM.
 - Màu thành token CSS rồi mới làm giao diện tối; xóa `src/App.css` thừa từ template.
 - Dọn 9 warning clippy của engine.
 - Viết lại README: tính năng, cách cài bản phát hành, cách build; bỏ đường dẫn cứng.
