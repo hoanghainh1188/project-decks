@@ -1,4 +1,8 @@
+mod i18n;
+mod settings;
+
 use std::fs;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -9,8 +13,8 @@ use projectdesk_engine::evm::ProjectMetrics;
 use projectdesk_engine::mspdi::{read_mspdi, write_mspdi};
 use projectdesk_engine::network::{self, NetworkLayout, NetworkOptions};
 use projectdesk_engine::store;
-use projectdesk_engine::{Command, Document, Snapshot};
-use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
+use projectdesk_engine::{Command, Document, EngineError, Lang, Snapshot};
+use tauri::menu::{AboutMetadata, CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, Runtime, State, WindowEvent};
 use tauri_plugin_dialog::{
     DialogExt, FileDialogBuilder, FilePath, MessageDialogBuilder, MessageDialogButtons,
@@ -30,10 +34,17 @@ struct AppState {
     /// Set once this run has offered (or found no) autosave from a previous run. Until
     /// then the slot may hold crash work, so it must not be overwritten.
     slot_checked: AtomicBool,
+    /// The language of menus, dialogs and messages.
+    lang: Mutex<Lang>,
+    /// `settings.json`, where a chosen language is remembered. `None` without a config folder.
+    settings: Option<PathBuf>,
 }
 
 impl AppState {
-    fn new(autosave: Option<AutosaveSlot>) -> Self {
+    /// Starts in the remembered language, else Vietnamese; the frontend sets the system
+    /// language right away when nothing is remembered.
+    fn new(autosave: Option<AutosaveSlot>, settings: Option<PathBuf>) -> Self {
+        let lang = settings.as_deref().and_then(settings::read_language).unwrap_or_default();
         Self {
             doc: Mutex::new(Document::new_default()),
             dialog_open: Arc::new(AtomicBool::new(false)),
@@ -41,6 +52,8 @@ impl AppState {
             revision: AtomicU64::new(0),
             autosaved: AtomicU64::new(0),
             slot_checked: AtomicBool::new(false),
+            lang: Mutex::new(lang),
+            settings,
         }
     }
 }
@@ -128,12 +141,30 @@ async fn await_save<R: Runtime>(dialog: FileDialogBuilder<R>) -> Option<FilePath
     rx.recv().await.unwrap_or(None)
 }
 
-const DIALOG_BUSY: &str = "Đang mở một hộp thoại. Hãy đóng nó trước.";
+/// The current language of menus, dialogs and messages.
+fn lang(state: &AppState) -> Lang {
+    *state.lang.lock().unwrap_or_else(|err| err.into_inner())
+}
+
+/// An engine error as the frontend shows it, in the current language.
+fn engine_message(state: &AppState) -> impl Fn(EngineError) -> String + '_ {
+    move |err| err.message(lang(state))
+}
+
+/// A failed read of a file the user picked, said the way the engine says it.
+fn read_failed(state: &AppState) -> impl Fn(std::io::Error) -> String + '_ {
+    move |err| EngineError::Store(err.to_string()).message(lang(state))
+}
+
+/// A failed write of a file the user picked.
+fn write_failed(state: &AppState) -> impl Fn(std::io::Error) -> String + '_ {
+    move |err| EngineError::Save(err.to_string()).message(lang(state))
+}
 
 /// Edits wait for open dialogs: a "save changes?" answer must apply to what the user saw.
 fn ensure_no_dialog(state: &AppState) -> Result<(), String> {
     if state.dialog_open.load(Ordering::Acquire) {
-        Err(DIALOG_BUSY.into())
+        Err(i18n::text(lang(state)).dialog_busy.into())
     } else {
         Ok(())
     }
@@ -161,10 +192,6 @@ fn ensure_suffix(path: String, suffix: &str) -> String {
     }
 }
 
-const SAVE_LABEL: &str = "Lưu";
-const DISCARD_LABEL: &str = "Không lưu";
-const CANCEL_LABEL: &str = "Hủy";
-
 #[derive(Debug, PartialEq, Eq)]
 enum UnsavedChoice {
     Save,
@@ -172,12 +199,13 @@ enum UnsavedChoice {
     Cancel,
 }
 
-fn unsaved_choice(result: &MessageDialogResult) -> UnsavedChoice {
+/// The answer to the "save changes?" sheet that was shown with `text`'s labels.
+fn unsaved_choice(result: &MessageDialogResult, text: &i18n::Text) -> UnsavedChoice {
     match result {
         MessageDialogResult::Yes => UnsavedChoice::Save,
         MessageDialogResult::No => UnsavedChoice::Discard,
-        MessageDialogResult::Custom(label) if label == SAVE_LABEL => UnsavedChoice::Save,
-        MessageDialogResult::Custom(label) if label == DISCARD_LABEL => UnsavedChoice::Discard,
+        MessageDialogResult::Custom(label) if label == text.save => UnsavedChoice::Save,
+        MessageDialogResult::Custom(label) if label == text.dont_save => UnsavedChoice::Discard,
         _ => UnsavedChoice::Cancel,
     }
 }
@@ -193,25 +221,26 @@ fn alert<R: Runtime>(app: &AppHandle<R>, message: impl Into<String>) -> MessageD
 }
 
 /// Native "save changes?" sheet. Same non-blocking rule as `await_pick`.
-async fn ask_unsaved<R: Runtime>(app: &AppHandle<R>, name: &str) -> UnsavedChoice {
+async fn ask_unsaved<R: Runtime>(app: &AppHandle<R>, lang: Lang, name: &str) -> UnsavedChoice {
     let (tx, mut rx) = tauri::async_runtime::channel(1);
-    alert(app, format!("Dự án “{name}” có thay đổi chưa lưu. Lưu trước khi tiếp tục?"))
-        .title("Thay đổi chưa lưu")
+    let text = i18n::text(lang);
+    alert(app, i18n::unsaved_message(lang, name))
+        .title(text.unsaved_title)
         .kind(MessageDialogKind::Warning)
         .buttons(MessageDialogButtons::YesNoCancelCustom(
-            SAVE_LABEL.into(),
-            DISCARD_LABEL.into(),
-            CANCEL_LABEL.into(),
+            text.save.into(),
+            text.dont_save.into(),
+            text.cancel.into(),
         ))
         .show_with_result(move |result| {
-            let _ = tx.try_send(unsaved_choice(&result));
+            let _ = tx.try_send(unsaved_choice(&result, text));
         });
     rx.recv().await.unwrap_or(UnsavedChoice::Cancel)
 }
 
 fn write_document(state: &AppState, path: String) -> Result<Snapshot, String> {
     let mut doc = lock(state);
-    store::save_with_snapshot(&mut doc, &path, now_millis()).map_err(|err| err.to_string())?;
+    store::save_with_snapshot(&mut doc, &path, now_millis()).map_err(engine_message(state))?;
     doc.path = Some(path);
     doc.dirty = false;
     clear_autosave(state);
@@ -230,7 +259,7 @@ async fn pick_save_path<R: Runtime>(app: &AppHandle<R>, state: &AppState) -> Opt
         app.dialog()
             .file()
             .add_filter("ProjectDesk", &["pdproj"])
-            .set_title("Lưu dự án")
+            .set_title(i18n::text(lang(state)).save_project_title)
             .set_file_name(format!("{suggested}.pdproj")),
     )
     .await;
@@ -264,7 +293,7 @@ async fn confirm_discard<R: Runtime>(app: &AppHandle<R>, state: &AppState) -> Re
         }
         doc.project.name.clone()
     };
-    match ask_unsaved(app, &name).await {
+    match ask_unsaved(app, lang(state), &name).await {
         UnsavedChoice::Cancel => Ok(false),
         UnsavedChoice::Discard => Ok(true),
         UnsavedChoice::Save => save_held(app, state).await,
@@ -292,7 +321,7 @@ async fn quit_if_confirmed<R: Runtime>(app: AppHandle<R>) {
         Ok(false) => {}
         Err(err) => {
             alert(&app, err)
-                .title("Không lưu được dự án")
+                .title(i18n::text(lang(&state)).save_failed_title)
                 .kind(MessageDialogKind::Error)
                 .show(|_| {});
         }
@@ -323,7 +352,7 @@ fn apply_command(state: State<'_, AppState>, command: Command) -> Result<Snapsho
     // flag is set, so an edit either lands before that read or is refused.
     let mut doc = lock(&state);
     ensure_no_dialog(&state)?;
-    let snapshot = doc.apply(command).map_err(|err| err.to_string())?;
+    let snapshot = doc.apply(command).map_err(engine_message(&state))?;
     mark_edited(&state);
     Ok(snapshot)
 }
@@ -332,7 +361,7 @@ fn apply_command(state: State<'_, AppState>, command: Command) -> Result<Snapsho
 fn undo(state: State<'_, AppState>) -> Result<Snapshot, String> {
     let mut doc = lock(&state);
     ensure_no_dialog(&state)?;
-    let snapshot = doc.undo().map_err(|err| err.to_string())?;
+    let snapshot = doc.undo().map_err(engine_message(&state))?;
     mark_edited(&state);
     Ok(snapshot)
 }
@@ -341,7 +370,7 @@ fn undo(state: State<'_, AppState>) -> Result<Snapshot, String> {
 fn redo(state: State<'_, AppState>) -> Result<Snapshot, String> {
     let mut doc = lock(&state);
     ensure_no_dialog(&state)?;
-    let snapshot = doc.redo().map_err(|err| err.to_string())?;
+    let snapshot = doc.redo().map_err(engine_message(&state))?;
     mark_edited(&state);
     Ok(snapshot)
 }
@@ -373,13 +402,13 @@ async fn open_project(app: tauri::AppHandle, state: State<'_, AppState>) -> Resu
         app.dialog()
             .file()
             .add_filter("ProjectDesk", &["pdproj"])
-            .set_title("Mở dự án"),
+            .set_title(i18n::text(lang(&state)).open_project_title),
     )
     .await;
     let Some(path) = picked.and_then(path_from_dialog) else {
         return Ok(lock(&state).snapshot());
     };
-    let opened = store::open(&path).map_err(|err| err.to_string())?;
+    let opened = store::open(&path).map_err(engine_message(&state))?;
     let snapshot = {
         let mut doc = lock(&state);
         *doc = opened.document;
@@ -391,9 +420,9 @@ async fn open_project(app: tauri::AppHandle, state: State<'_, AppState>) -> Resu
         doc.snapshot()
     };
     // A damaged log or a different engine still opens; say what the user is looking at.
-    if let Some(message) = opened.report.message() {
+    if let Some(message) = opened.report.message(lang(&state)) {
         alert(&app, message)
-            .title("Mở dự án")
+            .title(i18n::text(lang(&state)).open_project_title)
             .kind(MessageDialogKind::Warning)
             .show(|_| {});
     }
@@ -408,7 +437,7 @@ async fn save_project(app: AppHandle, state: State<'_, AppState>) -> Result<Snap
         return write_document(&state, path);
     }
     let Some(_permit) = begin_dialog(&state) else {
-        return Err(DIALOG_BUSY.into());
+        return Err(i18n::text(lang(&state)).dialog_busy.into());
     };
     save_held(&app, &state).await?;
     Ok(lock(&state).snapshot())
@@ -437,26 +466,22 @@ async fn import_mspdi(app: tauri::AppHandle, state: State<'_, AppState>) -> Resu
         app.dialog()
             .file()
             .add_filter("MSPDI", &["xml"])
-            .set_title("Nhập MSPDI"),
+            .set_title(i18n::text(lang(&state)).import_mspdi_title),
     )
     .await;
     let Some(path) = picked.and_then(path_from_dialog) else {
         return Ok(lock(&state).snapshot());
     };
-    let xml = fs::read_to_string(&path).map_err(|err| err.to_string())?;
-    let project = read_mspdi(&xml).map_err(|err| err.to_string())?;
+    let xml = fs::read_to_string(&path).map_err(read_failed(&state))?;
+    let project = read_mspdi(&xml).map_err(engine_message(&state))?;
     let mut doc = lock(&state);
     doc.replace_project(project, None)
-        .map_err(|err| err.to_string())?;
+        .map_err(engine_message(&state))?;
     doc.dirty = true;
     clear_autosave(&state);
     mark_edited(&state);
     Ok(doc.snapshot())
 }
-
-const RESTORE_LABEL: &str = "Khôi phục";
-const DROP_AUTOSAVE_LABEL: &str = "Bỏ bản tự lưu";
-const COMPACT_LABEL: &str = "Gộp";
 
 /// A native two-button question on the main window. True for the first button.
 async fn ask<R: Runtime>(app: &AppHandle<R>, title: &str, message: String, yes: &str, no: &str) -> bool {
@@ -500,15 +525,11 @@ async fn check_autosave(app: AppHandle, state: State<'_, AppState>) -> Result<Op
         clear_autosave(&state);
         return Ok(None);
     }
-    let source = match &pending.original_path {
-        Some(path) => format!(" của tệp “{}”", file_name(path)),
-        None => String::new(),
-    };
-    let message = format!(
-        "ProjectDesk đã đóng khi dự án “{}”{source} còn thay đổi chưa lưu. Khôi phục bản tự lưu?",
-        pending.project_name
-    );
-    if !ask(&app, "Khôi phục dự án", message, RESTORE_LABEL, DROP_AUTOSAVE_LABEL).await {
+    let lang = lang(&state);
+    let text = i18n::text(lang);
+    let source = pending.original_path.as_deref().map(file_name);
+    let message = i18n::autosave_offer(lang, &pending.project_name, source.as_deref());
+    if !ask(&app, text.restore_title, message, text.restore, text.drop_autosave).await {
         let _doc = lock(&state);
         clear_autosave(&state);
         return Ok(None);
@@ -519,7 +540,7 @@ async fn check_autosave(app: AppHandle, state: State<'_, AppState>) -> Result<Op
             // Unrecoverable: asking again at every launch would not help.
             let _doc = lock(&state);
             clear_autosave(&state);
-            return Err(format!("Không khôi phục được bản tự lưu: {err}"));
+            return Err(i18n::restore_failed(lang, &err.message(lang)));
         }
     };
     let snapshot = {
@@ -528,9 +549,9 @@ async fn check_autosave(app: AppHandle, state: State<'_, AppState>) -> Result<Op
         mark_edited(&state);
         doc.snapshot()
     };
-    if let Some(message) = opened.report.message() {
+    if let Some(message) = opened.report.message(lang) {
         alert(&app, message)
-            .title("Khôi phục dự án")
+            .title(text.restore_title)
             .kind(MessageDialogKind::Warning)
             .show(|_| {});
     }
@@ -550,27 +571,22 @@ async fn compact_history(app: AppHandle, state: State<'_, AppState>) -> Result<S
     let Some(_permit) = begin_dialog(&state) else {
         return Ok(lock(&state).snapshot());
     };
+    let lang = lang(&state);
+    let text = i18n::text(lang);
     let undoable = lock(&state).cursor;
     if undoable <= HISTORY_KEPT {
-        alert(
-            &app,
-            format!("Lịch sử hoàn tác mới có {undoable} thao tác, chưa cần gộp (giữ {HISTORY_KEPT} thao tác gần nhất)."),
-        )
-        .title("Gộp lịch sử hoàn tác")
-        .kind(MessageDialogKind::Info)
-        .show(|_| {});
+        alert(&app, i18n::compact_not_needed(lang, undoable, HISTORY_KEPT))
+            .title(text.compact_title)
+            .kind(MessageDialogKind::Info)
+            .show(|_| {});
         return Ok(lock(&state).snapshot());
     }
-    let message = format!(
-        "Gộp {} thao tác cũ vào trạng thái gốc và giữ {HISTORY_KEPT} thao tác gần nhất để hoàn tác? \
-         Không hoàn tác được việc gộp. Tệp nhỏ lại sau lần lưu tới.",
-        undoable - HISTORY_KEPT
-    );
-    if !ask(&app, "Gộp lịch sử hoàn tác", message, COMPACT_LABEL, CANCEL_LABEL).await {
+    let message = i18n::compact_question(lang, undoable - HISTORY_KEPT, HISTORY_KEPT);
+    if !ask(&app, text.compact_title, message, text.compact, text.cancel).await {
         return Ok(lock(&state).snapshot());
     }
     let mut doc = lock(&state);
-    doc.compact_history(HISTORY_KEPT).map_err(|err| err.to_string())?;
+    doc.compact_history(HISTORY_KEPT).map_err(engine_message(&state))?;
     mark_edited(&state);
     Ok(doc.snapshot())
 }
@@ -580,12 +596,13 @@ async fn export_mspdi(app: tauri::AppHandle, state: State<'_, AppState>) -> Resu
     let Some(_permit) = begin_dialog(&state) else {
         return Ok(());
     };
+    let text = i18n::text(lang(&state));
     let picked = await_save(
         app.dialog()
             .file()
             .add_filter("MSPDI", &["xml"])
-            .set_title("Xuất MSPDI")
-            .set_file_name("du-an.xml"),
+            .set_title(text.export_mspdi_title)
+            .set_file_name(text.export_mspdi_file),
     )
     .await;
     let Some(path) = picked.and_then(path_from_dialog) else {
@@ -594,9 +611,9 @@ async fn export_mspdi(app: tauri::AppHandle, state: State<'_, AppState>) -> Resu
     let path = ensure_suffix(path, ".xml");
     let xml = {
         let doc = lock(&state);
-        write_mspdi(&doc.project).map_err(|err| err.to_string())?
+        write_mspdi(&doc.project).map_err(engine_message(&state))?
     };
-    fs::write(path, xml).map_err(|err| err.to_string())
+    fs::write(path, xml).map_err(write_failed(&state))
 }
 
 #[tauri::command]
@@ -607,8 +624,9 @@ async fn save_pdf(
     file_name: String,
 ) -> Result<(), String> {
     // The PDF is already rendered. This only shows the save dialog and writes bytes.
+    let text = i18n::text(lang(&state));
     if bytes.is_empty() {
-        return Err("PDF trống".into());
+        return Err(text.empty_pdf.into());
     }
     let Some(_permit) = begin_dialog(&state) else {
         return Ok(());
@@ -617,7 +635,7 @@ async fn save_pdf(
         app.dialog()
             .file()
             .add_filter("PDF", &["pdf"])
-            .set_title("Xuất PDF")
+            .set_title(text.export_pdf_title)
             .set_file_name(file_name),
     )
     .await;
@@ -625,21 +643,12 @@ async fn save_pdf(
         return Ok(());
     };
     let path = ensure_suffix(path, ".pdf");
-    fs::write(path, bytes).map_err(|err| err.to_string())
+    fs::write(path, bytes).map_err(write_failed(&state))
 }
 
-fn menu_item(
-    app: &tauri::AppHandle,
-    id: &str,
-    label: &str,
-    accelerator: Option<&str>,
-) -> tauri::Result<MenuItem<tauri::Wry>> {
-    MenuItem::with_id(app, id, label, true, accelerator)
-}
-
-/// Text for "Giới thiệu ProjectDesk". macOS shows the name, version, copyright and
+/// Text for "About ProjectDesk". macOS shows the name, version, copyright and
 /// credits; the other fields are for Windows and Linux.
-fn about_metadata(app: &tauri::AppHandle) -> AboutMetadata<'static> {
+fn about_metadata(app: &tauri::AppHandle, text: &i18n::Text) -> AboutMetadata<'static> {
     let version = app.package_info().version.to_string();
     // macOS shows `short_version` as the version and `version` as a build number in
     // parentheses, so set only one; Windows and Linux show `version`.
@@ -652,109 +661,113 @@ fn about_metadata(app: &tauri::AppHandle) -> AboutMetadata<'static> {
         name: Some("ProjectDesk".into()),
         version,
         short_version,
-        comments: Some(ABOUT_TEXT.into()),
-        credits: Some(ABOUT_TEXT.into()),
-        copyright: Some("© 2026 Harry’s Forge · Giấy phép MIT".into()),
+        comments: Some(text.about_text.into()),
+        credits: Some(text.about_text.into()),
+        copyright: Some(text.copyright.into()),
         license: Some("MIT".into()),
         ..Default::default()
     }
 }
 
-const ABOUT_TEXT: &str = "Lập lịch dự án kiểu Microsoft Project, chạy trên máy, giao diện tiếng Việt.\n\n\
-Đường găng, lịch làm việc, nguồn lực và cân bằng tải, theo dõi tiến độ, baseline, \
-EVM, burn-down và đường cong S; năm view Gantt, Theo dõi, Nguồn lực, Sử dụng và \
-Sơ đồ mạng; xuất PDF và trao đổi MSPDI với Microsoft Project.\n\n\
-Engine lập lịch viết bằng Rust; giao diện Tauri 2 và React 19. \
-Biểu tượng: Lucide (ISC). Phông PDF: Be Vietnam Pro (OFL).";
+/// Append a table of items to `menu`, labelled in `lang`. Accelerators and ids are the
+/// same in every language.
+fn append_entries(
+    app: &tauri::AppHandle,
+    menu: &Submenu<tauri::Wry>,
+    entries: &[i18n::Entry],
+    lang: Lang,
+) -> tauri::Result<()> {
+    for entry in entries {
+        match entry {
+            i18n::Entry::Item { id, vi, en, accelerator } => {
+                menu.append(&MenuItem::with_id(app, *id, lang.pick(*vi, *en), true, *accelerator)?)?
+            }
+            i18n::Entry::Separator => menu.append(&PredefinedMenuItem::separator(app)?)?,
+        }
+    }
+    Ok(())
+}
 
-fn build_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
+fn submenu(
+    app: &tauri::AppHandle,
+    title: &str,
+    entries: &[i18n::Entry],
+    lang: Lang,
+) -> tauri::Result<Submenu<tauri::Wry>> {
+    let menu = Submenu::new(app, title, true)?;
+    append_entries(app, &menu, entries, lang)?;
+    Ok(menu)
+}
+
+/// The language submenu: each language named in its own language, the current one checked.
+/// Choosing one only sends `menu-action` with `lang-vi` or `lang-en`; the frontend then
+/// calls `set_language`, which rebuilds the menu.
+fn language_menu(app: &tauri::AppHandle, lang: Lang) -> tauri::Result<Submenu<tauri::Wry>> {
+    let menu = Submenu::new(app, i18n::text(lang).menu_language, true)?;
+    for (id, choice, name) in i18n::LANGUAGES {
+        menu.append(&CheckMenuItem::with_id(app, id, name, true, choice == lang, None::<&str>)?)?;
+    }
+    Ok(menu)
+}
+
+fn build_menu(app: &tauri::AppHandle, lang: Lang) -> tauri::Result<Menu<tauri::Wry>> {
+    let text = i18n::text(lang);
     let app_menu = Submenu::with_items(
         app,
         "ProjectDesk",
         true,
         &[
-            &PredefinedMenuItem::about(
-                app,
-                Some("Giới thiệu ProjectDesk"),
-                Some(about_metadata(app)),
-            )?,
+            &PredefinedMenuItem::about(app, Some(text.about), Some(about_metadata(app, text)))?,
             &PredefinedMenuItem::separator(app)?,
-            &PredefinedMenuItem::hide(app, Some("Ẩn ProjectDesk"))?,
-            &PredefinedMenuItem::hide_others(app, Some("Ẩn ứng dụng khác"))?,
-            &PredefinedMenuItem::show_all(app, Some("Hiện tất cả"))?,
+            &PredefinedMenuItem::hide(app, Some(text.hide))?,
+            &PredefinedMenuItem::hide_others(app, Some(text.hide_others))?,
+            &PredefinedMenuItem::show_all(app, Some(text.show_all))?,
             &PredefinedMenuItem::separator(app)?,
-            // Not the predefined Quit: it would exit without asking about unsaved changes.
-            &menu_item(app, "quit", "Thoát ProjectDesk", Some("CmdOrCtrl+Q"))?,
         ],
     )?;
-    let file_menu = Submenu::with_items(
-        app,
-        "Tệp",
-        true,
-        &[
-            &menu_item(app, "new", "Dự án mới", Some("CmdOrCtrl+N"))?,
-            &menu_item(app, "open", "Mở…", Some("CmdOrCtrl+O"))?,
-            &menu_item(app, "save", "Lưu", Some("CmdOrCtrl+S"))?,
-            &menu_item(app, "save-as", "Lưu thành…", Some("CmdOrCtrl+Shift+S"))?,
-            &PredefinedMenuItem::separator(app)?,
-            &menu_item(app, "import-xml", "Nhập MSPDI…", None)?,
-            &menu_item(app, "export-xml", "Xuất MSPDI…", None)?,
-            &menu_item(app, "export-pdf", "Xuất PDF", None)?,
-        ],
-    )?;
-    let edit_menu = Submenu::with_items(
-        app,
-        "Sửa",
-        true,
-        &[
-            &menu_item(app, "undo", "Hoàn tác", Some("CmdOrCtrl+Z"))?,
-            &menu_item(app, "redo", "Làm lại", Some("CmdOrCtrl+Shift+Z"))?,
-            &PredefinedMenuItem::separator(app)?,
-            &menu_item(app, "indent", "Thụt vào", Some("CmdOrCtrl+]"))?,
-            &menu_item(app, "outdent", "Thụt ra", Some("CmdOrCtrl+["))?,
-            &menu_item(app, "delete", "Xóa công việc", Some("CmdOrCtrl+Backspace"))?,
-            &PredefinedMenuItem::separator(app)?,
-            &menu_item(app, "recurring", "Công việc lặp…", None)?,
-            &menu_item(app, "split-task", "Tách công việc…", None)?,
-        ],
-    )?;
-    let view_menu = Submenu::with_items(
-        app,
-        "Xem",
-        true,
-        &[
-            &menu_item(app, "view-gantt", "Gantt", None)?,
-            &menu_item(app, "view-tracking", "Gantt theo dõi", None)?,
-            &menu_item(app, "view-resources", "Bảng nguồn lực", None)?,
-            &menu_item(app, "view-usage", "Sử dụng công việc", None)?,
-            &menu_item(app, "view-network", "Sơ đồ mạng", None)?,
-            &menu_item(app, "view-evm", "Chỉ số EVM và burn-down", None)?,
-            &PredefinedMenuItem::separator(app)?,
-            &menu_item(app, "scale-day", "Thang ngày", None)?,
-            &menu_item(app, "scale-week", "Thang tuần", None)?,
-            &menu_item(app, "scale-month", "Thang tháng", None)?,
-        ],
-    )?;
-    let project_menu = Submenu::with_items(
-        app,
-        "Dự án",
-        true,
-        &[
-            &menu_item(app, "project-info", "Thông tin dự án…", None)?,
-            &menu_item(app, "baseline", "Đường cơ sở…", None)?,
-            &PredefinedMenuItem::separator(app)?,
-            &menu_item(app, "level", "Cân bằng nguồn lực", None)?,
-            &menu_item(app, "clear-level", "Xóa độ trễ cân bằng", None)?,
-            &PredefinedMenuItem::separator(app)?,
-            &menu_item(app, "reschedule-uncompleted", "Dời phần chưa xong sau ngày trạng thái", None)?,
-            &PredefinedMenuItem::separator(app)?,
-            &menu_item(app, "compact-history", "Gộp lịch sử hoàn tác…", None)?,
-        ],
-    )?;
+    append_entries(app, &app_menu, std::slice::from_ref(&i18n::QUIT), lang)?;
+    let file_menu = submenu(app, text.menu_file, i18n::FILE_MENU, lang)?;
+    let edit_menu = submenu(app, text.menu_edit, i18n::EDIT_MENU, lang)?;
+    let view_menu = submenu(app, text.menu_view, i18n::VIEW_MENU, lang)?;
+    view_menu.append(&PredefinedMenuItem::separator(app)?)?;
+    view_menu.append(&language_menu(app, lang)?)?;
+    let project_menu = submenu(app, text.menu_project, i18n::PROJECT_MENU, lang)?;
     Menu::with_items(
         app,
         &[&app_menu, &file_menu, &edit_menu, &view_menu, &project_menu],
     )
+}
+
+/// The language the user chose and asked to remember, or `None` when there is none yet.
+#[tauri::command]
+fn get_language(state: State<'_, AppState>) -> Option<String> {
+    state
+        .settings
+        .as_deref()
+        .and_then(settings::read_language)
+        .map(|lang| lang.code().to_string())
+}
+
+/// Switch menus, dialogs and messages to `language` (`"vi"` or `"en"`), and remember it
+/// for the next launch when `remember` is true.
+#[tauri::command]
+fn set_language(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    language: String,
+    remember: bool,
+) -> Result<(), String> {
+    let Some(chosen) = Lang::from_code(&language) else {
+        return Err(i18n::unknown_language(lang(&state), &language));
+    };
+    *state.lang.lock().unwrap_or_else(|err| err.into_inner()) = chosen;
+    app.set_menu(build_menu(&app, chosen).map_err(|err| err.to_string())?)
+        .map_err(|err| err.to_string())?;
+    match (&state.settings, remember) {
+        (Some(path), true) => settings::write_language(path, chosen)
+            .map_err(|err| i18n::settings_not_saved(chosen, &err.to_string())),
+        _ => Ok(()),
+    }
 }
 
 /// Whether the open document has unsaved changes. False before `setup` manages the state.
@@ -775,8 +788,16 @@ pub fn run() {
                     None
                 }
             };
-            app.manage(AppState::new(slot));
-            let menu = build_menu(app.handle())?;
+            let settings = match app.path().app_config_dir() {
+                Ok(dir) => Some(dir.join(settings::FILE_NAME)),
+                Err(err) => {
+                    eprintln!("ProjectDesk: không có thư mục cấu hình, không nhớ ngôn ngữ: {err}");
+                    None
+                }
+            };
+            let state = AppState::new(slot, settings);
+            let menu = build_menu(app.handle(), lang(&state))?;
+            app.manage(state);
             app.set_menu(menu)?;
             let handle = app.handle().clone();
             std::thread::spawn(move || loop {
@@ -817,7 +838,9 @@ pub fn run() {
             export_mspdi,
             save_pdf,
             check_autosave,
-            compact_history
+            compact_history,
+            get_language,
+            set_language
         ])
         .build(tauri::generate_context!())
         .expect("error while building ProjectDesk")
@@ -840,21 +863,45 @@ mod tests {
     use super::*;
 
     #[test]
-    fn unsaved_choice_follows_the_button_labels() {
+    fn unsaved_choice_follows_the_button_labels_in_each_language() {
         let custom = |label: &str| MessageDialogResult::Custom(label.into());
-        assert_eq!(unsaved_choice(&custom(SAVE_LABEL)), UnsavedChoice::Save);
-        assert_eq!(unsaved_choice(&custom(DISCARD_LABEL)), UnsavedChoice::Discard);
-        assert_eq!(unsaved_choice(&custom(CANCEL_LABEL)), UnsavedChoice::Cancel);
-        assert_eq!(unsaved_choice(&MessageDialogResult::Yes), UnsavedChoice::Save);
-        assert_eq!(unsaved_choice(&MessageDialogResult::No), UnsavedChoice::Discard);
-        assert_eq!(unsaved_choice(&MessageDialogResult::Cancel), UnsavedChoice::Cancel);
+        for text in [&i18n::VI, &i18n::EN] {
+            assert_eq!(unsaved_choice(&custom(text.save), text), UnsavedChoice::Save);
+            assert_eq!(unsaved_choice(&custom(text.dont_save), text), UnsavedChoice::Discard);
+            assert_eq!(unsaved_choice(&custom(text.cancel), text), UnsavedChoice::Cancel);
+            assert_eq!(unsaved_choice(&MessageDialogResult::Yes, text), UnsavedChoice::Save);
+            assert_eq!(unsaved_choice(&MessageDialogResult::No, text), UnsavedChoice::Discard);
+            assert_eq!(unsaved_choice(&MessageDialogResult::Cancel, text), UnsavedChoice::Cancel);
+        }
+        // An English "Save" is not a Vietnamese answer.
+        assert_eq!(unsaved_choice(&custom(i18n::EN.save), &i18n::VI), UnsavedChoice::Cancel);
+    }
+
+    #[test]
+    fn the_language_starts_from_the_settings_file() {
+        let dir = std::env::temp_dir().join(format!("projectdesk-tauri-lang-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let path = dir.join(settings::FILE_NAME);
+        assert_eq!(lang(&AppState::new(None, Some(path.clone()))), Lang::Vi, "no file: Vietnamese");
+        assert_eq!(lang(&AppState::new(None, None)), Lang::Vi);
+
+        settings::write_language(&path, Lang::En).unwrap();
+        let state = AppState::new(None, Some(path));
+        assert_eq!(lang(&state), Lang::En);
+
+        // Engine errors follow the current language.
+        let error = lock(&state).apply(Command::RenameTask { uid: 99, name: "x".into() }).unwrap_err();
+        assert_eq!(engine_message(&state)(error.clone()), "Task not found");
+        *state.lang.lock().unwrap() = Lang::Vi;
+        assert_eq!(engine_message(&state)(error), "Không tìm thấy công việc");
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn autosave_writes_only_new_unsaved_changes_and_clears_on_save() {
         let dir = std::env::temp_dir().join(format!("projectdesk-tauri-autosave-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
-        let state = AppState::new(Some(AutosaveSlot::new(&dir)));
+        let state = AppState::new(Some(AutosaveSlot::new(&dir)), None);
         state.slot_checked.store(true, Ordering::Release);
         let slot = state.autosave.clone().unwrap();
 
@@ -888,7 +935,7 @@ mod tests {
         crashed.apply(Command::RenameProject { name: "Trước crash".into() }).unwrap();
         slot.write(&crashed, now_millis()).unwrap();
 
-        let state = AppState::new(Some(slot.clone()));
+        let state = AppState::new(Some(slot.clone()), None);
         lock(&state)
             .apply(Command::RenameProject { name: "Phiên mới".into() })
             .unwrap();
@@ -904,10 +951,15 @@ mod tests {
 
     #[test]
     fn edits_wait_while_a_dialog_is_open() {
-        let state = AppState::new(None);
+        let state = AppState::new(None, None);
         assert!(ensure_no_dialog(&state).is_ok());
         let permit = begin_dialog(&state).expect("no dialog yet");
-        assert_eq!(ensure_no_dialog(&state), Err(DIALOG_BUSY.to_string()));
+        assert_eq!(ensure_no_dialog(&state), Err(i18n::VI.dialog_busy.to_string()));
+        *state.lang.lock().unwrap() = Lang::En;
+        assert_eq!(
+            ensure_no_dialog(&state),
+            Err("A dialog is already open. Close it first.".to_string())
+        );
         assert!(begin_dialog(&state).is_none());
         drop(permit);
         assert!(ensure_no_dialog(&state).is_ok());
