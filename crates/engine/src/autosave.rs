@@ -88,7 +88,7 @@ impl AutosaveSlot {
     pub fn restore(&self) -> Result<Opened, EngineError> {
         let pending = self
             .pending()
-            .ok_or_else(|| EngineError::Store("không có bản tự lưu".into()))?;
+            .ok_or(EngineError::NoAutosave)?;
         let mut opened = store::open(&self.project_path().to_string_lossy())?;
         let damaged_copy = opened
             .report

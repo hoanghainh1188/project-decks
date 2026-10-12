@@ -12,6 +12,7 @@ pub mod document;
 pub mod error;
 pub mod evm;
 mod graph;
+pub mod lang;
 pub mod level;
 pub mod model;
 pub mod mspdi;
@@ -28,7 +29,8 @@ pub mod work;
 pub use calendar::Calendar;
 pub use command::Command;
 pub use document::{Document, Snapshot};
-pub use error::EngineError;
+pub use error::{EngineError, Invalid};
+pub use lang::Lang;
 pub use model::{
     Accrual, Assignment, ConstraintType, DepKind, Dependency, Overallocation, Project, Resource,
     ResourceKind, Task, TaskType, UsageDay, UsageRow,

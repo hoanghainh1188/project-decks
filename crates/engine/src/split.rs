@@ -9,7 +9,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::calendar::Calendar;
-use crate::error::EngineError;
+use crate::error::{EngineError, Invalid};
 use crate::model::{Project, Task};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -159,7 +159,7 @@ pub fn publish_segments(project: &mut Project) {
 }
 
 fn outside_work() -> EngineError {
-    EngineError::Store("Điểm tách phải nằm trong thời gian làm việc của công việc".into())
+    Invalid::SplitOutsideWork.into()
 }
 
 /// Work offset (working minutes) at the instant `at`, reading the current segments.
@@ -197,17 +197,13 @@ fn refresh_manual_finish(project: &mut Project, uid: u32) {
 pub fn split_task(project: &mut Project, uid: u32, at: i64, gap: i64) -> Result<(), EngineError> {
     let task = project.task(uid).ok_or(EngineError::TaskNotFound)?;
     if task.summary {
-        return Err(EngineError::Store(
-            "Không tách được công việc tóm tắt".into(),
-        ));
+        return Err(Invalid::SplitSummary.into());
     }
     if task.milestone || task.duration <= 0 {
-        return Err(EngineError::Store(
-            "Công việc không có thời lượng nên không tách được".into(),
-        ));
+        return Err(Invalid::SplitNoDuration.into());
     }
     if gap <= 0 {
-        return Err(EngineError::Store("Khoảng ngắt phải lớn hơn 0".into()));
+        return Err(Invalid::SplitGapNotPositive.into());
     }
     let cal = project.task_calendar(task);
     let offset = offset_at(cal, task, at).ok_or_else(outside_work)?;
@@ -229,14 +225,14 @@ pub fn remove_split(
 ) -> Result<(), EngineError> {
     let task = project.task_mut(uid).ok_or(EngineError::TaskNotFound)?;
     if task.splits.is_empty() {
-        return Err(EngineError::Store("Công việc này chưa bị tách".into()));
+        return Err(Invalid::NotSplit.into());
     }
     match index {
         None => task.splits.clear(),
         Some(index) => {
             let index = index as usize;
             if index >= task.splits.len() {
-                return Err(EngineError::Store("Không có khoảng ngắt này".into()));
+                return Err(Invalid::NoSuchSplit.into());
             }
             task.splits.remove(index);
         }

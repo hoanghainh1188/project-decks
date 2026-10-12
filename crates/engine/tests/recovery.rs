@@ -10,7 +10,7 @@ use projectdesk_engine::model::DepKind;
 use projectdesk_engine::recovery::Damage;
 use projectdesk_engine::store::{open, save};
 use projectdesk_engine::timeutil::timestamp;
-use projectdesk_engine::{Document, Project};
+use projectdesk_engine::{Document, Lang, Project};
 
 const DAY: i64 = 480;
 /// Commands in `built()`.
@@ -116,7 +116,7 @@ fn a_damaged_command_opens_a_copy_with_the_history_before_it() {
         before,
         "opening must not touch the file"
     );
-    let message = opened.report.message().unwrap();
+    let message = opened.report.message(Lang::Vi).unwrap();
     assert!(message.contains("thao tác 13/30"), "{message}");
     assert!(
         message.contains("sau thao tác 12 (lúc lưu là 30)"),
@@ -143,7 +143,7 @@ fn a_saved_checkpoint_past_the_damage_shows_what_the_user_saw() {
     assert!(copy.commands.is_empty());
     assert!(opened
         .report
-        .message()
+        .message(Lang::Vi)
         .unwrap()
         .contains("không có lịch sử hoàn tác"));
 
@@ -156,7 +156,7 @@ fn a_saved_checkpoint_past_the_damage_shows_what_the_user_saw() {
     let new_path = temp_path("checkpoint-copy");
     save(&copy, &new_path).unwrap();
     let reopened = open(&new_path).unwrap();
-    assert_eq!(reopened.report.message(), None);
+    assert_eq!(reopened.report.message(Lang::Vi), None);
     assert_eq!(json(&reopened.document.project), json(&copy.project));
 }
 
@@ -212,7 +212,7 @@ fn damage_only_after_the_cursor_opens_the_file_itself() {
     // The two readable redo commands still redo.
     assert_eq!(document.commands.len(), 27);
     document.redo().unwrap();
-    let message = opened.report.message().unwrap();
+    let message = opened.report.message(Lang::Vi).unwrap();
     assert!(message.contains("từ thao tác 28 trở đi"), "{message}");
     assert!(!message.contains("bản sao"), "{message}");
 }
@@ -229,7 +229,7 @@ fn a_damaged_cursor_or_burndown_table_still_opens() {
 
     let opened = open(&path).unwrap();
 
-    assert_eq!(opened.report.message(), None);
+    assert_eq!(opened.report.message(Lang::Vi), None);
     assert_eq!(opened.document.cursor, TOTAL);
     assert!(opened.document.burndown.is_empty());
     assert_eq!(json(&opened.document.project), json(&doc.project));
@@ -265,7 +265,7 @@ fn tasks_another_engine_scheduled_differently_are_reported() {
     );
     assert_eq!(opened.document.path.as_deref(), Some(path.as_str()));
     assert!(!opened.document.dirty);
-    let message = opened.report.message().unwrap();
+    let message = opened.report.message(Lang::Vi).unwrap();
     assert!(message.contains("1 công việc đổi ngày"), "{message}");
     assert!(message.contains("• Việc 4:"), "{message}");
 }
@@ -278,6 +278,6 @@ fn another_engine_with_the_same_dates_says_nothing() {
 
     let opened = open(&path).unwrap();
 
-    assert_eq!(opened.report.message(), None);
+    assert_eq!(opened.report.message(Lang::Vi), None);
     assert_eq!(json(&opened.document.project), json(&doc.project));
 }

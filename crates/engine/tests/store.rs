@@ -7,7 +7,7 @@ use rusqlite::Connection;
 use projectdesk_engine::command::Command;
 use projectdesk_engine::store::{load, open, save, FORMAT_VERSION};
 use projectdesk_engine::timeutil::timestamp;
-use projectdesk_engine::{Document, Project};
+use projectdesk_engine::{Document, Lang, Project};
 
 fn temp_dir(name: &str) -> String {
     let dir = std::env::temp_dir().join(format!("projectdesk-store-{}-{name}", std::process::id()));
@@ -165,7 +165,7 @@ fn a_damaged_command_is_not_blamed_on_a_newer_version() {
         .execute("UPDATE command_log SET payload = '{not json' WHERE seq = 0", [])
         .unwrap();
 
-    let message = open(&path).unwrap().report.message().unwrap();
+    let message = open(&path).unwrap().report.message(Lang::Vi).unwrap();
     assert!(message.contains("Tệp bị hỏng ở thao tác 1/2"), "{message}");
     assert!(!message.contains("phiên bản mới hơn"), "{message}");
 }
@@ -183,6 +183,6 @@ fn an_unknown_command_points_at_a_newer_version() {
         )
         .unwrap();
 
-    let message = open(&path).unwrap().report.message().unwrap();
+    let message = open(&path).unwrap().report.message(Lang::Vi).unwrap();
     assert!(message.contains("phiên bản mới hơn"), "{message}");
 }
