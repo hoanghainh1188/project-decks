@@ -483,7 +483,7 @@ Giao diện có tiếng Việt và tiếng Anh. Lần đầu mở theo ngôn ng�
 
 ### Icon ứng dụng — đã xong
 
-Thay icon mặc định của Tauri bằng icon riêng: hai thanh công việc xếp bậc thang dẫn lên một mốc vàng phát sáng, có trục thời gian mờ, trên nền xanh đêm bo góc theo lưới icon macOS (1024 px, ô 824 px, bán kính 186). Nguồn là `src-tauri/icons/icon.svg`; các cỡ PNG, `.icns` và `.ico` sinh bằng `pnpm tauri icon` từ bản PNG 1024 px có nền trong suốt (xuất từ SVG; không dùng `qlmanage` vì nó thêm nền trắng). Chỉ giữ các tệp desktop mà `tauri.conf.json` và Windows Store logo dùng, bỏ thư mục `android/` và `ios/` mà lệnh sinh ra.
+Thay icon mặc định của Tauri bằng icon riêng; từ v1.1.0 (tên Sheafly): một xấp giấy xòe ra, tờ trên cùng vẽ hai thanh Gantt, đi chéo lên một mốc vàng phát sáng, trên nền xanh đêm bo góc theo lưới icon macOS (1024 px, ô 824 px, bán kính 186). Nguồn là `src-tauri/icons/icon.svg`; các cỡ PNG, `.icns` và `.ico` sinh bằng `pnpm tauri icon` từ bản PNG 1024 px có nền trong suốt (xuất từ SVG; không dùng `qlmanage` vì nó thêm nền trắng). Chỉ giữ các tệp desktop mà `tauri.conf.json` và Windows Store logo dùng, bỏ thư mục `android/` và `ios/` mà lệnh sinh ra.
 
 ### Giấy phép bên thứ ba (v1.0.1) — đã xong
 
