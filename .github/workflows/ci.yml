@@ -35,3 +35,10 @@ jobs:
 
       - name: Frontend tests
         run: pnpm test
+
+      # The installers ship src-tauri/THIRD_PARTY_LICENSES.txt; a dependency added or
+      # updated without regenerating it fails here.
+      - name: Third-party licenses are up to date
+        run: |
+          cargo fetch --locked
+          node scripts/third-party-licenses.mjs --check

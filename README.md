@@ -74,6 +74,6 @@ cargo bench -p projectdesk-engine --bench large_project -- leveling  # leveling 
 
 ## License
 
-MIT. The Be Vietnam Pro font used for PDF export is under the SIL Open Font License (`src/fonts/OFL.txt`). Icons from [Lucide](https://lucide.dev) (ISC). The "About ProjectDesk" panel in the app menu shows the version and these credits.
+MIT. The app bundles open-source packages and the Be Vietnam Pro font (SIL Open Font License); their copyright notices and license texts are in [`src-tauri/THIRD_PARTY_LICENSES.txt`](src-tauri/THIRD_PARTY_LICENSES.txt), which every installer includes and Help → Third-Party Licenses opens. Regenerate it with `node scripts/third-party-licenses.mjs` after changing dependencies; CI checks that it is current.
 
 Microsoft Project is a trademark of Microsoft Corporation. ProjectDesk is independent software, not affiliated with Microsoft.

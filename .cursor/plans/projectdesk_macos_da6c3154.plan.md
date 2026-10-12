@@ -485,6 +485,10 @@ Giao diện có tiếng Việt và tiếng Anh. Lần đầu mở theo ngôn ng�
 
 Thay icon mặc định của Tauri bằng icon riêng: hai thanh công việc xếp bậc thang dẫn lên một mốc vàng phát sáng, có trục thời gian mờ, trên nền xanh đêm bo góc theo lưới icon macOS (1024 px, ô 824 px, bán kính 186). Nguồn là `src-tauri/icons/icon.svg`; các cỡ PNG, `.icns` và `.ico` sinh bằng `pnpm tauri icon` từ bản PNG 1024 px có nền trong suốt (xuất từ SVG; không dùng `qlmanage` vì nó thêm nền trắng). Chỉ giữ các tệp desktop mà `tauri.conf.json` và Windows Store logo dùng, bỏ thư mục `android/` và `ios/` mà lệnh sinh ra.
 
+### Giấy phép bên thứ ba (v1.0.1) — đã xong
+
+Rà soát giấy phép sau v1.0.0: 30 gói npm và 449 crate Rust đóng trong app đều là giấy phép dễ dãi (MIT, Apache-2.0, ISC, BSD, Zlib, Unicode; vài crate MPL-2.0 của Tauri dùng nguyên bản; không có GPL/AGPL). Thiếu sót là bản cài không kèm thông báo bản quyền và giấy phép như chúng yêu cầu. Từ 1.0.1: `scripts/third-party-licenses.mjs` sinh `src-tauri/THIRD_PARTY_LICENSES.txt` (gói không kèm tệp giấy phép thì dùng văn bản SPDX trong `scripts/license-texts/`), bản cài có tệp đó, menu Trợ giúp → Giấy phép bên thứ ba mở nó, và CI báo lỗi khi tệp cũ so với thư viện. Tên "ProjectDesk" chưa tra cứu nhãn hiệu; cần làm trước khi thương mại hóa.
+
 ### Ngoài phạm vi
 
 Reader tệp nhị phân `.mpp` (xem pha 5), nhiều người dùng, server, công thức trường tùy chỉnh, ký số bản Windows/Linux, dựng lại chuỗi lặp khi nhập MSPDI. Ngôn ngữ ngoài tiếng Việt và tiếng Anh (ví dụ tiếng Nhật) chưa có; thêm một ngôn ngữ chỉ cần thêm cột trong các catalog và trong `src-tauri/src/i18n.rs`.

@@ -11,6 +11,7 @@ pub struct Text {
     pub menu_view: &'static str,
     pub menu_project: &'static str,
     pub menu_language: &'static str,
+    pub menu_help: &'static str,
     pub about: &'static str,
     pub hide: &'static str,
     pub hide_others: &'static str,
@@ -36,6 +37,7 @@ pub struct Text {
     pub restore_title: &'static str,
     pub compact: &'static str,
     pub compact_title: &'static str,
+    pub licenses_unavailable: &'static str,
 }
 
 pub static VI: Text = Text {
@@ -44,16 +46,18 @@ pub static VI: Text = Text {
     menu_view: "Xem",
     menu_project: "Dự án",
     menu_language: "Ngôn ngữ",
+    menu_help: "Trợ giúp",
     about: "Giới thiệu ProjectDesk",
     hide: "Ẩn ProjectDesk",
     hide_others: "Ẩn ứng dụng khác",
     show_all: "Hiện tất cả",
-    about_text: "Lập lịch dự án kiểu Microsoft Project, chạy trên máy, giao diện tiếng Việt.\n\n\
+    about_text: "Lập lịch dự án kiểu Microsoft Project, chạy trên máy, giao diện tiếng Việt và tiếng Anh.\n\n\
 Đường găng, lịch làm việc, nguồn lực và cân bằng tải, theo dõi tiến độ, baseline, \
 EVM, burn-down và đường cong S; năm view Gantt, Theo dõi, Nguồn lực, Sử dụng và \
 Sơ đồ mạng; xuất PDF và trao đổi MSPDI với Microsoft Project.\n\n\
 Engine lập lịch viết bằng Rust; giao diện Tauri 2 và React 19. \
-Biểu tượng: Lucide (ISC). Phông PDF: Be Vietnam Pro (OFL).",
+Biểu tượng: Lucide (ISC). Phông PDF: Be Vietnam Pro (OFL). \
+Giấy phép của mọi thành phần bên thứ ba: Trợ giúp → Giấy phép bên thứ ba.",
     copyright: "© 2026 Harry’s Forge · Giấy phép MIT",
     dialog_busy: "Đang mở một hộp thoại. Hãy đóng nó trước.",
     save: "Lưu",
@@ -73,6 +77,7 @@ Biểu tượng: Lucide (ISC). Phông PDF: Be Vietnam Pro (OFL).",
     restore_title: "Khôi phục dự án",
     compact: "Gộp",
     compact_title: "Gộp lịch sử hoàn tác",
+    licenses_unavailable: "Không mở được danh sách giấy phép bên thứ ba.",
 };
 
 pub static EN: Text = Text {
@@ -81,6 +86,7 @@ pub static EN: Text = Text {
     menu_view: "View",
     menu_project: "Project",
     menu_language: "Language",
+    menu_help: "Help",
     about: "About ProjectDesk",
     hide: "Hide ProjectDesk",
     hide_others: "Hide Others",
@@ -90,7 +96,8 @@ Critical path, calendars, resources and leveling, progress tracking, baselines, 
 EVM, burn-down and S-curves; five views: Gantt Chart, Tracking Gantt, Resource Sheet, \
 Task Usage and Network Diagram; PDF export and MSPDI exchange with Microsoft Project.\n\n\
 Scheduling engine written in Rust; interface built with Tauri 2 and React 19. \
-Icons: Lucide (ISC). PDF font: Be Vietnam Pro (OFL).",
+Icons: Lucide (ISC). PDF font: Be Vietnam Pro (OFL). \
+Licenses of all third-party components: Help → Third-Party Licenses.",
     copyright: "© 2026 Harry’s Forge · MIT License",
     dialog_busy: "A dialog is already open. Close it first.",
     save: "Save",
@@ -110,6 +117,7 @@ Icons: Lucide (ISC). PDF font: Be Vietnam Pro (OFL).",
     restore_title: "Restore Project",
     compact: "Compact",
     compact_title: "Compact Undo History",
+    licenses_unavailable: "The third-party licenses could not be opened.",
 };
 
 pub fn text(lang: Lang) -> &'static Text {
@@ -165,6 +173,15 @@ pub const FILE_MENU: &[Entry] = &[
     item("export-xml", "Xuất MSPDI…", "Export MSPDI…", None),
     item("export-pdf", "Xuất PDF", "Export PDF", None),
 ];
+
+/// The Help menu. The licenses item opens the file the installer ships
+/// (`THIRD_PARTY_LICENSES.txt`) in the system's text viewer.
+pub const HELP_MENU: &[Entry] = &[item(
+    "third-party-licenses",
+    "Giấy phép bên thứ ba",
+    "Third-Party Licenses",
+    None,
+)];
 
 pub const EDIT_MENU: &[Entry] = &[
     item("undo", "Hoàn tác", "Undo", Some("CmdOrCtrl+Z")),
@@ -332,6 +349,7 @@ mod tests {
             .chain(EDIT_MENU)
             .chain(VIEW_MENU)
             .chain(PROJECT_MENU)
+            .chain(HELP_MENU)
             .chain(std::iter::once(&QUIT))
     }
 
