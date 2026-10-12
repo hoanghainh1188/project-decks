@@ -2,11 +2,11 @@ import { CalendarPlus, Plus, Trash2, X } from "lucide-react";
 import { useState } from "react";
 
 import { formatDateKeyDisplay, minuteToTime } from "../format";
+import { useMessages } from "../i18n";
 import type { Calendar, Command, Snapshot, TimeRange } from "../types";
 import { Button } from "./Button";
+import { calendarEditorMessages, WEEK_INDEXES } from "./CalendarEditor.i18n";
 import { DateKeyField, TimeField } from "./DateTimeField";
-
-const WEEKDAYS = ["Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy", "Chủ Nhật"];
 
 const DEFAULT_RANGES: TimeRange[] = [
   { start_minute: 8 * 60, end_minute: 12 * 60 },
@@ -25,6 +25,7 @@ interface ExceptionSpan {
 }
 
 export function CalendarEditor({ calendar, send }: CalendarEditorProps) {
+  const m = useMessages(calendarEditorMessages);
   const [span, setSpan] = useState<"day" | "range">("day");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -61,10 +62,10 @@ export function CalendarEditor({ calendar, send }: CalendarEditorProps) {
 
   return (
     <div className="calendar-editor">
-      <label>Tên lịch</label>
+      <label>{m.calendarName}</label>
       <input
         key={`${calendar.id}-${calendar.name}`}
-        aria-label="Tên lịch"
+        aria-label={m.calendarName}
         defaultValue={calendar.name}
         onBlur={(event) => {
           const name = event.target.value.trim();
@@ -78,13 +79,14 @@ export function CalendarEditor({ calendar, send }: CalendarEditorProps) {
         }}
       />
 
-      <h3>Tuần làm việc</h3>
-      {WEEKDAYS.map((label, index) => {
+      <h3>{m.workWeek}</h3>
+      {WEEK_INDEXES.map((index) => {
+        const label = m.weekday(index);
         const ranges = calendar.week[index] ?? [];
         const working = ranges.length > 0;
         const extra = suggestRange(ranges);
         return (
-          <div className="week-day" key={label}>
+          <div className="week-day" key={index}>
             <label className="check">
               <input
                 type="checkbox"
@@ -97,7 +99,7 @@ export function CalendarEditor({ calendar, send }: CalendarEditorProps) {
               <>
                 <RangeRows ranges={ranges} onChange={(next) => setDay(index, next)} />
                 <Button Icon={Plus} disabled={!extra} onClick={() => extra && setDay(index, [...ranges, extra])}>
-                  Thêm khoảng
+                  {m.addRange}
                 </Button>
               </>
             )}
@@ -105,25 +107,25 @@ export function CalendarEditor({ calendar, send }: CalendarEditorProps) {
         );
       })}
 
-      <h3>Ngày nghỉ và ngoại lệ</h3>
+      <h3>{m.exceptionsHeading}</h3>
       <div className="exception-form">
         <select value={span} onChange={(event) => setSpan(event.target.value as "day" | "range")}>
-          <option value="day">Một ngày</option>
-          <option value="range">Từ–Đến</option>
+          <option value="day">{m.oneDay}</option>
+          <option value="range">{m.dateRange}</option>
         </select>
         <label>
-          {span === "day" ? "Ngày" : "Từ"}
-          <DateKeyField ariaLabel={span === "day" ? "Ngày" : "Từ ngày"} value={from} onCommit={setFrom} />
+          {span === "day" ? m.date : m.from}
+          <DateKeyField ariaLabel={span === "day" ? m.date : m.fromDate} value={from} onCommit={setFrom} />
         </label>
         {span === "range" && (
           <label>
-            Đến
-            <DateKeyField ariaLabel="Đến ngày" value={to} onCommit={setTo} />
+            {m.to}
+            <DateKeyField ariaLabel={m.toDate} value={to} onCommit={setTo} />
           </label>
         )}
         <select value={kind} onChange={(event) => setKind(event.target.value as "off" | "hours")}>
-          <option value="off">Nghỉ cả ngày</option>
-          <option value="hours">Giờ làm riêng</option>
+          <option value="off">{m.nonworking}</option>
+          <option value="hours">{m.customHours}</option>
         </select>
         {kind === "hours" && (
           <>
@@ -136,7 +138,7 @@ export function CalendarEditor({ calendar, send }: CalendarEditorProps) {
                 if (extra) setHours([...hours, extra]);
               }}
             >
-              Thêm khoảng
+              {m.addRange}
             </Button>
           </>
         )}
@@ -146,10 +148,10 @@ export function CalendarEditor({ calendar, send }: CalendarEditorProps) {
           disabled={!from || (span === "range" && !to) || (kind === "hours" && !rangesValid(hours))}
           onClick={() => void addException()}
         >
-          Thêm ngoại lệ
+          {m.addException}
         </Button>
       </div>
-      {exceptions.length === 0 && <p className="meta">Chưa có ngày nghỉ hay ngoại lệ.</p>}
+      {exceptions.length === 0 && <p className="meta">{m.noExceptions}</p>}
       <ul>
         {exceptions.map((item) => (
           <li key={`${item.from}-${item.to}-${rangeKey(item.ranges)}`}>
@@ -158,7 +160,7 @@ export function CalendarEditor({ calendar, send }: CalendarEditorProps) {
                 ? formatDateKeyDisplay(item.from)
                 : `${formatDateKeyDisplay(item.from)} – ${formatDateKeyDisplay(item.to)}`}
               {" · "}
-              {item.ranges.length === 0 ? "Nghỉ cả ngày" : item.ranges.map(formatRange).join(", ")}
+              {item.ranges.length === 0 ? m.nonworking : item.ranges.map(formatRange).join(", ")}
             </span>
             <Button
               variant="danger"
@@ -172,7 +174,7 @@ export function CalendarEditor({ calendar, send }: CalendarEditorProps) {
                 })
               }
             >
-              Bỏ
+              {m.remove}
             </Button>
           </li>
         ))}
@@ -182,14 +184,15 @@ export function CalendarEditor({ calendar, send }: CalendarEditorProps) {
 }
 
 function RangeRows({ ranges, onChange }: { ranges: TimeRange[]; onChange: (ranges: TimeRange[]) => void }) {
+  const m = useMessages(calendarEditorMessages);
   return (
     <div className="range-rows">
       {ranges.map((range, index) => (
         <div className="range-row" key={index}>
           <label>
-            Từ
+            {m.from}
             <TimeField
-              ariaLabel="Giờ bắt đầu"
+              ariaLabel={m.startTime}
               minute={range.start_minute}
               onCommit={(minute) =>
                 onChange(ranges.map((item, itemIndex) => (itemIndex === index ? { ...item, start_minute: minute } : item)))
@@ -197,9 +200,9 @@ function RangeRows({ ranges, onChange }: { ranges: TimeRange[]; onChange: (range
             />
           </label>
           <label>
-            Đến
+            {m.to}
             <TimeField
-              ariaLabel="Giờ kết thúc"
+              ariaLabel={m.finishTime}
               minute={range.end_minute}
               onCommit={(minute) =>
                 onChange(ranges.map((item, itemIndex) => (itemIndex === index ? { ...item, end_minute: minute } : item)))
@@ -207,7 +210,7 @@ function RangeRows({ ranges, onChange }: { ranges: TimeRange[]; onChange: (range
             />
           </label>
           <Button Icon={X} onClick={() => onChange(ranges.filter((_, itemIndex) => itemIndex !== index))}>
-            Bỏ
+            {m.remove}
           </Button>
         </div>
       ))}
