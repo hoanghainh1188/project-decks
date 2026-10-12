@@ -66,7 +66,7 @@ todos:
     content: "Pha 13: theo dõi tiến độ (ngày thực tế điều khiển lịch, trễ hạn theo MS Project, dời phần chưa xong, AC/EV task tách, chuỗi lặp; PR #31 và phần 2)"
     status: completed
   - id: macos-release
-    content: "Pha 14: phát hành macOS (ký số, notarize, universal, kiểu tệp .pdproj, CSP)"
+    content: "Pha 14: phát hành macOS (ký số, notarize, universal, kiểu tệp .sheafly, CSP)"
     status: pending
   - id: mspdi-complete
     content: "Pha 15: MSPDI đầy đủ (Deadline, chi phí thực tế, WorkWeeks)"
@@ -109,7 +109,7 @@ flowchart LR
 
 - **Engine Rust** (`crates/engine`) là nguồn sự thật, không phụ thuộc Tauri. Mọi ngày bắt đầu, kết thúc, slack, đường găng, EVM và số cho burn-down do engine tính. Giao diện chỉ gửi lệnh và vẽ kết quả. Test CPM bằng `cargo test`.
 - **Lệnh + undo**: mỗi thao tác (thêm task, đổi phụ thuộc, indent, gán nguồn lực, sửa lịch) là một command. Undo/redo đi trên log này.
-- **File `.pdproj`**: một file SQLite. Mở/lưu bằng hộp thoại native của macOS. Snapshot burn-down (pha 10) nằm trong cùng file.
+- **File `.sheafly`** (trước khi đổi tên là `.pdproj`; cả hai mở được): một file SQLite. Mở/lưu bằng hộp thoại native của macOS. Snapshot burn-down (pha 10) nằm trong cùng file.
 - **Hai chế độ task**, giống Project: *tự lên lịch* (engine dời ngày) và *lên lịch tay* (giữ ngày người dùng ghim).
 - **Thời gian**: mốc là timestamp; thời lượng là phút làm việc. Lịch (tuần làm việc, ngoại lệ, ngày nghỉ) đổi phút làm việc thành ngày giờ thật.
 
@@ -411,12 +411,12 @@ Nghiệm thu: test CPM bằng số tính tay (bắt đầu muộn đẩy task sa
 
 - Ký số Developer ID, hardened runtime, notarize và staple qua `tauri-action` với secrets Apple trong CI.
 - Bản universal (`--target universal-apple-darwin`).
-- `bundle.fileAssociations` cho `.pdproj` với UTI riêng; xử lý `RunEvent::Opened` qua `confirm_discard`; danh sách "Mở gần đây".
+- `bundle.fileAssociations` cho `.sheafly` (và `.pdproj` cũ) với UTI riêng; xử lý `RunEvent::Opened` qua `confirm_discard`; danh sách "Mở gần đây".
 - CSP thay cho `csp: null`, cho phép `data:` và `blob:` mà jsPDF cần.
 - Sửa metadata `src-tauri/Cargo.toml` (`description`, `authors`). (Đã làm ở PR #38.)
 - Quy trình phát hành: tăng phiên bản đồng bộ ở `package.json`, `tauri.conf.json`, `Cargo.toml` (workspace và `src-tauri`); ghi chú phát hành tiếng Việt kèm giới hạn đã biết trong `docs/releases/v<phiên bản>.md`; tag `v*` từ `main`; workflow tạo bản nháp, rồi thay nội dung bằng ghi chú đó và publish. Bản `v1.0.0` phát hành theo quy trình này, chưa ký số, macOS chỉ arm64. Đổi phiên bản crate cũng đổi `engine_tag()`, nên checkpoint trong tệp cũ bị bỏ qua và tệp được dựng lại bằng replay (chậm hơn một lần, kết quả như nhau).
 
-Nghiệm thu: CI chạy `codesign --verify --strict`, `spctl -a -vv`, `xcrun stapler validate`, `lipo -archs` (có x86_64 và arm64); bấm đúp tệp `.pdproj` mở được và vẫn hỏi lưu.
+Nghiệm thu: CI chạy `codesign --verify --strict`, `spctl -a -vv`, `xcrun stapler validate`, `lipo -archs` (có x86_64 và arm64); bấm đúp tệp `.sheafly` hoặc `.pdproj` mở được và vẫn hỏi lưu.
 
 Rủi ro: cần tài khoản Apple Developer; CSP có thể làm hỏng xuất PDF nếu thiếu nguồn.
 
