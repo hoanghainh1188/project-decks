@@ -7,7 +7,7 @@
 use std::time::{Duration, Instant};
 
 use projectdesk_engine::command::Command;
-use projectdesk_engine::model::DepKind;
+use projectdesk_engine::model::{DepKind, ResourceKind};
 use projectdesk_engine::store::{load, save};
 use projectdesk_engine::timeutil::timestamp;
 use projectdesk_engine::{Document, Project};
@@ -83,7 +83,45 @@ fn timed<T>(label: &str, f: impl FnOnce() -> T) -> (T, Duration) {
     (value, elapsed)
 }
 
+/// 500 unlinked tasks of one to three days, all from the project start, shared by ten
+/// people: fifty-way clashes for leveling to resolve.
+fn leveling(tasks: u32) {
+    let mut doc = Document::from_project(Project::new("Cân bằng", timestamp(2026, 1, 5, 8, 0)));
+    let mut commands = Vec::new();
+    for uid in 2..=tasks {
+        commands.push(Command::AddTask { name: format!("Việc {uid}"), after_uid: Some(uid - 1) });
+    }
+    for uid in 1..=tasks {
+        commands.push(Command::SetDuration { uid, minutes: DAY * i64::from(1 + uid % 3) });
+    }
+    for person in 0..10 {
+        commands.push(Command::AddResource { name: format!("Người {person}"), kind: ResourceKind::Person });
+    }
+    for uid in 1..=tasks {
+        commands.push(Command::AssignResource { task_uid: uid, resource_uid: 1 + uid % 10, units: 1.0 });
+    }
+    for command in commands {
+        doc.apply(command).expect("command applies");
+    }
+    println!("{tasks} công việc, {} khoảng quá tải", doc.project.overallocations.len());
+    timed("cân bằng nguồn lực", || doc.apply(Command::LevelResources).expect("level"));
+    assert!(doc.project.overallocations.is_empty(), "{:?}", doc.project.overallocations.first());
+    // No gaps would finish when the busiest person's work runs out.
+    let busiest = (1..=10)
+        .map(|person| (1..=tasks).filter(|uid| 1 + uid % 10 == person).map(|uid| 1 + uid % 3).sum::<u32>())
+        .max()
+        .unwrap_or(0);
+    let finish = doc.project.tasks.iter().map(|task| task.finish).max().unwrap_or(0);
+    let calendar = doc.project.calendar().clone();
+    let days = calendar.working_between(doc.project.start, finish) as f64 / DAY as f64;
+    println!("{:<28} {:>10.1} ngày (tối thiểu {busiest})", "độ dài sau cân bằng", days);
+}
+
 fn main() {
+    if std::env::args().any(|arg| arg == "leveling") {
+        leveling(500);
+        return;
+    }
     let args: Vec<usize> = std::env::args()
         .skip(1)
         .filter_map(|arg| arg.parse().ok())

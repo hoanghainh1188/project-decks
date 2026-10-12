@@ -1,6 +1,6 @@
 ---
 name: ProjectDesk macOS
-overview: "ProjectDesk là ứng dụng desktop Tauri (Rust + React) quản lý dự án theo hướng Microsoft Project. Pha 1–13 đã xong. Sau pha 10 đã thêm: bản cài đa nền tảng (PR #17), test frontend (PR #18), phần còn lại của pha 9–10 (PR #19), sơ đồ mạng (PR #20), tách công việc (PR #21), CLAUDE.md (PR #22), an toàn dữ liệu (PR #23), giao diện cơ bản (Pha 11, PR #25), nền tệp và hiệu năng (Pha 12, PR #28–#30), theo dõi tiến độ (Pha 13, PR #31–#32) và sửa giao diện sau khi chụp màn hình dự án mẫu (PR #33). Việc tiếp theo là Pha 14–17 ở mục Lộ trình; còn nợ vài bước kiểm tra thủ công trong app thật (xem đầu mục Lộ trình)."
+overview: "ProjectDesk là ứng dụng desktop Tauri (Rust + React) quản lý dự án theo hướng Microsoft Project. Pha 1–13 và 16 đã xong. Sau pha 10 đã thêm: bản cài đa nền tảng (PR #17), test frontend (PR #18), phần còn lại của pha 9–10 (PR #19), sơ đồ mạng (PR #20), tách công việc (PR #21), CLAUDE.md (PR #22), an toàn dữ liệu (PR #23), giao diện cơ bản (Pha 11, PR #25), nền tệp và hiệu năng (Pha 12, PR #28–#30), theo dõi tiến độ (Pha 13, PR #31–#32) và sửa giao diện sau khi chụp màn hình dự án mẫu (PR #33). Việc tiếp theo là Pha 14, 15 và 17 ở mục Lộ trình; còn nợ vài bước kiểm tra thủ công trong app thật (xem đầu mục Lộ trình)."
 todos:
   - id: scaffold
     content: Tauri 2 + React + crate engine
@@ -72,8 +72,8 @@ todos:
     content: "Pha 15: MSPDI đầy đủ (Deadline, chi phí thực tế, WorkWeeks)"
     status: pending
   - id: leveling-hours
-    content: "Pha 16: leveling theo giờ trùng nhau"
-    status: pending
+    content: "Pha 16: quá tải theo giờ trùng nhau, leveling tuần tự, lưu độ trễ vào log"
+    status: completed
   - id: project-parity-ux
     content: "Pha 17: UX ngang MS Project (copy/paste, tách App.tsx, bàn phím, giao diện còn lại)"
     status: pending
@@ -425,7 +425,19 @@ Rủi ro: cần tài khoản Apple Developer; CSP có thể làm hỏng xuất P
 - Đọc/ghi `Deadline`, chi phí thực tế, `WorkWeeks` của lịch, và tiến độ theo nghĩa mới của Pha 13.
 - Nghiệm thu: test xuất rồi nhập lại với tệp từ Project 2019/365.
 
-### Pha 16 — leveling (M–L, cần Pha 12)
+### Pha 16 — leveling (M–L, cần Pha 12) — đã xong
+
+**Kết quả.** `level.rs` viết lại:
+
+- Quá tải theo giờ: quét từng nguồn lực theo thời gian; tải chỉ tính trong các khoảng làm việc của lịch task và các đoạn của task tách; khả năng là đơn vị tối đa khi lịch nguồn lực làm việc, 0 khi không. Hai task cùng ngày khác giờ, hoặc nối tiếp nhau trong ngày (0,8 + 7,2 giờ như ví dụ dự án mẫu), không còn bị báo. Không còn giới hạn 3.660 ngày. Mỗi dòng `Overallocation` là một nguồn lực một ngày, với đơn vị đỉnh trong ngày.
+- Leveling tuần tự, gần với Project: task không dời được (lên lịch tay, đã bắt đầu, MSO/MFO) xếp trước; còn lại theo ngày bắt đầu, ưu tiên cao hơn, slack ít hơn; mỗi task đặt vào thời điểm sớm nhất mà mọi nguồn lực của nó còn chỗ suốt thời gian làm, nhảy qua cả khối bận; task đã xếp không dời nữa nên không để lại khoảng trống. Task ưu tiên 1000 không bị dời và được xếp trước cùng nhóm không dời được; task có tiền nhiệm chưa xếp được xếp sau; nếu task đã xếp vẫn đổi ngày (liên kết qua summary) thì dựng lại tải đã xếp. Ràng buộc giữ task lại thì bỏ độ trễ vô ích. Nguồn lực không bao giờ làm việc cùng giờ với task: thôi tìm sau 4 năm, để lại quá tải. Dời theo giờ, không còn làm tròn sang ngày sau.
+- `schedule()` tách thành `prepare` (dựng đồ thị), `schedule_dates`, `publish_derived`: leveling dựng đồ thị một lần, mỗi bước chỉ tính lại ngày. `Calendar::add_working` nhảy cả tuần khi tuần đó không có ngoại lệ (test so với cách đi từng khoảng), nên độ trễ dài không còn chậm.
+- Bấm "Cân bằng nguồn lực" ghi vào log lệnh mới `ApplyLeveling { delays }` với độ trễ cụ thể; replay không chạy lại heuristic. Tệp cũ có `LevelResources` vẫn replay bằng heuristic mới (lịch có thể đổi, được báo nhờ Pha 12 phần 2). `FORMAT_VERSION` = 4, `ENGINE_REVISION` = 4.
+- Bench `-- leveling` (500 task, 10 người, 50 task chồng nhau mỗi người): 271 ms, dài 101 ngày đúng bằng mức tối thiểu (tổng việc của người bận nhất). Trước khi sửa thuật toán: 4 giây và 169 ngày.
+- Kèm theo từ Pha 17: view Sử dụng chỉ tô quá tải ở ô có giờ, và giờ dùng dấu phẩy thập phân ("7,2").
+- `tests/leveling.rs`: 13 test.
+
+Dự kiến ban đầu:
 
 - Quá tải tính theo giờ trùng nhau trong ngày, không cộng đơn vị của mọi task chạm cùng ngày.
 - Không chạy lại `schedule()` toàn bộ mỗi vòng.
@@ -449,7 +461,7 @@ Rủi ro: cần tài khoản Apple Developer; CSP có thể làm hỏng xuất P
   - Đưa các view thành thanh điều hướng riêng; thang ngày/tuần/tháng, lọc, nhóm và tô sáng là điều khiển theo view ở hàng phụ.
   - Thêm test cho trạng thái bật/tắt của từng lệnh theo task được chọn và view hiện tại.
 - Tiêu đề cửa sổ là tên dự án kèm dấu đã sửa; thanh trạng thái chỉ hiện tên tệp.
-- View Sử dụng chỉ tô quá tải ở ô có giờ; định dạng số thống nhất (đang lẫn "7.2" với "2,5 ngày"); bớt biểu tượng lịch lặp lại ở mỗi dòng.
+- View Sử dụng: bớt biểu tượng lịch lặp lại ở mỗi dòng. (Tô quá tải chỉ ở ô có giờ và dấu phẩy thập phân đã làm ở Pha 16.)
 - Bảng EVM: biểu đồ burn-down bị ép gần hết khi panel thuộc tính đang mở; cho bảng EVM chiếm đủ chiều cao hoặc thu panel lại khi mở EVM.
 - Màu thành token CSS rồi mới làm giao diện tối; xóa `src/App.css` thừa từ template.
 - Dọn 9 warning clippy của engine.

@@ -145,10 +145,11 @@ export function formatMoney(value: number): string {
   return new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 0 }).format(Math.round(value));
 }
 
+/** Hours with at most one decimal and a decimal comma, like the durations ("2,5 ngày"). */
 export function formatHours(value: number): string {
   if (Math.abs(value) < 0.05) return "";
   const rounded = Math.round(value * 10) / 10;
-  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1).replace(".", ",");
 }
 
 export function shiftDays(ms: number, days: number): number {

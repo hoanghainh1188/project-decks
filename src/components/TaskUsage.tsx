@@ -23,10 +23,12 @@ export function TaskUsage({ project }: { project: Project }) {
               <td>{row.label}</td>
               {dates.map((date) => {
                 const hours = row.days.find((day) => day.date === date)?.hours ?? 0;
-                const hot = row.resource_uid !== null && over.has(`${row.resource_uid}:${date}`);
+                // Only cells with work show the overload; the other tasks of that person are not to blame.
+                const text = formatHours(hours);
+                const hot = text !== "" && row.resource_uid !== null && over.has(`${row.resource_uid}:${date}`);
                 return (
                   <td key={date} className={hot ? "over" : ""}>
-                    {formatHours(hours)}
+                    {text}
                   </td>
                 );
               })}

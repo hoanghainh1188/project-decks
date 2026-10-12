@@ -147,8 +147,20 @@ impl Calendar {
             return cursor;
         }
         let mut remaining = minutes;
+        let week = self.plain_week_minutes();
         for _ in 0..20000 {
             let (date, minute) = civil(cursor);
+            // At the first working minute of a day, a whole week without exceptions can be
+            // skipped in one step: long leveling delays would otherwise walk every range.
+            if let Some(week) = week.filter(|week| remaining > *week) {
+                if minute == self.first_minute(date) && self.no_exceptions_in_week(date) {
+                    if let Some(next) = date.checked_add_days(chrono::Days::new(7)) {
+                        remaining -= week;
+                        cursor = self.next_work_start(compose(next, 0));
+                        continue;
+                    }
+                }
+            }
             let ranges = self.ranges_on(date);
             if let Some(range) = ranges
                 .iter()
@@ -174,6 +186,38 @@ impl Calendar {
             }
         }
         cursor
+    }
+
+    /// Working minutes of a week without exceptions, when every weekday's ranges are in
+    /// order and apart, so consuming them one by one adds up to exactly this.
+    fn plain_week_minutes(&self) -> Option<i64> {
+        let mut total = 0;
+        for ranges in &self.week {
+            let mut end = 0u16;
+            for range in ranges {
+                if range.start_minute < end || range.end_minute <= range.start_minute {
+                    return None;
+                }
+                end = range.end_minute;
+            }
+            total += day_minutes(ranges);
+        }
+        (total > 0).then_some(total)
+    }
+
+    /// The minute the first working range of `date` starts, or none on a day off.
+    fn first_minute(&self, date: NaiveDate) -> u16 {
+        self.ranges_on(date).first().map_or(u16::MAX, |range| range.start_minute)
+    }
+
+    fn no_exceptions_in_week(&self, date: NaiveDate) -> bool {
+        if self.exceptions.is_empty() {
+            return true;
+        }
+        let Some(end) = date.checked_add_days(chrono::Days::new(7)) else {
+            return false;
+        };
+        self.exceptions.range(date_key(date)..date_key(end)).next().is_none()
     }
 
     /// Move backward by working minutes. The result is a valid start instant.
@@ -488,6 +532,50 @@ mod tests {
                 walk_between(&cal, start, end),
                 "{start} → {end}"
             );
+        }
+    }
+
+    /// `add_working` as it was before it skipped whole weeks.
+    fn walk_add(cal: &Calendar, start: i64, minutes: i64) -> i64 {
+        let mut cursor = cal.next_work_start(start);
+        let mut remaining = minutes;
+        loop {
+            let (date, minute) = civil(cursor);
+            let ranges = cal.ranges_on(date);
+            let Some(range) = ranges.iter().find(|r| minute >= r.start_minute && minute < r.end_minute) else {
+                cursor = cal.next_work_start(cursor);
+                continue;
+            };
+            let available = i64::from(range.end_minute - minute);
+            if remaining <= available {
+                return compose(date, minute + remaining as u16);
+            }
+            remaining -= available;
+            cursor = cal.next_work_start(compose(date, range.end_minute));
+        }
+    }
+
+    #[test]
+    fn add_working_matches_a_range_walk() {
+        let mut cal = Calendar::standard();
+        cal.week[5] = vec![TimeRange::new(9 * 60, 11 * 60)];
+        let base = NaiveDate::from_ymd_opt(2026, 1, 1).unwrap();
+        cal.set_day_off(base + chrono::Days::new(40));
+        cal.set_day_off(base + chrono::Days::new(300));
+        cal.exceptions.insert(
+            date_key(base + chrono::Days::new(90)),
+            vec![TimeRange::new(10 * 60, 12 * 60)],
+        );
+        let mut seed: u64 = 11;
+        let mut next = |limit: i64| {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            ((seed >> 33) as i64).rem_euclid(limit)
+        };
+        let origin = timestamp(2026, 1, 1, 0, 0);
+        for _ in 0..2000 {
+            let start = origin + next(400 * 1440) * 60_000;
+            let minutes = 1 + next(200 * 480);
+            assert_eq!(cal.add_working(start, minutes), walk_add(&cal, start, minutes), "{start} + {minutes}");
         }
     }
 

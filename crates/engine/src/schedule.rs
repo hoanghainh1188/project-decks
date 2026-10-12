@@ -10,6 +10,15 @@ use crate::work::publish_costs_and_usage;
 
 /// Recompute WBS, early/late dates, slack, critical path, costs, usage, and the late flag.
 pub fn schedule(project: &mut Project) -> Result<(), EngineError> {
+    let graph = prepare(project)?;
+    schedule_dates(project, &graph);
+    publish_derived(project, &graph);
+    Ok(())
+}
+
+/// Normalize the outline and splits, check the calendar, and build the link graph.
+/// The graph stays valid while only dates and leveling delays change.
+pub(crate) fn prepare(project: &mut Project) -> Result<Graph, EngineError> {
     normalize_outline(project);
     for task in &mut project.tasks {
         split::normalize_task(task);
@@ -23,8 +32,12 @@ pub fn schedule(project: &mut Project) -> Result<(), EngineError> {
     {
         return Err(EngineError::NoWorkingTime);
     }
-    let graph = Graph::build(project)?;
+    Graph::build(project)
+}
 
+/// Early and late dates, slack, the critical path, summary rollups, and split segments:
+/// everything leveling needs to find the next overload.
+pub(crate) fn schedule_dates(project: &mut Project, graph: &Graph) {
     let project_start = project.calendar().next_work_start(project.start);
     project.start = project_start;
 
@@ -33,25 +46,28 @@ pub fn schedule(project: &mut Project) -> Result<(), EngineError> {
     let passes = project.tasks.len().max(1) + 2;
     let mut settled = false;
     for _ in 0..passes {
-        forward(project, &graph, &shift);
-        if !push_summary_finish(project, &graph, &mut shift) {
+        forward(project, graph, &shift);
+        if !push_summary_finish(project, graph, &mut shift) {
             settled = true;
             break;
         }
     }
     if !settled {
-        forward(project, &graph, &shift);
+        forward(project, graph, &shift);
     }
     let background = background_tasks(project);
-    backward(project, &graph, &background);
+    backward(project, graph, &background);
     rollup(project, &background);
-    free_slack(project, &graph);
     split::publish_segments(project);
+}
+
+/// Free slack, costs and usage, overallocations, predecessor text, and the late flag.
+pub(crate) fn publish_derived(project: &mut Project, graph: &Graph) {
+    free_slack(project, graph);
     publish_costs_and_usage(project);
     publish_overallocations(project);
-    publish_predecessor_text(project, &graph);
+    publish_predecessor_text(project, graph);
     mark_late(project);
-    Ok(())
 }
 
 /// Recompute the derived late flag from the status date, baseline 0, and deadline.

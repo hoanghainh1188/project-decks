@@ -14,7 +14,8 @@ use crate::model::Project;
 /// commands, so checkpoints written before the change are not trusted.
 /// Revision 2: actual dates drive the schedule (phase 13).
 /// Revision 3: regenerating a series keeps occurrences with progress (phase 13).
-pub const ENGINE_REVISION: u32 = 3;
+/// Revision 4: overallocation by overlapping hours and the new leveling (phase 16).
+pub const ENGINE_REVISION: u32 = 4;
 
 /// A new checkpoint every this many commands while editing or replaying.
 pub const INTERVAL: usize = 25;

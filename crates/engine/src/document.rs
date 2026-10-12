@@ -78,6 +78,12 @@ impl Document {
     }
 
     pub fn apply(&mut self, command: Command) -> Result<Snapshot, EngineError> {
+        // Log what leveling decided, not the request, so replay is cheap and stays put
+        // if the heuristic changes.
+        let command = match command {
+            Command::LevelResources => command::leveled(&self.project)?,
+            other => other,
+        };
         if self.cursor < self.commands.len() {
             self.commands.truncate(self.cursor);
             self.checkpoints.drop_after(self.cursor);
