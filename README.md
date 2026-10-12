@@ -1,67 +1,79 @@
+<p align="center"><img src="src-tauri/icons/128x128@2x.png" width="128" height="128" alt=""></p>
+
 # ProjectDesk
 
-Ứng dụng lập lịch dự án kiểu Microsoft Project, chạy trên máy (macOS, Windows, Linux). Giao diện tiếng Việt và tiếng Anh. Xây bằng Tauri 2, React 19 và một engine lập lịch viết bằng Rust.
+**English** · [Tiếng Việt](README.vi.md)
 
-## Tính năng
+A Microsoft Project–style scheduler that runs on your own computer (macOS, Windows, Linux), in English or Vietnamese. Built with Tauri 2, React 19 and a scheduling engine written in Rust. Open source under the MIT license; your projects stay on your machine, with no account or server.
 
-- **Lập lịch:** đường găng (CPM) với liên kết FS/SS/FF/SF và độ trễ, ràng buộc (sớm nhất, muộn nhất, bắt đầu/kết thúc không sớm/muộn hơn, phải bắt đầu/kết thúc vào), hạn chót, task lên lịch tay, task tách, công việc lặp.
-- **Lịch:** tuần làm việc, ngày nghỉ và ngoại lệ; lịch dự án, lịch riêng cho task và cho nguồn lực.
-- **Nguồn lực:** người và máy, đơn vị tối đa, đơn giá, kiểu task (đơn vị/thời lượng/công cố định), phát hiện quá tải theo giờ trùng nhau, cân bằng nguồn lực.
-- **Theo dõi:** baseline 0–10, % hoàn thành, ngày bắt đầu/kết thúc thực tế điều khiển lịch như Project, dời phần chưa xong sau ngày trạng thái, cờ trễ hạn, chi phí.
-- **Báo cáo:** EVM (PV, EV, AC, SPI, CPI, EAC…), burn-down và đường cong S.
-- **Các view:** năm tab Gantt, Theo dõi, Nguồn lực, Sử dụng và Sơ đồ mạng; thang ngày/tuần/tháng, lọc, nhóm, tô sáng theo từng view; xuất PDF.
-- **Ngôn ngữ:** tiếng Việt và tiếng Anh, đổi trong menu Xem → Ngôn ngữ; lần đầu mở theo ngôn ngữ của máy. Tiếng Anh dùng ngày ISO và thuật ngữ của Microsoft Project.
-- **Giao diện:** thanh công cụ chia nhóm theo màu và có biểu tượng (lịch sử, tạo việc, sửa việc đang chọn, dự án, báo cáo); nút bị tắt cho biết lý do. Dùng được bằng bàn phím: chuyển tab bằng mũi tên, chọn và dời task trên Gantt (↑ ↓, Enter, Option+← →), hộp thoại đóng bằng Esc. Biểu đồ EVM xem phóng to được.
-- **Tệp:** định dạng `.pdproj` (SQLite) lưu cả lịch sử hoàn tác; lưu an toàn, tự lưu và khôi phục sau khi app tắt đột ngột; mở được tệp hỏng một phần. Nhập/xuất MSPDI (`.xml`) để trao đổi với Microsoft Project; không đọc được tệp `.mpp`.
+**[Download the latest release](https://github.com/hoanghainh1188/project-decks/releases/latest)**
 
-## Cài bản phát hành
+![ProjectDesk: task sheet, Gantt chart, task details and the EVM panel](docs/images/screenshot-en.jpg)
 
-Tải bản cài ở trang [Releases](https://github.com/hoanghainh1188/project-decks/releases): `.dmg` cho macOS (Apple Silicon), `.msi` hoặc `-setup.exe` cho Windows, `.AppImage`, `.deb` hoặc `.rpm` cho Linux.
+## Features
 
-Bản cài chưa ký số. Trên macOS, lần đầu mở hãy nhấp chuột phải vào ProjectDesk trong Applications và chọn **Mở**. Nếu macOS vẫn báo ứng dụng bị hỏng, chạy:
+- **Scheduling:** critical path (CPM) from FS/SS/FF/SF links with lag; constraints (As Soon As Possible, As Late As Possible, Start/Finish No Earlier/Later Than, Must Start/Finish On); deadlines; manually scheduled tasks; split tasks; recurring tasks.
+- **Calendars:** work weeks, nonworking days and exceptions; a project calendar plus calendars for individual tasks and resources.
+- **Resources:** people and equipment, max units, rates, task types (Fixed Units, Fixed Duration, Fixed Work), overallocation found from overlapping hours, and resource leveling.
+- **Tracking:** baselines 0–10, % complete, actual start and finish that drive the schedule the way Project does, moving unfinished work past the status date, late flags, costs.
+- **Reports:** earned value (PV, EV, AC, SPI, CPI, EAC…), burn-down and S-curve.
+- **Views:** five tabs (Gantt, Tracking, Resources, Usage, Network diagram); day, week and month timescales; filter, group and highlight per view; PDF export.
+- **Languages:** English and Vietnamese. The first launch follows your system language; switch any time in View → Language. English uses ISO dates (`2026-01-05 08:00`) and Microsoft Project terminology.
+- **Interface:** a toolbar grouped by colour with icons (history, create, selected task, project, reports), and disabled commands that say why. Works from the keyboard: arrow keys move between tabs; on the Gantt, ↑ ↓ select rows, Enter edits, Option+← → (Alt on Windows and Linux) move a task by a working day; Esc closes dialogs.
+- **Files:** `.pdproj` (SQLite) keeps the undo history with the project. Saves are crash-safe, unsaved work is autosaved and offered back after a crash, and partly damaged files still open. Import and export MSPDI (`.xml`) to exchange projects with Microsoft Project; `.mpp` files cannot be read.
+
+## Install
+
+Download an installer from [Releases](https://github.com/hoanghainh1188/project-decks/releases): `.dmg` for macOS (Apple Silicon), `.msi` or `-setup.exe` for Windows, `.AppImage`, `.deb` or `.rpm` for Linux.
+
+The installers are not code-signed yet. On macOS, the first time, right-click ProjectDesk in Applications and choose **Open**. If macOS still says the app is damaged, run:
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/ProjectDesk.app
 ```
 
-Trên Windows, SmartScreen có thể hỏi; chọn **More info → Run anyway**.
+On Windows, SmartScreen may ask first; choose **More info → Run anyway**.
 
-## Build từ mã nguồn
+## Build from source
 
-Cần [Rust](https://rustup.rs) (bản stable), Node.js 22 (hoặc 20.19 trở lên) và [pnpm](https://pnpm.io). Trên Linux cần thêm các gói hệ thống của Tauri (xem [hướng dẫn của Tauri](https://tauri.app/start/prerequisites/)).
+You need [Rust](https://rustup.rs) (stable), Node.js 22 (or 20.19 and later) and [pnpm](https://pnpm.io). Linux also needs Tauri's system packages (see the [Tauri prerequisites](https://tauri.app/start/prerequisites/)).
 
 ```bash
 pnpm install
-pnpm tauri dev      # chạy app khi phát triển
-pnpm tauri build    # tạo bản cài trong target/release/bundle
+pnpm tauri dev      # run the app while developing
+pnpm tauri build    # build installers into target/release/bundle
 ```
 
-Giao diện chỉ chạy được bên trong cửa sổ Tauri; mở `localhost:1420` bằng trình duyệt thường sẽ không tải được dự án.
+The interface only works inside the Tauri window; opening `localhost:1420` in a normal browser cannot load a project.
 
-## Kiểm thử
+## Tests
 
 ```bash
-cargo test -p projectdesk-engine      # engine lập lịch
-pnpm exec tsc --noEmit                # kiểm tra kiểu
-pnpm test                             # giao diện (Vitest)
-cargo bench -p projectdesk-engine --bench large_project              # 1.000 task, 10.000 lệnh
-cargo bench -p projectdesk-engine --bench large_project -- leveling  # cân bằng 500 task
+cargo test -p projectdesk-engine      # scheduling engine
+cargo test -p projectdesk             # Tauri shell
+pnpm exec tsc --noEmit                # type check
+pnpm test                             # interface (Vitest)
+cargo bench -p projectdesk-engine --bench large_project              # 1,000 tasks, 10,000 commands
+cargo bench -p projectdesk-engine --bench large_project -- leveling  # leveling 500 tasks
 ```
 
-## Cấu trúc
+## Project layout
 
-- `crates/engine`: engine lập lịch, không phụ thuộc Tauri. Mọi ngày, slack, đường găng, chi phí và EVM đều tính ở đây.
-- `src-tauri`: lớp vỏ Tauri, menu macOS, hộp thoại tệp, tự lưu.
-- `src`: giao diện React; chỉ hiển thị kết quả engine trả về.
-- `.cursor/plans/projectdesk_macos_da6c3154.plan.md`: kế hoạch, quyết định của từng pha và lộ trình.
-- `CLAUDE.md`: ghi chú kiến trúc cho người (và công cụ) sửa code.
+- `crates/engine`: the scheduling engine, with no Tauri dependency. Every date, slack value, critical path, cost and EVM figure is computed here.
+- `src-tauri`: the Tauri shell: native menu, file dialogs, autosave, settings.
+- `src`: the React interface. It only displays what the engine returns. Text lives in typed message catalogs (`*.i18n.ts`).
+- `.cursor/plans/projectdesk_macos_da6c3154.plan.md`: the plan (in Vietnamese), with the decisions behind each phase and the roadmap.
+- `CLAUDE.md`: architecture notes for people (and tools) changing the code.
 
-## Giới hạn đã biết
+## Known limitations
 
-- Không đọc tệp `.mpp`; dùng MSPDI (`.xml`) để trao đổi với Project.
-- Bản cài chưa ký số và chưa notarize; macOS mới có bản cho Apple Silicon.
-- Một người dùng, một cửa sổ; chưa có giao diện tối.
+- `.mpp` files cannot be read; use MSPDI (`.xml`) to exchange projects with Project.
+- The installers are not signed or notarized yet; macOS builds are Apple Silicon only.
+- One user, one window; no dark mode yet.
+- English and Vietnamese only.
 
-## Giấy phép
+## License
 
-MIT. Phông Be Vietnam Pro dùng cho xuất PDF theo giấy phép SIL Open Font License (`src/fonts/OFL.txt`). Biểu tượng từ [Lucide](https://lucide.dev) (ISC). Hộp "Giới thiệu ProjectDesk" trong menu ứng dụng ghi phiên bản và các ghi công này.
+MIT. The Be Vietnam Pro font used for PDF export is under the SIL Open Font License (`src/fonts/OFL.txt`). Icons from [Lucide](https://lucide.dev) (ISC). The "About ProjectDesk" panel in the app menu shows the version and these credits.
+
+Microsoft Project is a trademark of Microsoft Corporation. ProjectDesk is independent software, not affiliated with Microsoft.
