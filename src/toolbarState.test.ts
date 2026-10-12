@@ -87,3 +87,24 @@ describe("toolbarStates", () => {
     expect(states(null, "gantt", { fileDialogBusy: true }).exportPdf.reason).toBe("Đang mở một hộp thoại");
   });
 });
+
+describe("copy, paste and fill-down states", () => {
+  it("pastes only after a copy, and only in task views", () => {
+    expect(states(first).pasteTask.enabled).toBe(false);
+    expect(states(first, "gantt", { hasClipboard: true }).pasteTask.enabled).toBe(true);
+    expect(states(null, "gantt", { hasClipboard: true }).pasteTask.enabled).toBe(true);
+    expect(states(first, "resources", { hasClipboard: true }).pasteTask.enabled).toBe(false);
+  });
+
+  it("fills down only a range of rows in the sheet", () => {
+    expect(states(first).fillDown.reason).toMatch(/Shift/);
+    expect(states(first, "gantt", { selection: [1, 2] }).fillDown.reason).toMatch(/ô/);
+    expect(states(first, "gantt", { selection: [1, 2], fillField: "name" }).fillDown.enabled).toBe(true);
+    expect(states(first, "network", { selection: [1, 2], fillField: "name" }).fillDown.enabled).toBe(false);
+  });
+
+  it("copies the selected task", () => {
+    expect(states(first).copyTask.enabled).toBe(true);
+    expect(states(null).copyTask.enabled).toBe(false);
+  });
+});

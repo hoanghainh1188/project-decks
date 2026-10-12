@@ -13,6 +13,7 @@
 ## Tính năng
 
 - **Lập lịch:** đường găng (CPM) với liên kết FS/SS/FF/SF và độ trễ, ràng buộc (sớm nhất, muộn nhất, bắt đầu/kết thúc không sớm/muộn hơn, phải bắt đầu/kết thúc vào), hạn chót, task lên lịch tay, task tách, công việc lặp.
+- **Sửa nhanh:** sao chép và dán task (⌘C / ⌘V trên các dòng đang chọn, kèm task con, phân công và liên kết giữa chúng); Shift+bấm chọn một dải dòng, ⌘D điền giá trị của cột đang focus từ dòng đầu xuống các dòng dưới; kéo riêng một đoạn của task tách trên Gantt.
 - **Lịch:** tuần làm việc, ngày nghỉ và ngoại lệ; lịch dự án, lịch riêng cho task và cho nguồn lực.
 - **Nguồn lực:** người và máy, đơn vị tối đa, đơn giá, kiểu task (đơn vị/thời lượng/công cố định), phát hiện quá tải theo giờ trùng nhau, cân bằng nguồn lực.
 - **Theo dõi:** baseline 0–10, % hoàn thành, ngày bắt đầu/kết thúc thực tế điều khiển lịch như Project, dời phần chưa xong sau ngày trạng thái, cờ trễ hạn, chi phí.

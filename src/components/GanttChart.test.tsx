@@ -49,7 +49,7 @@ function project(): Project {
 
 function renderChart(selected: number | null = 1, group: GroupMode = "none") {
   const data = project();
-  const handlers = { onSelect: vi.fn(), onMove: vi.fn(), onResize: vi.fn(), onLink: vi.fn(), onEdit: vi.fn(), onScroll: vi.fn() };
+  const handlers = { onSelect: vi.fn(), onMove: vi.fn(), onResize: vi.fn(), onMoveSegment: vi.fn(), onLink: vi.fn(), onEdit: vi.fn(), onScroll: vi.fn() };
   const view = render(
     <GanttChart
       project={data}

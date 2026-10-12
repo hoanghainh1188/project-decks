@@ -15,6 +15,8 @@ import {
   pieceSpan,
   pixelsPerDay,
   previewPieces,
+  segmentAt,
+  segmentPreview,
   progressWidths,
   splitPieces,
   timescaleBands,
@@ -29,8 +31,10 @@ import type { ViewRow } from "../viewRows";
 import { ganttChartMessages } from "./GanttChart.i18n";
 
 interface DragState {
-  kind: "move" | "resize" | "link";
+  kind: "move" | "resize" | "link" | "segment";
   uid: number;
+  /** For "segment": which piece of the split bar is dragged (1 or later). */
+  segment?: number;
   row: number;
   originX: number;
   originY: number;
@@ -51,6 +55,8 @@ interface Props {
   onSelect: (uid: number) => void;
   onMove: (uid: number, start: number) => void;
   onResize: (uid: number, finish: number) => void;
+  /** Drag piece `index` (1 or later) of a split bar to start at `start`. */
+  onMoveSegment: (uid: number, index: number, start: number) => void;
   onLink: (from: number, to: number) => void;
   /** Enter on the focused chart opens the selected task. */
   onEdit: (uid: number) => void;
@@ -67,6 +73,7 @@ export function GanttChart({
   onSelect,
   onMove,
   onResize,
+  onMoveSegment,
   onLink,
   onEdit,
   onScroll,
@@ -222,13 +229,18 @@ export function GanttChart({
             onSelect(found.task.uid);
             if (found.zone === "row") return;
             event.currentTarget.setPointerCapture(event.pointerId);
+            // The first piece of a split bar moves the whole task; a later one moves on its own.
+            const piece = found.zone === "body" ? segmentAt(found.task, x, model.origin, px) : null;
+            const segment = piece != null && piece > 0 ? piece : undefined;
             setDrag({
-              kind: found.zone === "link" ? "link" : found.zone === "resize" ? "resize" : "move",
+              kind:
+                found.zone === "link" ? "link" : found.zone === "resize" ? "resize" : segment != null ? "segment" : "move",
               uid: found.task.uid,
+              segment,
               row: found.row,
               originX: x,
               originY: y,
-              start: found.task.start,
+              start: segment != null ? found.task.segments[segment].start : found.task.start,
               finish: found.task.finish,
               x,
               y,
@@ -247,6 +259,9 @@ export function GanttChart({
               const days = Math.round((x - drag.originX) / px);
               if (drag.kind === "move" && days !== 0) onMove(drag.uid, shiftDays(drag.start, days));
               if (drag.kind === "resize" && days !== 0) onResize(drag.uid, shiftDays(drag.finish, days));
+              if (drag.kind === "segment" && drag.segment != null && days !== 0) {
+                onMoveSegment(drag.uid, drag.segment, shiftDays(drag.start, days));
+              }
               if (drag.kind === "link") {
                 const found = hit(x, y);
                 if (found && found.task.uid !== drag.uid) onLink(drag.uid, found.task.uid);
@@ -351,8 +366,11 @@ function paintBody(
     const moved = drag && drag.moved && drag.uid === task.uid && drag.kind !== "link" ? drag : null;
     const start = moved?.kind === "move" ? shiftDays(task.start, Math.round((moved.x - moved.originX) / px)) : task.start;
     const finish = moved?.kind === "resize" ? shiftDays(task.finish, Math.round((moved.x - moved.originX) / px)) : task.finish;
-    const preview = { ...task, start, finish };
-    const pieces = previewPieces(task, start, finish);
+    const pieces =
+      moved?.kind === "segment" && moved.segment != null
+        ? segmentPreview(task, moved.segment, shiftDays(moved.start, Math.round((moved.x - moved.originX) / px)))
+        : previewPieces(task, start, finish);
+    const preview = { ...task, start, finish: moved?.kind === "segment" && pieces ? pieces[pieces.length - 1].finish : finish };
     const color = barColor(task, palette);
     drawBar(ctx, preview, row, model.origin, px, color, palette.knob, false, preview.start, preview.finish, pieces);
     if (!task.summary && task.percent_complete > 0) {

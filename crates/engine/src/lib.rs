@@ -7,6 +7,7 @@
 pub mod autosave;
 pub mod calendar;
 pub mod checkpoint;
+pub mod clipboard;
 pub mod command;
 pub mod document;
 pub mod error;

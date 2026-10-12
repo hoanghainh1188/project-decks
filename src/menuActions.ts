@@ -1,5 +1,6 @@
 import {
   compactHistory,
+  copyTasks,
   exportMspdi,
   importMspdi,
   newProject,
@@ -14,7 +15,7 @@ import type { Lang } from "./i18n";
 import { commitFocusedField } from "./shortcuts";
 import { isThemeChoice, type ThemeChoice } from "./theme";
 import { toolbarStates } from "./toolbarState";
-import type { Command, Scale, Snapshot, Task, ViewId } from "./types";
+import type { Command, FillField, Scale, Snapshot, Task, TaskClipboard, ViewId } from "./types";
 
 type Work = () => Promise<Snapshot | void | null>;
 
@@ -39,6 +40,12 @@ export interface MenuContext {
   openSplit: (uid: number) => void;
   changeLang: (lang: Lang) => void;
   changeTheme: (theme: ThemeChoice) => void;
+  /** Selected task rows in screen order; the first is `task` unless a range runs upward. */
+  selection: number[];
+  clipboard: TaskClipboard | null;
+  setClipboard: (clipboard: TaskClipboard) => void;
+  /** The column fill-down copies: the sheet column whose cell had focus last. */
+  fillField: FillField | null;
 }
 
 const VIEWS: Record<string, ViewId> = {
@@ -143,6 +150,35 @@ function viewAction(id: string, ctx: MenuContext): boolean {
   }
 }
 
+/** Copy, paste and fill-down on the selected rows; true when `id` was one of them. */
+function clipboardAction(id: string, ctx: MenuContext): boolean {
+  if (id !== "copy-task" && id !== "paste-task" && id !== "fill-down") return false;
+  const states = toolbarStates({
+    snap: ctx.snap,
+    task: ctx.task,
+    view: ctx.view,
+    fileDialogBusy: ctx.fileDialogBusy,
+    selection: ctx.selection,
+    hasClipboard: ctx.clipboard != null,
+    fillField: ctx.fillField,
+  });
+  const rows = ctx.selection;
+  if (id === "copy-task" && states.copyTask.enabled) {
+    void ctx.run(async () => {
+      ctx.setClipboard(await copyTasks(rows));
+    });
+  }
+  if (id === "paste-task" && states.pasteTask.enabled && ctx.clipboard) {
+    void ctx.send({ type: "paste_tasks", after_uid: rows.length > 0 ? rows[rows.length - 1] : null, clipboard: ctx.clipboard });
+  }
+  if (id === "fill-down" && states.fillDown.enabled && ctx.fillField) {
+    // A cell being typed in commits first, so the fill copies what it now shows.
+    commitFocusedField();
+    void ctx.send({ type: "fill_down", from_uid: rows[0], to_uids: rows.slice(1), field: ctx.fillField });
+  }
+  return true;
+}
+
 /** Commands on the selected task, under the same rules as the toolbar buttons. */
 function taskAction(id: string, ctx: MenuContext) {
   const { task } = ctx;
@@ -156,6 +192,6 @@ function taskAction(id: string, ctx: MenuContext) {
 
 /** Run the native menu item or shortcut `id` (the menu ids of src-tauri/src/i18n.rs). */
 export function handleMenuAction(id: string, ctx: MenuContext) {
-  if (documentAction(id, ctx) || viewAction(id, ctx)) return;
+  if (documentAction(id, ctx) || viewAction(id, ctx) || clipboardAction(id, ctx)) return;
   taskAction(id, ctx);
 }

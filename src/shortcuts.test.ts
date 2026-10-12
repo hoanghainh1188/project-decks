@@ -25,6 +25,9 @@ describe("shortcutId", () => {
     ["]", {}, "indent"],
     ["[", {}, "outdent"],
     ["Backspace", {}, "delete"],
+    ["d", {}, "fill-down"],
+    ["ç", { altKey: true, code: "KeyC" }, "copy-task"],
+    ["√", { altKey: true, code: "KeyV" }, "paste-task"],
   ])("maps Cmd+%s to %s", (key, init, id) => {
     expect(shortcutId(keyEvent(key, init))).toBe(id);
   });

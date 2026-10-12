@@ -288,7 +288,45 @@ export type Command =
   | { type: "create_recurring_task"; after_uid: number | null; spec: RecurrenceSpec }
   | { type: "update_recurring_task"; uid: number; spec: RecurrenceSpec }
   | { type: "split_task"; uid: number; at: number; gap: number }
-  | { type: "remove_split"; uid: number; index: number | null };
+  | { type: "remove_split"; uid: number; index: number | null }
+  | { type: "move_segment"; uid: number; index: number; start: number }
+  | { type: "paste_tasks"; after_uid: number | null; clipboard: TaskClipboard }
+  | { type: "fill_down"; from_uid: number; to_uids: number[]; field: FillField };
+
+/** Mirror of `clipboard::TaskCopy`: one copied task, its level relative to the copy. */
+export interface TaskCopy {
+  name: string;
+  level: number;
+  milestone: boolean;
+  manual: boolean;
+  duration: number;
+  work: number;
+  start: number;
+  finish: number;
+  notes: string;
+  priority: number;
+  calendar_id: number | null;
+  /** Matches the calendar by name when pasting into another project. */
+  calendar_name: string | null;
+  constraint_type: ConstraintType;
+  constraint_date: number | null;
+  deadline: number | null;
+  task_type: TaskType;
+  effort_driven: boolean;
+  fixed_cost: number;
+  fixed_cost_accrual: Accrual;
+  splits: Split[];
+  assignments: { resource_uid: number; resource_name: string; units: number; work: number }[];
+}
+
+/** Mirror of `clipboard::TaskClipboard`; links point at positions in `tasks`. */
+export interface TaskClipboard {
+  tasks: TaskCopy[];
+  links: { from: number; to: number; kind: DepKind; lag: number }[];
+}
+
+/** Mirror of `clipboard::FillField`: the columns fill-down copies. */
+export type FillField = "name" | "duration" | "start" | "predecessors" | "percent_complete" | "calendar";
 
 export type ViewId = "gantt" | "tracking" | "resources" | "usage" | "network";
 
