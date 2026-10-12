@@ -28,7 +28,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [ubuntu-22.04, windows-latest, macos-latest]
+        include:
+          - platform: ubuntu-22.04
+            args: ""
+            rust-targets: ""
+          - platform: windows-latest
+            args: ""
+            rust-targets: ""
+          # One app for both Apple Silicon and Intel Macs.
+          - platform: macos-latest
+            args: --target universal-apple-darwin
+            rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
@@ -50,6 +60,8 @@ jobs:
             xdg-utils
 
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-targets }}
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -79,6 +91,7 @@ jobs:
           releaseBody: Unsigned build. See the assets below for each platform.
           releaseDraft: true
           prerelease: false
+          args: ${{ matrix.args }}
 
       - name: Upload bundles
         uses: actions/upload-artifact@v4
@@ -92,3 +105,4 @@ jobs:
             target/release/bundle/appimage/*.AppImage
             target/release/bundle/rpm/*.rpm
             target/release/bundle/dmg/*.dmg
+            target/universal-apple-darwin/release/bundle/dmg/*.dmg
