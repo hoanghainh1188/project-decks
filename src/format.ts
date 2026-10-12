@@ -1,54 +1,92 @@
+import { getLang } from "./i18n/lang";
+
+// Text shown follows the interface language: Vietnamese "05/01/2026 08:00", "7,5 ngày",
+// "3.480.000"; English "2026-01-05 08:00", "7.5 days", "3,480,000". Parsing accepts both
+// forms in either language, since a day-first date and an ISO date cannot be confused.
+
 const DAY = 8 * 60;
 
-/** Hundredths of a unit as Vietnamese text: 150 -> "1,5", 75 -> "0,75". */
+/** Hundredths of a unit as text: 150 -> "1,5" ("1.5" in English), 75 -> "0,75". */
 function hundredths(value: number): string {
   const whole = Math.floor(value / 100);
   const fraction = value % 100;
   if (fraction === 0) return String(whole);
-  return `${whole},${String(fraction).padStart(2, "0").replace(/0$/, "")}`;
+  const point = getLang() === "en" ? "." : ",";
+  return `${whole}${point}${String(fraction).padStart(2, "0").replace(/0$/, "")}`;
 }
 
+const UNITS = {
+  vi: { day: () => "ngày", hour: () => "giờ", minute: () => "phút" },
+  en: {
+    day: (one: boolean) => (one ? "day" : "days"),
+    hour: (one: boolean) => (one ? "hr" : "hrs"),
+    minute: (one: boolean) => (one ? "min" : "mins"),
+  },
+};
+
 /**
- * Working minutes as days, the way Project shows durations ("7,5 ngày", a milestone
- * "0 ngày"). Falls back to hours, then minutes, only when days with two decimals would
- * not be exact, so text shown in an editor parses back to the same number of minutes.
+ * Working minutes as days, the way Project shows durations ("7,5 ngày" or "7.5 days", a
+ * milestone "0 ngày" or "0 days"). Falls back to hours, then minutes, only when days with
+ * two decimals would not be exact, so text shown in an editor parses back to the same
+ * number of minutes.
  */
 export function formatDuration(minutes: number): string {
   if (!Number.isFinite(minutes)) return "";
+  const units = UNITS[getLang()];
   const sign = minutes < 0 ? "-" : "";
   const abs = Math.abs(Math.round(minutes));
-  if (abs === 0) return "0 ngày";
-  if ((abs * 100) % DAY === 0) return `${sign}${hundredths((abs * 100) / DAY)} ngày`;
-  if ((abs * 100) % 60 === 0) return `${sign}${hundredths((abs * 100) / 60)} giờ`;
-  return `${sign}${abs} phút`;
+  if (abs === 0) return `0 ${units.day(false)}`;
+  if ((abs * 100) % DAY === 0) return `${sign}${hundredths((abs * 100) / DAY)} ${units.day(abs === DAY)}`;
+  if ((abs * 100) % 60 === 0) return `${sign}${hundredths((abs * 100) / 60)} ${units.hour(abs === 60)}`;
+  return `${sign}${abs} ${units.minute(abs === 1)}`;
 }
 
+const DAY_UNITS = new Set(["d", "ngày", "ngay", "day", "days"]);
+const HOUR_UNITS = new Set(["h", "giờ", "gio", "hr", "hrs", "hour", "hours"]);
+const MINUTE_UNITS = new Set(["m", "phút", "phut", "min", "mins", "minute", "minutes"]);
+
+/** Duration text in either language; a bare number is days. */
 export function parseDuration(text: string): number | null {
   const cleaned = text.trim().toLowerCase().replace(",", ".");
   if (!cleaned) return null;
-  const match = cleaned.match(/^(-?\d+(?:\.\d+)?)\s*(ngày|ngay|giờ|gio|phút|phut|d|h|m)?$/);
+  const match = cleaned.match(/^(-?\d+(?:\.\d+)?)\s*([a-zàáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]+)?$/);
   if (!match) return null;
   const value = Number(match[1]);
-  const unit = match[2] ?? "ngày";
-  if (unit === "d" || unit === "ngày" || unit === "ngay") return Math.round(value * DAY);
-  if (unit === "h" || unit === "giờ" || unit === "gio") return Math.round(value * 60);
-  return Math.round(value);
+  const unit = match[2];
+  if (unit === undefined || DAY_UNITS.has(unit)) return Math.round(value * DAY);
+  if (HOUR_UNITS.has(unit)) return Math.round(value * 60);
+  if (MINUTE_UNITS.has(unit)) return Math.round(value);
+  return null;
+}
+
+function pad2(value: number): string {
+  return String(value).padStart(2, "0");
 }
 
 export function formatInstant(ms: number): string {
   const date = new Date(ms);
-  const pad = (value: number) => String(value).padStart(2, "0");
-  return `${pad(date.getUTCDate())}/${pad(date.getUTCMonth() + 1)}/${date.getUTCFullYear()} ${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}`;
+  const time = `${pad2(date.getUTCHours())}:${pad2(date.getUTCMinutes())}`;
+  return `${formatDateOnly(ms)} ${time}`;
 }
 
+/** Day, month, year from "05/01/2026" or "2026-01-05". */
+function parseDateParts(text: string): { day: number; month: number; year: number } | null {
+  const dayFirst = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (dayFirst) return { day: Number(dayFirst[1]), month: Number(dayFirst[2]), year: Number(dayFirst[3]) };
+  const iso = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (iso) return { day: Number(iso[3]), month: Number(iso[2]), year: Number(iso[1]) };
+  return null;
+}
+
+/** "05/01/2026 08:00" or "2026-01-05 08:00"; without a time, 08:00. */
 export function parseInstant(text: string): number | null {
-  const match = text.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?$/);
+  const match = text.trim().match(/^(\S+)(?:\s+(\d{1,2}):(\d{2}))?$/);
   if (!match) return null;
-  const day = Number(match[1]);
-  const month = Number(match[2]);
-  const year = Number(match[3]);
-  const hour = match[4] ? Number(match[4]) : 8;
-  const minute = match[5] ? Number(match[5]) : 0;
+  const parts = parseDateParts(match[1]);
+  if (!parts) return null;
+  const { day, month, year } = parts;
+  const hour = match[2] ? Number(match[2]) : 8;
+  const minute = match[3] ? Number(match[3]) : 0;
   if (hour > 23 || minute > 59) return null;
   const ms = Date.UTC(year, month - 1, day, hour, minute);
   if (Number.isNaN(ms)) return null;
@@ -59,12 +97,13 @@ export function parseInstant(text: string): number | null {
 }
 
 export function formatDateOnly(ms: number): string {
-  return formatInstant(ms).slice(0, 10);
+  const key = instantToDateKey(ms);
+  return getLang() === "en" ? key : formatDateKeyDisplay(key);
 }
 
 // Date-only text maps to UTC midnight of that wall-clock day.
 export function parseDateOnly(text: string): number | null {
-  if (!/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(text.trim())) return null;
+  if (!parseDateParts(text.trim())) return null;
   return parseInstant(`${text.trim()} 00:00`);
 }
 
@@ -96,10 +135,6 @@ export function todayInstant(): number {
   return Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
 }
 
-function pad2(value: number): string {
-  return String(value).padStart(2, "0");
-}
-
 // Project wall-clock is Unix milliseconds shown with UTC fields, matching the engine.
 export function instantToDatetimeLocal(ms: number): string {
   const date = new Date(ms);
@@ -127,29 +162,32 @@ export function timeToMinute(value: string): number | null {
   return hour * 60 + minute;
 }
 
+/** A calendar key ("2026-01-05") as shown: "05/01/2026" in Vietnamese, unchanged in English. */
 export function formatDateKeyDisplay(key: string): string {
   const match = key.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) return key;
+  if (!match || getLang() === "en") return key;
   return `${match[3]}/${match[2]}/${match[1]}`;
 }
 
+/** Typed date ("05/01/2026" or "2026-01-05") to a calendar key ("2026-01-05"). */
 export function formatDateKey(text: string): string | null {
-  const match = text.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (!match) return null;
-  const day = match[1].padStart(2, "0");
-  const month = match[2].padStart(2, "0");
-  return `${match[3]}-${month}-${day}`;
+  const parts = parseDateParts(text.trim());
+  if (!parts) return null;
+  return `${parts.year}-${pad2(parts.month)}-${pad2(parts.day)}`;
 }
 
 export function formatMoney(value: number): string {
-  return new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 0 }).format(Math.round(value));
+  const locale = getLang() === "en" ? "en-US" : "vi-VN";
+  return new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(Math.round(value));
 }
 
-/** Hours with at most one decimal and a decimal comma, like the durations ("2,5 ngày"). */
+/** Hours with at most one decimal, with the language's decimal mark ("2,5" or "2.5"). */
 export function formatHours(value: number): string {
   if (Math.abs(value) < 0.05) return "";
   const rounded = Math.round(value * 10) / 10;
-  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1).replace(".", ",");
+  if (Number.isInteger(rounded)) return String(rounded);
+  const text = rounded.toFixed(1);
+  return getLang() === "en" ? text : text.replace(".", ",");
 }
 
 export function shiftDays(ms: number, days: number): number {

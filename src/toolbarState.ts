@@ -1,4 +1,6 @@
 import { canSplit } from "./components/inspector/SplitSection";
+import { commandReasons } from "./components/Toolbar.i18n";
+import { pick } from "./i18n";
 import type { Dependency, Snapshot, Task, ViewId } from "./types";
 
 /** Whether a toolbar command can run now, and if not, why (shown as its tooltip). */
@@ -58,9 +60,11 @@ export function linkFromAbove(snap: Snapshot | null, task: Task | null): Depende
   );
 }
 
+/** Reasons come in the current interface language. */
 export function toolbarStates({ snap, task, view, fileDialogBusy }: ToolbarContext): ToolbarStates {
+  const reasons = pick(commandReasons);
   if (!snap) {
-    const none = off("Chưa mở dự án");
+    const none = off(reasons.noProject);
     return {
       undo: none,
       redo: none,
@@ -79,8 +83,8 @@ export function toolbarStates({ snap, task, view, fileDialogBusy }: ToolbarConte
   const tasks = snap.project.tasks;
   // Every task command first needs a task the user can see selected.
   const needsTask = (): CommandState | null => {
-    if (!TASK_VIEWS.includes(view)) return off("Chọn công việc ở Gantt, Theo dõi hoặc Sơ đồ mạng");
-    if (!task) return off("Chọn một công việc trước");
+    if (!TASK_VIEWS.includes(view)) return off(reasons.wrongView);
+    if (!task) return off(reasons.noTask);
     return null;
   };
   const occurrence = task?.series_uid != null;
@@ -89,16 +93,16 @@ export function toolbarStates({ snap, task, view, fileDialogBusy }: ToolbarConte
   const indent =
     needsTask() ??
     (occurrence
-      ? off("Không đổi cấp một lần của chuỗi lặp")
+      ? off(reasons.occurrenceOutline)
       : !above
-        ? off("Công việc đầu tiên không thụt vào được")
+        ? off(reasons.firstTask)
         : ON);
   const outdent =
     needsTask() ??
     (occurrence
-      ? off("Không đổi cấp một lần của chuỗi lặp")
+      ? off(reasons.occurrenceOutline)
       : (task?.outline_level ?? 1) <= 1
-        ? off("Công việc đã ở cấp ngoài cùng")
+        ? off(reasons.topLevel)
         : ON);
   // "Above" is the previous task in outline order; a parent summary there would be a
   // link from a group to its own task, which scheduling rejects.
@@ -107,19 +111,19 @@ export function toolbarStates({ snap, task, view, fileDialogBusy }: ToolbarConte
   const link =
     needsTask() ??
     (!above
-      ? off("Không có công việc liền trước để liên kết")
+      ? off(reasons.nothingAbove)
       : parentAbove
-        ? off("Việc liền trước là nhóm chứa việc này")
+        ? off(reasons.parentAbove)
         : existing
-          ? off("Đã liên kết với việc liền trước; gỡ trước khi đổi kiểu")
+          ? off(reasons.alreadyLinked)
           : ON);
-  const unlink = needsTask() ?? (existing ? ON : off("Chưa có liên kết với việc liền trước"));
+  const unlink = needsTask() ?? (existing ? ON : off(reasons.notLinked));
   const split =
-    needsTask() ?? (canSplit(task) ? ON : off("Chỉ tách được công việc có thời lượng, không phải tóm tắt hay mốc"));
+    needsTask() ?? (canSplit(task) ? ON : off(reasons.cannotSplit));
 
   return {
-    undo: snap.can_undo ? ON : off("Không còn gì để hoàn tác"),
-    redo: snap.can_redo ? ON : off("Không còn gì để làm lại"),
+    undo: snap.can_undo ? ON : off(reasons.nothingToUndo),
+    redo: snap.can_redo ? ON : off(reasons.nothingToRedo),
     add: ON,
     indent,
     outdent,
@@ -130,9 +134,9 @@ export function toolbarStates({ snap, task, view, fileDialogBusy }: ToolbarConte
     project: ON,
     evm: ON,
     exportPdf: !PDF_VIEWS.includes(view)
-      ? off("Xuất PDF từ Gantt, Theo dõi hoặc Sơ đồ mạng")
+      ? off(reasons.pdfView)
       : fileDialogBusy
-        ? off("Đang mở một hộp thoại")
+        ? off(reasons.dialogOpen)
         : ON,
   };
 }
