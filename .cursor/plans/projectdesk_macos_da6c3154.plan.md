@@ -1,6 +1,6 @@
 ---
 name: Sheafly macOS
-overview: "Sheafly là ứng dụng desktop Tauri (Rust + React) quản lý dự án theo hướng Microsoft Project. Pha 1–13 và 16 đã xong. Sau pha 10 đã thêm: bản cài đa nền tảng (PR #17), test frontend (PR #18), phần còn lại của pha 9–10 (PR #19), sơ đồ mạng (PR #20), tách công việc (PR #21), CLAUDE.md (PR #22), an toàn dữ liệu (PR #23), giao diện cơ bản (Pha 11, PR #25), nền tệp và hiệu năng (Pha 12, PR #28–#30), theo dõi tiến độ (Pha 13, PR #31–#32) và sửa giao diện sau khi chụp màn hình dự án mẫu (PR #33). Việc tiếp theo là Pha 14, 15 và 17 ở mục Lộ trình; còn nợ vài bước kiểm tra thủ công trong app thật (xem đầu mục Lộ trình)."
+overview: "Sheafly là ứng dụng desktop Tauri (Rust + React) quản lý dự án theo hướng Microsoft Project. Pha 1–13, 16 và 17 đã xong; Pha 14 xong phần không cần tài khoản Apple. Sau pha 10 đã thêm: bản cài đa nền tảng (PR #17), test frontend (PR #18), phần còn lại của pha 9–10 (PR #19), sơ đồ mạng (PR #20), tách công việc (PR #21), CLAUDE.md (PR #22), an toàn dữ liệu (PR #23), giao diện cơ bản (Pha 11, PR #25), nền tệp và hiệu năng (Pha 12, PR #28–#30), theo dõi tiến độ (Pha 13, PR #31–#32) và sửa giao diện sau khi chụp màn hình dự án mẫu (PR #33). Sau đó là Pha 14 (cài đặt), 15 và 17 (PR #34–#55: dọn dẹp, sơ đồ mạng, thanh công cụ, giao diện tối, copy/paste). Việc tiếp theo là ký số của Pha 14 (cần tài khoản Apple Developer) và Pha 15 ở mục Lộ trình; còn nợ vài bước kiểm tra thủ công trong app thật (xem đầu mục Lộ trình)."
 todos:
   - id: scaffold
     content: Tauri 2 + React + crate engine
@@ -66,8 +66,8 @@ todos:
     content: "Pha 13: theo dõi tiến độ (ngày thực tế điều khiển lịch, trễ hạn theo MS Project, dời phần chưa xong, AC/EV task tách, chuỗi lặp; PR #31 và phần 2)"
     status: completed
   - id: macos-release
-    content: "Pha 14: phát hành macOS (ký số, notarize, universal, kiểu tệp .sheafly, CSP)"
-    status: pending
+    content: "Pha 14: phát hành macOS. Đã xong: bản universal, kiểu tệp .sheafly, Mở gần đây, một bản chạy, CSP. Còn lại: ký số Developer ID, notarize, staple (cần tài khoản Apple Developer)"
+    status: in_progress
   - id: mspdi-complete
     content: "Pha 15: MSPDI đầy đủ (Deadline, chi phí thực tế, WorkWeeks)"
     status: pending
@@ -291,7 +291,7 @@ Panel nhỏ cạnh Gantt, nhãn tiếng Việt và viết tắt trong ngoặc:
 
 Theo đánh giá độc lập sau PR #23 (đối chiếu từng mục với code) và kiểm tra giao diện trên một dự án mẫu 21 dòng. Pha 11 làm trước vì nhỏ và người dùng thấy ngay; Pha 12 là nền cho Pha 13 và 16. Pha 14 chạy song song khi có tài khoản Apple Developer.
 
-Trạng thái (12/10/2026): Pha 11–13 đã xong. Pha 15 và 16 đã đủ điều kiện (Pha 12–13 xong). Pha 14 cần tài khoản Apple Developer cho phần ký số và notarize; phần gắn kiểu tệp, CSP, bản universal làm được trước.
+Trạng thái (12/10/2026): Pha 11–13, 16 và 17 đã xong. Pha 14 đã làm phần gắn kiểu tệp, CSP, bản universal; còn ký số và notarize, cần tài khoản Apple Developer. Pha 15 đủ điều kiện làm ngay.
 
 Kiểm tra thủ công còn nợ trong `pnpm tauri dev` (các PR #28–#33 mới được kiểm bằng test, bench và ảnh chụp trình duyệt):
 
