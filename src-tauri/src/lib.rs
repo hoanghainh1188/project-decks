@@ -1,7 +1,9 @@
 use std::fs;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
+use projectdesk_engine::autosave::AutosaveSlot;
 use projectdesk_engine::document::now_millis;
 use projectdesk_engine::evm::ProjectMetrics;
 use projectdesk_engine::mspdi::{read_mspdi, write_mspdi};
@@ -19,6 +21,74 @@ struct AppState {
     doc: Mutex<Document>,
     /// True while a native file dialog owns the screen.
     dialog_open: Arc<AtomicBool>,
+    /// Where unsaved work goes between saves. `None` when the app has no data folder.
+    autosave: Option<AutosaveSlot>,
+    /// Bumped on every change to the open document.
+    revision: AtomicU64,
+    /// The revision the autosave slot holds, or the one that needs no autosave.
+    autosaved: AtomicU64,
+    /// Set once this run has offered (or found no) autosave from a previous run. Until
+    /// then the slot may hold crash work, so it must not be overwritten.
+    slot_checked: AtomicBool,
+}
+
+impl AppState {
+    fn new(autosave: Option<AutosaveSlot>) -> Self {
+        Self {
+            doc: Mutex::new(Document::new_default()),
+            dialog_open: Arc::new(AtomicBool::new(false)),
+            autosave,
+            revision: AtomicU64::new(0),
+            autosaved: AtomicU64::new(0),
+            slot_checked: AtomicBool::new(false),
+        }
+    }
+}
+
+/// How often unsaved changes are written to the autosave slot.
+const AUTOSAVE_INTERVAL: Duration = Duration::from_secs(30);
+
+/// Undo steps kept by "Gộp lịch sử hoàn tác".
+const HISTORY_KEPT: usize = 100;
+
+fn mark_edited(state: &AppState) {
+    state.revision.fetch_add(1, Ordering::AcqRel);
+}
+
+/// The document was saved, discarded, or replaced: nothing is left to recover. Call with
+/// the document lock held, so an autosave tick cannot write the slot back right after.
+fn clear_autosave(state: &AppState) {
+    state
+        .autosaved
+        .store(state.revision.load(Ordering::Acquire), Ordering::Release);
+    if let Some(Err(err)) = state.autosave.as_ref().map(AutosaveSlot::clear) {
+        eprintln!("ProjectDesk: không xóa được bản tự lưu: {err}");
+    }
+}
+
+/// Write unsaved changes to the slot if they changed since the last write. Runs on the
+/// autosave thread. The counters are read under the lock, so a save or discard that
+/// cleared the slot while this tick waited is seen and the slot stays empty.
+fn autosave_tick(state: &AppState) {
+    let Some(slot) = &state.autosave else {
+        return;
+    };
+    if !state.slot_checked.load(Ordering::Acquire) && slot.pending().is_some() {
+        return;
+    }
+    let doc = lock(state);
+    let revision = state.revision.load(Ordering::Acquire);
+    if revision == state.autosaved.load(Ordering::Acquire) {
+        return;
+    }
+    if !doc.dirty {
+        state.autosaved.store(revision, Ordering::Release);
+        return;
+    }
+    match slot.write(&doc, now_millis()) {
+        Ok(()) => state.autosaved.store(revision, Ordering::Release),
+        Err(err) => eprintln!("ProjectDesk: không tự lưu được: {err}"),
+    }
 }
 
 /// Released when the file dialog command finishes, including cancel and write.
@@ -144,6 +214,7 @@ fn write_document(state: &AppState, path: String) -> Result<Snapshot, String> {
     store::save_with_snapshot(&mut doc, &path, now_millis()).map_err(|err| err.to_string())?;
     doc.path = Some(path);
     doc.dirty = false;
+    clear_autosave(state);
     Ok(doc.snapshot())
 }
 
@@ -202,12 +273,19 @@ async fn confirm_discard<R: Runtime>(app: &AppHandle<R>, state: &AppState) -> Re
 
 /// Quit once the unsaved-changes question allows it (window close, Cmd+Q, Dock).
 async fn quit_if_confirmed<R: Runtime>(app: AppHandle<R>) {
-    let state = app.state::<AppState>();
+    let Some(state) = app.try_state::<AppState>() else {
+        app.exit(0);
+        return;
+    };
     let Some(permit) = begin_dialog(&state) else {
         return;
     };
     match confirm_discard(&app, &state).await {
         Ok(true) => {
+            {
+                let _doc = lock(&state);
+                clear_autosave(&state);
+            }
             drop(permit);
             app.exit(0);
         }
@@ -245,21 +323,27 @@ fn apply_command(state: State<'_, AppState>, command: Command) -> Result<Snapsho
     // flag is set, so an edit either lands before that read or is refused.
     let mut doc = lock(&state);
     ensure_no_dialog(&state)?;
-    doc.apply(command).map_err(|err| err.to_string())
+    let snapshot = doc.apply(command).map_err(|err| err.to_string())?;
+    mark_edited(&state);
+    Ok(snapshot)
 }
 
 #[tauri::command(async)]
 fn undo(state: State<'_, AppState>) -> Result<Snapshot, String> {
     let mut doc = lock(&state);
     ensure_no_dialog(&state)?;
-    doc.undo().map_err(|err| err.to_string())
+    let snapshot = doc.undo().map_err(|err| err.to_string())?;
+    mark_edited(&state);
+    Ok(snapshot)
 }
 
 #[tauri::command(async)]
 fn redo(state: State<'_, AppState>) -> Result<Snapshot, String> {
     let mut doc = lock(&state);
     ensure_no_dialog(&state)?;
-    doc.redo().map_err(|err| err.to_string())
+    let snapshot = doc.redo().map_err(|err| err.to_string())?;
+    mark_edited(&state);
+    Ok(snapshot)
 }
 
 #[tauri::command]
@@ -272,6 +356,7 @@ async fn new_project(app: AppHandle, state: State<'_, AppState>) -> Result<Snaps
     }
     let mut doc = lock(&state);
     *doc = Document::new_default();
+    clear_autosave(&state);
     Ok(doc.snapshot())
 }
 
@@ -298,6 +383,11 @@ async fn open_project(app: tauri::AppHandle, state: State<'_, AppState>) -> Resu
     let snapshot = {
         let mut doc = lock(&state);
         *doc = opened.document;
+        clear_autosave(&state);
+        // A recovered copy is unsaved work from the start.
+        if doc.dirty {
+            mark_edited(&state);
+        }
         doc.snapshot()
     };
     // A damaged log or a different engine still opens; say what the user is looking at.
@@ -359,6 +449,129 @@ async fn import_mspdi(app: tauri::AppHandle, state: State<'_, AppState>) -> Resu
     doc.replace_project(project, None)
         .map_err(|err| err.to_string())?;
     doc.dirty = true;
+    clear_autosave(&state);
+    mark_edited(&state);
+    Ok(doc.snapshot())
+}
+
+const RESTORE_LABEL: &str = "Khôi phục";
+const DROP_AUTOSAVE_LABEL: &str = "Bỏ bản tự lưu";
+const COMPACT_LABEL: &str = "Gộp";
+
+/// A native two-button question on the main window. True for the first button.
+async fn ask<R: Runtime>(app: &AppHandle<R>, title: &str, message: String, yes: &str, no: &str) -> bool {
+    let (tx, mut rx) = tauri::async_runtime::channel(1);
+    let yes_label = yes.to_string();
+    alert(app, message)
+        .title(title)
+        .kind(MessageDialogKind::Warning)
+        .buttons(MessageDialogButtons::OkCancelCustom(yes.into(), no.into()))
+        .show_with_result(move |result| {
+            let chosen = match result {
+                MessageDialogResult::Ok | MessageDialogResult::Yes => true,
+                MessageDialogResult::Custom(label) => label == yes_label,
+                _ => false,
+            };
+            let _ = tx.try_send(chosen);
+        });
+    rx.recv().await.unwrap_or(false)
+}
+
+/// After a crash the slot still holds unsaved work: offer it back. Returns the new
+/// snapshot when the user restores it.
+#[tauri::command]
+async fn check_autosave(app: AppHandle, state: State<'_, AppState>) -> Result<Option<Snapshot>, String> {
+    let Some(slot) = state.autosave.clone() else {
+        return Ok(None);
+    };
+    let Some(_permit) = begin_dialog(&state) else {
+        return Ok(None);
+    };
+    // Once per run: a reloaded window must not offer old work over newer edits.
+    if state.slot_checked.swap(true, Ordering::AcqRel) {
+        return Ok(None);
+    }
+    let Some(pending) = slot.pending() else {
+        return Ok(None);
+    };
+    if pending.is_older_than_file() {
+        // The file was saved after this autosave; the slot is left over.
+        let _doc = lock(&state);
+        clear_autosave(&state);
+        return Ok(None);
+    }
+    let source = match &pending.original_path {
+        Some(path) => format!(" của tệp “{}”", file_name(path)),
+        None => String::new(),
+    };
+    let message = format!(
+        "ProjectDesk đã đóng khi dự án “{}”{source} còn thay đổi chưa lưu. Khôi phục bản tự lưu?",
+        pending.project_name
+    );
+    if !ask(&app, "Khôi phục dự án", message, RESTORE_LABEL, DROP_AUTOSAVE_LABEL).await {
+        let _doc = lock(&state);
+        clear_autosave(&state);
+        return Ok(None);
+    }
+    let opened = match slot.restore() {
+        Ok(opened) => opened,
+        Err(err) => {
+            // Unrecoverable: asking again at every launch would not help.
+            let _doc = lock(&state);
+            clear_autosave(&state);
+            return Err(format!("Không khôi phục được bản tự lưu: {err}"));
+        }
+    };
+    let snapshot = {
+        let mut doc = lock(&state);
+        *doc = opened.document;
+        mark_edited(&state);
+        doc.snapshot()
+    };
+    if let Some(message) = opened.report.message() {
+        alert(&app, message)
+            .title("Khôi phục dự án")
+            .kind(MessageDialogKind::Warning)
+            .show(|_| {});
+    }
+    Ok(Some(snapshot))
+}
+
+fn file_name(path: &str) -> String {
+    std::path::Path::new(path)
+        .file_name()
+        .map(|name| name.to_string_lossy().to_string())
+        .unwrap_or_else(|| path.to_string())
+}
+
+/// Fold old undo steps into the project's starting state, after the user agrees.
+#[tauri::command]
+async fn compact_history(app: AppHandle, state: State<'_, AppState>) -> Result<Snapshot, String> {
+    let Some(_permit) = begin_dialog(&state) else {
+        return Ok(lock(&state).snapshot());
+    };
+    let undoable = lock(&state).cursor;
+    if undoable <= HISTORY_KEPT {
+        alert(
+            &app,
+            format!("Lịch sử hoàn tác mới có {undoable} thao tác, chưa cần gộp (giữ {HISTORY_KEPT} thao tác gần nhất)."),
+        )
+        .title("Gộp lịch sử hoàn tác")
+        .kind(MessageDialogKind::Info)
+        .show(|_| {});
+        return Ok(lock(&state).snapshot());
+    }
+    let message = format!(
+        "Gộp {} thao tác cũ vào trạng thái gốc và giữ {HISTORY_KEPT} thao tác gần nhất để hoàn tác? \
+         Không hoàn tác được việc gộp. Tệp nhỏ lại sau lần lưu tới.",
+        undoable - HISTORY_KEPT
+    );
+    if !ask(&app, "Gộp lịch sử hoàn tác", message, COMPACT_LABEL, CANCEL_LABEL).await {
+        return Ok(lock(&state).snapshot());
+    }
+    let mut doc = lock(&state);
+    doc.compact_history(HISTORY_KEPT).map_err(|err| err.to_string())?;
+    mark_edited(&state);
     Ok(doc.snapshot())
 }
 
@@ -498,6 +711,8 @@ fn build_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
             &PredefinedMenuItem::separator(app)?,
             &menu_item(app, "level", "Cân bằng nguồn lực", None)?,
             &menu_item(app, "clear-level", "Xóa độ trễ cân bằng", None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &menu_item(app, "compact-history", "Gộp lịch sử hoàn tác…", None)?,
         ],
     )?;
     Menu::with_items(
@@ -506,18 +721,32 @@ fn build_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     )
 }
 
+/// Whether the open document has unsaved changes. False before `setup` manages the state.
+fn is_dirty<R: Runtime>(app: &AppHandle<R>) -> bool {
+    app.try_state::<AppState>().is_some_and(|state| lock(&state).dirty)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        .manage(AppState {
-            doc: Mutex::new(Document::new_default()),
-            dialog_open: Arc::new(AtomicBool::new(false)),
-        })
         .setup(|app| {
+            let slot = match app.path().app_data_dir() {
+                Ok(dir) => Some(AutosaveSlot::new(dir.join("autosave"))),
+                Err(err) => {
+                    eprintln!("ProjectDesk: không có thư mục dữ liệu, tắt tự lưu: {err}");
+                    None
+                }
+            };
+            app.manage(AppState::new(slot));
             let menu = build_menu(app.handle())?;
             app.set_menu(menu)?;
+            let handle = app.handle().clone();
+            std::thread::spawn(move || loop {
+                std::thread::sleep(AUTOSAVE_INTERVAL);
+                autosave_tick(&handle.state::<AppState>());
+            });
             Ok(())
         })
         .on_menu_event(|app, event| {
@@ -530,7 +759,7 @@ pub fn run() {
         .on_window_event(|window, event| {
             let app = window.app_handle();
             match event {
-                WindowEvent::CloseRequested { api, .. } if lock(&app.state::<AppState>()).dirty => {
+                WindowEvent::CloseRequested { api, .. } if is_dirty(app) => {
                     api.prevent_close();
                     tauri::async_runtime::spawn(quit_if_confirmed(app.clone()));
                 }
@@ -550,7 +779,9 @@ pub fn run() {
             save_project_as,
             import_mspdi,
             export_mspdi,
-            save_pdf
+            save_pdf,
+            check_autosave,
+            compact_history
         ])
         .build(tauri::generate_context!())
         .expect("error while building ProjectDesk")
@@ -558,7 +789,7 @@ pub fn run() {
             // Quit from the Dock or the system. `app.exit` passes a code and goes through.
             match event {
                 RunEvent::ExitRequested { code: None, api, .. }
-                    if lock(&app.state::<AppState>()).dirty =>
+                    if is_dirty(app) =>
                 {
                     api.prevent_exit();
                     tauri::async_runtime::spawn(quit_if_confirmed(app.clone()));
@@ -584,11 +815,60 @@ mod tests {
     }
 
     #[test]
+    fn autosave_writes_only_new_unsaved_changes_and_clears_on_save() {
+        let dir = std::env::temp_dir().join(format!("projectdesk-tauri-autosave-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let state = AppState::new(Some(AutosaveSlot::new(&dir)));
+        state.slot_checked.store(true, Ordering::Release);
+        let slot = state.autosave.clone().unwrap();
+
+        autosave_tick(&state);
+        assert!(slot.pending().is_none(), "a clean new project needs no autosave");
+
+        lock(&state)
+            .apply(Command::RenameProject { name: "Tự lưu".into() })
+            .unwrap();
+        mark_edited(&state);
+        autosave_tick(&state);
+        assert_eq!(slot.pending().unwrap().project_name, "Tự lưu");
+
+        // Nothing new: the slot is not rewritten.
+        let written = fs::metadata(dir.join("autosave.pdproj")).unwrap().modified().unwrap();
+        autosave_tick(&state);
+        assert_eq!(fs::metadata(dir.join("autosave.pdproj")).unwrap().modified().unwrap(), written);
+
+        let path = dir.join("du-an.pdproj").to_string_lossy().to_string();
+        write_document(&state, path).unwrap();
+        assert!(slot.pending().is_none(), "saving empties the slot");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn autosave_keeps_crash_work_until_it_has_been_offered() {
+        let dir = std::env::temp_dir().join(format!("projectdesk-tauri-crash-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let slot = AutosaveSlot::new(&dir);
+        let mut crashed = Document::new_default();
+        crashed.apply(Command::RenameProject { name: "Trước crash".into() }).unwrap();
+        slot.write(&crashed, now_millis()).unwrap();
+
+        let state = AppState::new(Some(slot.clone()));
+        lock(&state)
+            .apply(Command::RenameProject { name: "Phiên mới".into() })
+            .unwrap();
+        mark_edited(&state);
+        autosave_tick(&state);
+        assert_eq!(slot.pending().unwrap().project_name, "Trước crash");
+
+        state.slot_checked.store(true, Ordering::Release);
+        autosave_tick(&state);
+        assert_eq!(slot.pending().unwrap().project_name, "Phiên mới");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn edits_wait_while_a_dialog_is_open() {
-        let state = AppState {
-            doc: Mutex::new(Document::new_default()),
-            dialog_open: Arc::new(AtomicBool::new(false)),
-        };
+        let state = AppState::new(None);
         assert!(ensure_no_dialog(&state).is_ok());
         let permit = begin_dialog(&state).expect("no dialog yet");
         assert_eq!(ensure_no_dialog(&state), Err(DIALOG_BUSY.to_string()));

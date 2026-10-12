@@ -74,6 +74,16 @@ export function importMspdi(): Promise<Snapshot> {
   return afterQueued(() => invoke<Snapshot>("import_mspdi"));
 }
 
+/** After a crash, offers the autosaved project back; the restored snapshot, or null. */
+export function checkAutosave(): Promise<Snapshot | null> {
+  return afterQueued(() => invoke<Snapshot | null>("check_autosave"));
+}
+
+/** Asks, then folds old undo steps into the project's starting state. */
+export function compactHistory(): Promise<Snapshot> {
+  return afterQueued(() => invoke<Snapshot>("compact_history"));
+}
+
 export function exportMspdi(): Promise<void> {
   return afterQueued(() => invoke<void>("export_mspdi"));
 }

@@ -15,6 +15,8 @@ class FakeBackend {
   snapshot: Snapshot = makeSnapshot();
   metrics: ProjectMetrics = makeMetrics();
   network: NetworkLayout = emptyNetwork();
+  /** What `check_autosave` restores; null when there is no autosave. */
+  autosave: Snapshot | null = null;
   private failures = new Map<string, unknown>();
   private holds = new Map<string, Promise<void>>();
 
@@ -25,6 +27,7 @@ class FakeBackend {
     this.network = emptyNetwork();
     this.failures.clear();
     this.holds.clear();
+    this.autosave = null;
   }
 
   /** The next call to `cmd` waits until the returned function runs, like a slow Rust command. */
@@ -64,6 +67,7 @@ class FakeBackend {
       case "save_project":
       case "save_project_as":
       case "import_mspdi":
+      case "compact_history":
       case "undo":
       case "redo":
         return structuredClone(this.snapshot);
@@ -74,6 +78,9 @@ class FakeBackend {
       case "export_mspdi":
       case "save_pdf":
         return undefined;
+      case "check_autosave":
+        if (this.autosave) this.snapshot = structuredClone(this.autosave);
+        return this.autosave ? structuredClone(this.autosave) : null;
       case "apply_command":
         this.apply(args?.command as Command);
         return structuredClone(this.snapshot);

@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   applyCommand,
+  checkAutosave,
+  compactHistory,
   errorMessage,
   exportMspdi,
   importMspdi,
@@ -168,6 +170,7 @@ export default function App() {
       if (id === "baseline") setBaselineOpen(true);
       if (id === "level") void send({ type: "level_resources" });
       if (id === "clear-level") void send({ type: "clear_leveling" });
+      if (id === "compact-history") startFileDialog(compactHistory);
       if (id === "recurring") setSeriesDialog(0);
       if (!task) return;
       if (id === "split-task" && canSplit(task)) setSplitDialog(task.uid);
@@ -199,7 +202,10 @@ export default function App() {
       setError("Mở ProjectDesk bằng pnpm tauri dev để dùng lịch và lưu tệp.");
       return;
     }
-    void run(() => loadState());
+    // After a crash the backend offers the autosaved project back in a native dialog.
+    void run(() => loadState()).then(() =>
+      startFileDialog(async () => (await checkAutosave()) ?? undefined),
+    );
     let unlisten: (() => void) | undefined;
     let cancelled = false;
     void onMenu((id) => dispatchAction(id, document.activeElement)).then((stop) => {
@@ -210,7 +216,7 @@ export default function App() {
       cancelled = true;
       unlisten?.();
     };
-  }, [run, dispatchAction]);
+  }, [run, dispatchAction, startFileDialog]);
 
   useEffect(() => {
     if (!project || project.tasks.length === 0) return;
