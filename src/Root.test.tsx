@@ -73,6 +73,30 @@ describe("Root", () => {
     expect(await screen.findByText("Không ghi được cài đặt")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Undo" })).toBeInTheDocument();
   });
+
+  it("opens a file the app was launched with after the autosave offer", async () => {
+    vi.spyOn(navigator, "languages", "get").mockReturnValue(["vi-VN"]);
+    render(<Root />);
+    await waitFor(() => expect(fakeBackend.calls.some((call) => call.cmd === "open_pending")).toBe(true));
+    const order = fakeBackend.calls.map((call) => call.cmd);
+    expect(order.indexOf("check_autosave")).toBeLessThan(order.indexOf("open_pending"));
+  });
+
+  it("opens a recent file from the menu and a file the system sends", async () => {
+    vi.spyOn(navigator, "languages", "get").mockReturnValue(["vi-VN"]);
+    render(<Root />);
+    await screen.findByRole("button", { name: "Hoàn tác" });
+    await waitFor(() => expect(fakeBackend.calls.some((call) => call.cmd === "open_pending")).toBe(true));
+    const menu = await menuHandler();
+    await act(async () => menu("recent:2"));
+    await waitFor(() => expect(fakeBackend.calls).toContainEqual({ cmd: "open_recent", args: { index: 2 } }));
+    const before = fakeBackend.calls.filter((call) => call.cmd === "open_pending").length;
+    const openFile = await eventHandler("open-file");
+    await act(async () => openFile({ payload: null }));
+    await waitFor(() =>
+      expect(fakeBackend.calls.filter((call) => call.cmd === "open_pending").length).toBe(before + 1),
+    );
+  });
 });
 
 /** The handler App registered for native menu clicks. */
@@ -84,4 +108,15 @@ async function menuHandler(): Promise<(id: string) => void> {
     found = call?.[1] as unknown as (event: { payload: string }) => void;
   });
   return (id: string) => found?.({ payload: id });
+}
+
+/** The handler App registered for a backend event. */
+async function eventHandler(name: string): Promise<(event: { payload: unknown }) => void> {
+  let found: ((event: { payload: unknown }) => void) | undefined;
+  await waitFor(() => {
+    const call = vi.mocked(listen).mock.calls.find(([event]) => event === name);
+    expect(call).toBeDefined();
+    found = call?.[1] as unknown as (event: { payload: unknown }) => void;
+  });
+  return (event) => found?.(event);
 }

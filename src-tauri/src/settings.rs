@@ -1,4 +1,5 @@
-//! `settings.json` in the app config folder, shaped like `{"language":"en"}`.
+//! `settings.json` in the app config folder, shaped like
+//! `{"language":"en","recent":["/path/a.sheafly", …]}`.
 
 use std::fs;
 use std::io;
@@ -28,11 +29,61 @@ pub fn read_language(path: &Path) -> Option<Lang> {
         .and_then(Lang::from_code)
 }
 
-/// Remember `lang`, keeping any other settings. Writes a temp file beside the real one
-/// and renames it over, so a crash never leaves half a file.
+/// Remember `lang`, keeping any other settings.
 pub fn write_language(path: &Path, lang: Lang) -> io::Result<()> {
     let mut settings = read_object(path);
     settings.insert("language".into(), Value::String(lang.code().into()));
+    write_object(path, settings)
+}
+
+/// How many files File → Open Recent lists.
+pub const RECENT_LIMIT: usize = 10;
+
+/// Recently opened or saved projects, most recent first.
+pub fn read_recent(path: &Path) -> Vec<String> {
+    match read_object(path).get("recent") {
+        Some(Value::Array(items)) => items
+            .iter()
+            .filter_map(Value::as_str)
+            .map(str::to_string)
+            .take(RECENT_LIMIT)
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// Put `file` first in the recent list (once), keeping at most `RECENT_LIMIT`.
+pub fn remember_recent(path: &Path, file: &str) -> io::Result<Vec<String>> {
+    let mut recent = read_recent(path);
+    recent.retain(|item| item != file);
+    recent.insert(0, file.to_string());
+    recent.truncate(RECENT_LIMIT);
+    write_recent(path, &recent)?;
+    Ok(recent)
+}
+
+/// Drop `file` from the recent list, e.g. after it turned out to be gone.
+pub fn forget_recent(path: &Path, file: &str) -> io::Result<Vec<String>> {
+    let mut recent = read_recent(path);
+    recent.retain(|item| item != file);
+    write_recent(path, &recent)?;
+    Ok(recent)
+}
+
+pub fn clear_recent(path: &Path) -> io::Result<()> {
+    write_recent(path, &[])
+}
+
+fn write_recent(path: &Path, recent: &[String]) -> io::Result<()> {
+    let mut settings = read_object(path);
+    let list = recent.iter().cloned().map(Value::String).collect();
+    settings.insert("recent".into(), Value::Array(list));
+    write_object(path, settings)
+}
+
+/// Write the whole object to a temp file beside the real one and rename it over, so a
+/// crash never leaves half a file.
+fn write_object(path: &Path, settings: Map<String, Value>) -> io::Result<()> {
     let text = serde_json::to_string_pretty(&Value::Object(settings)).map_err(io::Error::other)?;
     let dir = path.parent().unwrap_or_else(|| Path::new("."));
     fs::create_dir_all(dir)?;
@@ -95,6 +146,28 @@ mod tests {
         assert_eq!(read_language(&path), None);
         fs::write(&path, "{}").unwrap();
         assert_eq!(read_language(&path), None, "no language key");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn recent_files_are_most_recent_first_unique_and_capped() {
+        let dir = temp_dir("recent");
+        let path = dir.join(FILE_NAME);
+        assert!(read_recent(&path).is_empty());
+        write_language(&path, Lang::En).unwrap();
+        for index in 0..12 {
+            remember_recent(&path, &format!("/p/{index}.sheafly")).unwrap();
+        }
+        let recent = remember_recent(&path, "/p/5.sheafly").unwrap();
+        assert_eq!(recent.len(), RECENT_LIMIT);
+        assert_eq!(recent[0], "/p/5.sheafly");
+        assert_eq!(recent[1], "/p/11.sheafly");
+        assert_eq!(recent.iter().filter(|item| *item == "/p/5.sheafly").count(), 1);
+        assert_eq!(read_language(&path), Some(Lang::En), "other settings are kept");
+        let recent = forget_recent(&path, "/p/11.sheafly").unwrap();
+        assert!(!recent.contains(&"/p/11.sheafly".to_string()));
+        clear_recent(&path).unwrap();
+        assert!(read_recent(&path).is_empty());
         let _ = fs::remove_dir_all(&dir);
     }
 }

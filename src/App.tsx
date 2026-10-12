@@ -15,7 +15,10 @@ import {
   loadState,
   newProject,
   onMenu,
+  onOpenFile,
+  openPending,
   openProject,
+  openRecent,
   redo,
   savePdf,
   saveProject,
@@ -124,6 +127,9 @@ export default function App() {
 
   // One native file chooser at a time. A second click is ignored so it cannot
   // open another dialog while the first still owns the macOS run loop.
+  // A file the system asked to open while a dialog was up; opened when it closes.
+  const openWhenFreeRef = useRef(false);
+
   const startFileDialog = useCallback((work: () => Promise<Snapshot | void>) => {
     if (fileDialogBusyRef.current) return;
     if (!inTauri()) {
@@ -138,9 +144,21 @@ export default function App() {
       } finally {
         fileDialogBusyRef.current = false;
         setFileDialogBusy(false);
+        if (openWhenFreeRef.current) {
+          openWhenFreeRef.current = false;
+          openFileWhenFreeRef.current();
+        }
       }
     })();
   }, [run]);
+
+  // Open a double-clicked project now, or as soon as the current dialog closes.
+  const openFileWhenFree = useCallback(() => {
+    if (fileDialogBusyRef.current) openWhenFreeRef.current = true;
+    else startFileDialog(openPending);
+  }, [startFileDialog]);
+  const openFileWhenFreeRef = useRef(openFileWhenFree);
+  openFileWhenFreeRef.current = openFileWhenFree;
 
   const createCalendar = useCallback(
     async (name: string, assign: (id: number) => Command | null, openEditor: boolean) => {
@@ -183,6 +201,7 @@ export default function App() {
     (id: string) => {
       if (id === "new") startFileDialog(newProject);
       if (id === "open") startFileDialog(openProject);
+      if (id.startsWith("recent:")) startFileDialog(() => openRecent(Number(id.slice("recent:".length))));
       if (id === "save" || id === "save-as") {
         commitFocusedField();
         startFileDialog(id === "save" ? saveProject : saveProjectAs);
@@ -262,19 +281,25 @@ export default function App() {
       setError(pick(appMessages).needsTauri);
       return;
     }
-    // After a crash the backend offers the autosaved project back in a native dialog.
+    // After a crash the backend offers the autosaved project back in a native dialog;
+    // then a project the app was launched to open (a double-clicked file) opens.
     void run(() => loadState()).then(() =>
-      startFileDialog(async () => (await checkAutosave()) ?? undefined),
+      startFileDialog(async () => {
+        await checkAutosave();
+        return openPending();
+      }),
     );
-    let unlisten: (() => void) | undefined;
+    const stops: (() => void)[] = [];
     let cancelled = false;
-    void onMenu((id) => dispatchAction(id, document.activeElement)).then((stop) => {
+    const keep = (stop: () => void) => {
       if (cancelled) stop();
-      else unlisten = stop;
-    });
+      else stops.push(stop);
+    };
+    void onMenu((id) => dispatchAction(id, document.activeElement)).then(keep);
+    void onOpenFile(() => openFileWhenFreeRef.current()).then(keep);
     return () => {
       cancelled = true;
-      unlisten?.();
+      stops.forEach((stop) => stop());
     };
   }, [run, dispatchAction, startFileDialog]);
 

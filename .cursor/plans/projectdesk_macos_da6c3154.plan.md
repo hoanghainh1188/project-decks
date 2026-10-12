@@ -411,7 +411,7 @@ Nghiệm thu: test CPM bằng số tính tay (bắt đầu muộn đẩy task sa
 
 - Ký số Developer ID, hardened runtime, notarize và staple qua `tauri-action` với secrets Apple trong CI.
 - Bản universal (`--target universal-apple-darwin`).
-- `bundle.fileAssociations` cho `.sheafly` (và `.pdproj` cũ) với UTI riêng; xử lý `RunEvent::Opened` qua `confirm_discard`; danh sách "Mở gần đây".
+- `bundle.fileAssociations` cho `.sheafly` (và `.pdproj` cũ) với UTI riêng; xử lý `RunEvent::Opened` qua `confirm_discard`; danh sách "Mở gần đây". **Đã làm:** liên kết `.sheafly` và `.pdproj` (UTI `com.hoanghainh.sheafly.project`/`.pdproj`, Editor, Owner); macOS qua `RunEvent::Opened`, Windows/Linux qua tham số dòng lệnh, lần chạy thứ hai chuyển tệp sang app đang mở (`tauri-plugin-single-instance`, cũng tránh hai app cùng ghi ô tự lưu); tệp chờ trong `pending_open` và mở sau hộp hỏi khôi phục tự lưu; Tệp → Mở gần đây (10 tệp, lưu trong `settings.json`, tệp mất thì bỏ khỏi danh sách và báo). Trên Linux, bấm đúp còn phụ thuộc môi trường có nhận MIME type khai trong `.desktop` hay không.
 - CSP thay cho `csp: null`, cho phép `data:` và `blob:` mà jsPDF cần.
 - Sửa metadata `src-tauri/Cargo.toml` (`description`, `authors`). (Đã làm ở PR #38.)
 - Quy trình phát hành: tăng phiên bản đồng bộ ở `package.json`, `tauri.conf.json`, `Cargo.toml` (workspace và `src-tauri`); ghi chú phát hành tiếng Việt kèm giới hạn đã biết trong `docs/releases/v<phiên bản>.md`; tag `v*` từ `main`; workflow tạo bản nháp, rồi thay nội dung bằng ghi chú đó và publish. Bản `v1.0.0` phát hành theo quy trình này, chưa ký số, macOS chỉ arm64. Đổi phiên bản crate cũng đổi `engine_tag()`, nên checkpoint trong tệp cũ bị bỏ qua và tệp được dựng lại bằng replay (chậm hơn một lần, kết quả như nhau).

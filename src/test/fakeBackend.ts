@@ -66,6 +66,8 @@ class FakeBackend {
     // Window plugin calls such as setting the title.
     if (cmd.startsWith("plugin:")) return undefined;
     switch (cmd) {
+      case "open_recent":
+      case "open_pending":
       case "project_state":
       case "new_project":
       case "open_project":

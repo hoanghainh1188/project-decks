@@ -26,13 +26,49 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "resources": ["THIRD_PARTY_LICENSES.txt"],
+    "resources": [
+      "THIRD_PARTY_LICENSES.txt"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
+    ],
+    "fileAssociations": [
+      {
+        "ext": [
+          "sheafly"
+        ],
+        "name": "Sheafly Project",
+        "description": "Sheafly project",
+        "role": "Editor",
+        "rank": "Owner",
+        "mimeType": "application/x-sheafly",
+        "exportedType": {
+          "identifier": "com.hoanghainh.sheafly.project",
+          "conformsTo": [
+            "public.data"
+          ]
+        }
+      },
+      {
+        "ext": [
+          "pdproj"
+        ],
+        "name": "Sheafly Project (older format)",
+        "description": "Sheafly project (older format)",
+        "role": "Editor",
+        "rank": "Owner",
+        "mimeType": "application/x-sheafly-pdproj",
+        "exportedType": {
+          "identifier": "com.hoanghainh.sheafly.pdproj",
+          "conformsTo": [
+            "public.data"
+          ]
+        }
+      }
     ]
   }
 }
