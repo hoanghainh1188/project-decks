@@ -1,7 +1,7 @@
 //! Every user-facing string of the Tauri shell, in Vietnamese and English. Engine
 //! messages come from the engine (`EngineError::message`, `OpenReport::message`).
 
-use projectdesk_engine::Lang;
+use sheafly_engine::Lang;
 
 /// Fixed text for one language.
 pub struct Text {
@@ -47,8 +47,8 @@ pub static VI: Text = Text {
     menu_project: "Dự án",
     menu_language: "Ngôn ngữ",
     menu_help: "Trợ giúp",
-    about: "Giới thiệu ProjectDesk",
-    hide: "Ẩn ProjectDesk",
+    about: "Giới thiệu Sheafly",
+    hide: "Ẩn Sheafly",
     hide_others: "Ẩn ứng dụng khác",
     show_all: "Hiện tất cả",
     about_text: "Lập lịch dự án kiểu Microsoft Project, chạy trên máy, giao diện tiếng Việt và tiếng Anh.\n\n\
@@ -87,8 +87,8 @@ pub static EN: Text = Text {
     menu_project: "Project",
     menu_language: "Language",
     menu_help: "Help",
-    about: "About ProjectDesk",
-    hide: "Hide ProjectDesk",
+    about: "About Sheafly",
+    hide: "Hide Sheafly",
     hide_others: "Hide Others",
     show_all: "Show All",
     about_text: "Project scheduling in the style of Microsoft Project, running on your computer.\n\n\
@@ -153,8 +153,8 @@ const fn item(
 /// unsaved changes.
 pub const QUIT: Entry = item(
     "quit",
-    "Thoát ProjectDesk",
-    "Quit ProjectDesk",
+    "Thoát Sheafly",
+    "Quit Sheafly",
     Some("CmdOrCtrl+Q"),
 );
 
@@ -272,7 +272,7 @@ pub fn autosave_offer(lang: Lang, project: &str, file: Option<&str>) -> String {
                 .map(|file| format!(" của tệp “{file}”"))
                 .unwrap_or_default();
             format!(
-                "ProjectDesk đã đóng khi dự án “{project}”{source} còn thay đổi chưa lưu. \
+                "Sheafly đã đóng khi dự án “{project}”{source} còn thay đổi chưa lưu. \
                  Khôi phục bản tự lưu?"
             )
         }
@@ -281,7 +281,7 @@ pub fn autosave_offer(lang: Lang, project: &str, file: Option<&str>) -> String {
                 .map(|file| format!(" (file “{file}”)"))
                 .unwrap_or_default();
             format!(
-                "ProjectDesk closed while the project “{project}”{source} had unsaved \
+                "Sheafly closed while the project “{project}”{source} had unsaved \
                  changes. Restore the autosaved version?"
             )
         }

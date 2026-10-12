@@ -7,7 +7,7 @@ import { at, makeAssignment, makeProject, makeResource, makeTask } from "../../t
 import type { Project, Task } from "../../types";
 import { Inspector } from "./Inspector";
 
-const OPEN_KEY = "projectdesk.inspector.open";
+const OPEN_KEY = "sheafly.inspector.open";
 
 function renderInspector(task: Task, project: Project = makeProject({ tasks: [task] })) {
   const send = vi.fn();

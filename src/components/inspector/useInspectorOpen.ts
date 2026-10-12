@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 
-const KEY = "projectdesk.inspector.open";
+const KEY = "sheafly.inspector.open";
 
 function readOpen(): boolean {
   try {

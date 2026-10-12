@@ -2707,30 +2707,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "projectdesk"
-version = "1.0.1"
-dependencies = [
- "projectdesk-engine",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tauri-plugin-opener",
-]
-
-[[package]]
-name = "projectdesk-engine"
-version = "1.0.1"
-dependencies = [
- "chrono",
- "quick-xml 0.37.5",
- "rusqlite",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "quick-xml"
 version = "0.37.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3212,6 +3188,30 @@ dependencies = [
  "cfg-if",
  "cpufeatures",
  "digest",
+]
+
+[[package]]
+name = "sheafly"
+version = "1.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sheafly-engine",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-opener",
+]
+
+[[package]]
+name = "sheafly-engine"
+version = "1.1.0"
+dependencies = [
+ "chrono",
+ "quick-xml 0.37.5",
+ "rusqlite",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

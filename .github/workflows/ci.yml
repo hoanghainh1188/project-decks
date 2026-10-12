@@ -4,7 +4,7 @@ on:
   pull_request:
   push:
     branches:
-      - projectdesk
+      - sheafly
       - main
 
 jobs:
@@ -16,7 +16,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Test scheduling engine
-        run: cargo test -p projectdesk-engine
+        run: cargo test -p sheafly-engine
 
       - uses: pnpm/action-setup@v4
         with:

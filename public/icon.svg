@@ -32,21 +32,28 @@
       <feMerge><feMergeNode in="halo"/><feMergeNode in="SourceGraphic"/></feMerge>
     </filter>
     <clipPath id="sq"><rect x="100" y="100" width="824" height="824" rx="186"/></clipPath>
+      <linearGradient id="paper" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#e8edf5"/>
+    </linearGradient>
+    <filter id="sheet" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#000" flood-opacity="0.35"/>
+    </filter>
   </defs>
   <g filter="url(#drop)">
     <rect x="100" y="100" width="824" height="824" rx="186" fill="url(#bg)"/>
   </g>
   <g clip-path="url(#sq)">
     <rect x="100" y="100" width="824" height="824" rx="186" fill="url(#rim)"/>
-    <!-- timeline -->
-    <line x1="196" y1="742" x2="828" y2="742" stroke="#ffffff" stroke-opacity="0.16" stroke-width="10" stroke-linecap="round"/>
-    <g stroke="#ffffff" stroke-opacity="0.16" stroke-width="10" stroke-linecap="round">
-      <line x1="300" y1="724" x2="300" y2="760"/><line x1="460" y1="724" x2="460" y2="760"/><line x1="620" y1="724" x2="620" y2="760"/>
-    </g>
   </g>
-  <!-- tasks stepping up to the milestone -->
-  <rect x="196" y="586" width="300" height="84" rx="42" fill="url(#blue)"/>
-  <rect x="356" y="462" width="230" height="84" rx="42" fill="url(#blue2)"/>
+  <!-- the sheaf: two sheets fanned behind the top one -->
+  <rect x="196" y="476" width="400" height="290" rx="24" fill="#9fb0c8" opacity="0.45" transform="rotate(-9 396 621)"/>
+  <rect x="196" y="476" width="400" height="290" rx="24" fill="#cdd7e6" opacity="0.75" transform="rotate(-4 396 621)"/>
+  <!-- the top sheet, with the plan on it -->
+  <rect x="196" y="476" width="400" height="290" rx="24" fill="url(#paper)" filter="url(#sheet)"/>
+  <line x1="236" y1="716" x2="556" y2="716" stroke="#c3cedd" stroke-width="8" stroke-linecap="round"/>
+  <rect x="236" y="622" width="214" height="62" rx="31" fill="url(#blue)"/>
+  <rect x="336" y="530" width="196" height="62" rx="31" fill="url(#blue2)"/>
   <!-- milestone -->
   <rect x="580" y="270" width="236" height="236" rx="38" transform="rotate(45 698 388)" fill="url(#gold)" filter="url(#glow)"/>
   <rect x="580" y="270" width="236" height="236" rx="38" transform="rotate(45 698 388)" fill="none" stroke="#fff3cf" stroke-opacity="0.5" stroke-width="6"/>

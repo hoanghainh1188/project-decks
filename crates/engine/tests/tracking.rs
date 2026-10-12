@@ -3,12 +3,12 @@
 
 use chrono::Datelike;
 
-use projectdesk_engine::command::Command;
-use projectdesk_engine::model::{ConstraintType, DepKind, Dependency, ResourceKind, Task};
-use projectdesk_engine::schedule::schedule;
-use projectdesk_engine::split::Segment;
-use projectdesk_engine::timeutil::timestamp;
-use projectdesk_engine::{Document, Project};
+use sheafly_engine::command::Command;
+use sheafly_engine::model::{ConstraintType, DepKind, Dependency, ResourceKind, Task};
+use sheafly_engine::schedule::schedule;
+use sheafly_engine::split::Segment;
+use sheafly_engine::timeutil::timestamp;
+use sheafly_engine::{Document, Project};
 
 const DAY: i64 = 480;
 
@@ -378,7 +378,7 @@ fn a_summary_takes_actual_dates_and_lateness_from_its_tasks() {
 
 #[test]
 fn imported_progress_without_actual_dates_starts_where_it_was_scheduled() {
-    use projectdesk_engine::mspdi::{read_mspdi, write_mspdi};
+    use sheafly_engine::mspdi::{read_mspdi, write_mspdi};
 
     let mut doc = doc_with(&[2, 1], &[(1, 2)]);
     actual_start(&mut doc, 1, at(0, 8, 0));

@@ -1,16 +1,20 @@
 ---
-title: "Rust と Tauri で Microsoft Project 風のスケジューラーを作り、v1.0 を公開した"
+title: "Rust と Tauri で Microsoft Project 風のスケジューラー「Sheafly」を作った"
 emoji: "📅"
 type: "tech"
 topics: ["rust", "tauri", "react", "typescript", "oss"]
 published: false
 ---
 
-デスクトップで動くプロジェクト計画ツール **ProjectDesk** の最初の正式版（v1.0.0）を公開しました。Microsoft Project と同じ考え方でタスクの依存関係から日程を組み立て、クリティカル パス、リソースの過負荷、EVM などを計算します。MIT ライセンスのオープンソースで、macOS / Windows / Linux 向けのインストーラーを用意しています。
+デスクトップで動くプロジェクト計画ツール **Sheafly**（シーフリー）を公開しました（最新版は v1.1.0）。Microsoft Project と同じ考え方でタスクの依存関係から日程を組み立て、クリティカル パス、リソースの過負荷、EVM などを計算します。MIT ライセンスのオープンソースで、macOS / Windows / Linux 向けのインストーラーを用意しています。
 
 この記事では、何ができるかを簡単に紹介したあと、作る過程で決めた設計と、ハマったところを書きます。
 
-![ProjectDesk の画面。左にタスク表、中央にガント チャート、下にタスクの詳細、右に EVM 指標とバーンダウン チャート](/images/projectdesk-gantt.jpg)
+:::message
+**名前について：** sheaf は「紙の束」のことです。机に積み上がった書類を、きちんと整理された計画にまとめる、というイメージで名付けました。v1.0.0 は「ProjectDesk」という名前で公開しましたが、同じ名前のソフトウェアの商標が海外で登録されていたため、v1.1.0 で改名しました。
+:::
+
+![Sheafly の画面。左にタスク表、中央にガント チャート、下にタスクの詳細、右に EVM 指標とバーンダウン チャート](/images/sheafly-gantt.jpg)
 *英語表示でサンプル プロジェクトを開いたところ（タスク名はサンプル データのベトナム語です）。*
 
 :::message
@@ -26,7 +30,7 @@ published: false
 - **レポート**：EVM（PV、EV、AC、SPI、CPI、EAC など）、バーンダウン、S カーブ
 - **ビュー**：ガント、進捗ガント、リソース シート、タスク使用状況、ネットワーク図。PDF 書き出し
 - **言語**：ベトナム語と英語。英語表示では日付は `2026-01-05 08:00`、所要時間は `7.5 days` のように表示し、用語は Microsoft Project の英語版に合わせています
-- **ファイル**：`.pdproj`（SQLite）に元に戻す履歴ごと保存。30 秒ごとの自動保存と異常終了後の復元。Microsoft Project とは MSPDI（XML）で交換
+- **ファイル**：`.sheafly`（SQLite）に元に戻す履歴ごと保存。30 秒ごとの自動保存と異常終了後の復元。Microsoft Project とは MSPDI（XML）で交換
 
 ## 構成
 
@@ -94,7 +98,7 @@ pub fn apply(&mut self, command: Command) -> Result<Snapshot, EngineError> {
 
 ### 5. 保存で壊さない
 
-`.pdproj` は SQLite で、`meta`（バージョン、カーソル、基準のプロジェクト）、`command_log`、`burndown` などのテーブルを持ちます。保存は隣に一時ファイルを作って 1 トランザクションで書き、元のファイルの権限を引き継いでから rename で置き換えます。書き込み中にアプリが落ちても、元のファイルは無事です。
+`.sheafly` は SQLite で、`meta`（バージョン、カーソル、基準のプロジェクト）、`command_log`、`burndown` などのテーブルを持ちます。保存は隣に一時ファイルを作って 1 トランザクションで書き、元のファイルの権限を引き継いでから rename で置き換えます。書き込み中にアプリが落ちても、元のファイルは無事です。
 
 ログの一部が壊れていても開けるようにしてあり、読める最後の状態まで復元して、何が失われたかを表示します。
 
@@ -144,13 +148,13 @@ CSS 変数と canvas 用の定数で同じフォント スタックを 1 か所�
 
 ## インストール
 
-[GitHub の Releases](https://github.com/hoanghainh1188/project-decks/releases) から入手できます。macOS は Apple Silicon 用の `.dmg`、Windows は `.msi` または `-setup.exe`、Linux は `.AppImage` / `.deb` / `.rpm` です。
+[GitHub の Releases](https://github.com/hoanghainh1188/sheafly/releases) から入手できます。macOS は Apple Silicon 用の `.dmg`、Windows は `.msi` または `-setup.exe`、Linux は `.AppImage` / `.deb` / `.rpm` です。
 
 :::message alert
-インストーラーにはまだコード署名がありません。macOS では、一度 ProjectDesk を開こうとしてから「システム設定」→「プライバシーとセキュリティ」を開き、下に表示される「このまま開く」を選んでください（macOS 15 以降は、右クリックの「開く」では開けません）。ターミナルで次を実行しても開けるようになります。
+インストーラーにはまだコード署名がありません。macOS では、一度 Sheafly を開こうとしてから「システム設定」→「プライバシーとセキュリティ」を開き、下に表示される「このまま開く」を選んでください（macOS 15 以降は、右クリックの「開く」では開けません）。ターミナルで次を実行しても開けるようになります。
 
 ```bash
-xattr -dr com.apple.quarantine /Applications/ProjectDesk.app
+xattr -dr com.apple.quarantine /Applications/Sheafly.app
 ```
 
 Windows では SmartScreen で「詳細情報」→「実行」を選びます。
@@ -165,8 +169,8 @@ Windows では SmartScreen で「詳細情報」→「実行」を選びます�
 
 ## おわりに
 
-不具合の報告や要望は [GitHub の Issues](https://github.com/hoanghainh1188/project-decks/issues) にお願いします。設計についての質問やツッコミも歓迎です。
+不具合の報告や要望は [GitHub の Issues](https://github.com/hoanghainh1188/sheafly/issues) にお願いします。設計についての質問やツッコミも歓迎です。
 
-- リポジトリ：https://github.com/hoanghainh1188/project-decks
+- リポジトリ：https://github.com/hoanghainh1188/sheafly
 
-*Microsoft Project は Microsoft Corporation の商標です。ProjectDesk は Microsoft とは関係のない独立したソフトウェアです。*
+*Microsoft Project は Microsoft Corporation の商標です。Sheafly は Microsoft とは関係のない独立したソフトウェアです。*

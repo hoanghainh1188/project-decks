@@ -97,7 +97,7 @@ fn recovery_message_en(recovery: &Recovery) -> String {
     let cause = match &recovery.damage {
         Damage::Unreadable => format!("The file is damaged at {position}."),
         Damage::Newer => {
-            format!("The file has {position} from a newer version of ProjectDesk.")
+            format!("The file has {position} from a newer version of Sheafly.")
         }
         Damage::Failed(error) => format!(
             "Could not replay {position}: {}.",
@@ -134,7 +134,7 @@ fn recovery_message_vi(recovery: &Recovery) -> String {
     let cause = match &recovery.damage {
         Damage::Unreadable => format!("Tệp bị hỏng ở {position}."),
         Damage::Newer => {
-            format!("Tệp có {position} do phiên bản mới hơn của ProjectDesk tạo ra.")
+            format!("Tệp có {position} do phiên bản mới hơn của Sheafly tạo ra.")
         }
         Damage::Failed(error) => format!("Không áp dụng lại được {position}: {error}."),
     };
@@ -165,11 +165,11 @@ fn moved_message(moved: &[MovedTask], lang: Lang) -> String {
     let count = moved.len();
     let heading = match lang {
         Lang::Vi => format!(
-            "Phiên bản ProjectDesk này tính lịch khác phiên bản đã lưu tệp: {count} công việc \
+            "Phiên bản Sheafly này tính lịch khác phiên bản đã lưu tệp: {count} công việc \
              đổi ngày. Hãy kiểm tra trước khi lưu."
         ),
         Lang::En => format!(
-            "This version of ProjectDesk schedules the project differently from the version \
+            "This version of Sheafly schedules the project differently from the version \
              that saved the file: {count} {} moved. Check them before you save.",
             if count == 1 { "task" } else { "tasks" }
         ),
@@ -282,7 +282,7 @@ mod tests {
         let message = report.message(Lang::En).unwrap();
         assert!(
             message.starts_with(
-                "This version of ProjectDesk schedules the project differently from the \
+                "This version of Sheafly schedules the project differently from the \
                  version that saved the file: 11 tasks moved. Check them before you save."
             ),
             "{message}"

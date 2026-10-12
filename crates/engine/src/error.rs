@@ -97,11 +97,11 @@ impl EngineError {
             (Self::Save(detail), Lang::Vi) => format!("Không lưu được tệp: {detail}"),
             (Self::Save(detail), Lang::En) => format!("Could not save the file: {detail}"),
             (Self::NewerFormat(version), Lang::Vi) => format!(
-                "Tệp được tạo bởi phiên bản mới hơn của ProjectDesk (định dạng {version}). \
+                "Tệp được tạo bởi phiên bản mới hơn của Sheafly (định dạng {version}). \
                  Hãy cập nhật ứng dụng."
             ),
             (Self::NewerFormat(version), Lang::En) => format!(
-                "This file was created by a newer version of ProjectDesk (format {version}). \
+                "This file was created by a newer version of Sheafly (format {version}). \
                  Please update the app."
             ),
             (Self::Xml(detail), Lang::Vi) => format!("XML MSPDI không hợp lệ: {detail}"),

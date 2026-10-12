@@ -5,10 +5,10 @@ use std::fs;
 
 use rusqlite::Connection;
 
-use projectdesk_engine::command::Command;
-use projectdesk_engine::store::{open, save, FORMAT_VERSION};
-use projectdesk_engine::timeutil::timestamp;
-use projectdesk_engine::{Document, EngineError, Invalid, Lang, Project};
+use sheafly_engine::command::Command;
+use sheafly_engine::store::{open, save, FORMAT_VERSION};
+use sheafly_engine::timeutil::timestamp;
+use sheafly_engine::{Document, EngineError, Invalid, Lang, Project};
 
 fn doc() -> Document {
     Document::from_project(Project::new("Ngôn ngữ", timestamp(2026, 1, 5, 8, 0)))
@@ -73,7 +73,7 @@ fn file_errors_keep_the_system_detail() {
     assert_eq!(
         error.message(Lang::En),
         format!(
-            "This file was created by a newer version of ProjectDesk (format {}). Please \
+            "This file was created by a newer version of Sheafly (format {}). Please \
              update the app.",
             FORMAT_VERSION + 1
         )
@@ -98,7 +98,7 @@ fn a_damaged_file_is_explained_in_english() {
         })
         .unwrap();
     }
-    let dir = std::env::temp_dir().join(format!("projectdesk-lang-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("sheafly-lang-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).unwrap();
     let path = dir.join("project.pdproj").to_string_lossy().to_string();
@@ -114,7 +114,7 @@ fn a_damaged_file_is_explained_in_english() {
     let opened = open(&path).unwrap();
     let english = opened.report.message(Lang::En).unwrap();
     assert!(
-        english.starts_with("The file has step 3 of 4 from a newer version of ProjectDesk."),
+        english.starts_with("The file has step 3 of 4 from a newer version of Sheafly."),
         "{english}"
     );
     assert!(

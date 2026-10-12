@@ -1,20 +1,20 @@
 use chrono::Datelike;
 
-use projectdesk_engine::command::{parse_predecessor_text, Command};
-use projectdesk_engine::evm::{burndown, evm, evm_at, BurndownPoint, BurndownSnapshot};
-use projectdesk_engine::level::level_project;
-use projectdesk_engine::model::{
+use sheafly_engine::command::{parse_predecessor_text, Command};
+use sheafly_engine::evm::{burndown, evm, evm_at, BurndownPoint, BurndownSnapshot};
+use sheafly_engine::level::level_project;
+use sheafly_engine::model::{
     Accrual, Baseline, ConstraintType, DepKind, Dependency, ResourceKind, Task, TaskType,
 };
-use projectdesk_engine::mspdi::{read_mspdi, write_mspdi};
-use projectdesk_engine::recurrence::{
+use sheafly_engine::mspdi::{read_mspdi, write_mspdi};
+use sheafly_engine::recurrence::{
     occurrence_dates, RecurrenceEnd, RecurrencePattern, RecurrenceSpec,
 };
-use projectdesk_engine::schedule::schedule;
-use projectdesk_engine::store::{load, save, save_with_snapshot};
-use projectdesk_engine::timeutil::timestamp;
-use projectdesk_engine::work::{self, Changed};
-use projectdesk_engine::{Calendar, Document, Project};
+use sheafly_engine::schedule::schedule;
+use sheafly_engine::store::{load, save, save_with_snapshot};
+use sheafly_engine::timeutil::timestamp;
+use sheafly_engine::work::{self, Changed};
+use sheafly_engine::{Calendar, Document, Project};
 
 fn monday() -> i64 {
     timestamp(2026, 1, 5, 8, 0)
@@ -204,7 +204,7 @@ fn dependency_cycle_is_an_error() {
         lag: 0,
     });
     let error = schedule(&mut project).unwrap_err();
-    assert!(matches!(error, projectdesk_engine::EngineError::DependencyCycle));
+    assert!(matches!(error, sheafly_engine::EngineError::DependencyCycle));
 }
 
 #[test]
@@ -458,7 +458,7 @@ fn task_type_recomputes_duration_units_and_work() {
 fn tracking_baseline_and_cost() {
     let mut project = project_with(vec![("A", 480)], vec![]);
     let uid = project.alloc_resource_uid();
-    let mut resource = projectdesk_engine::Resource::new(uid, "An", ResourceKind::Person);
+    let mut resource = sheafly_engine::Resource::new(uid, "An", ResourceKind::Person);
     resource.standard_rate = 10.0;
     resource.overtime_rate = 20.0;
     resource.cost_per_use = 5.0;
@@ -504,7 +504,7 @@ fn overallocation_and_leveling_delay() {
     let mut project = project_with(vec![("A", 960), ("B", 960)], vec![]);
     project.tasks[1].priority = 100;
     let resource = project.alloc_resource_uid();
-    project.resources.push(projectdesk_engine::Resource::new(
+    project.resources.push(sheafly_engine::Resource::new(
         resource,
         "Máy cắt",
         ResourceKind::Machine,
@@ -538,7 +538,7 @@ fn undo_redo_and_sqlite_roundtrip() {
     assert_eq!(doc.project.tasks.len(), before + 1);
     assert_eq!(doc.snapshot().history_cursor, 1);
 
-    let path = std::env::temp_dir().join(format!("projectdesk-test-{}.pdproj", std::process::id()));
+    let path = std::env::temp_dir().join(format!("sheafly-test-{}.pdproj", std::process::id()));
     let path = path.to_string_lossy().to_string();
     save(&doc, &path).unwrap();
     let loaded = load(&path).unwrap();
@@ -563,7 +563,7 @@ fn mspdi_roundtrip_covers_phase_fields() {
     project.tasks[1].task_type = TaskType::FixedDuration;
     project.tasks[1].percent_complete = 25.0;
     let resource_uid = project.alloc_resource_uid();
-    let mut resource = projectdesk_engine::Resource::new(resource_uid, "Bình", ResourceKind::Person);
+    let mut resource = sheafly_engine::Resource::new(resource_uid, "Bình", ResourceKind::Person);
     resource.standard_rate = 12.0;
     resource.max_units = 1.0;
     project.resources.push(resource);
@@ -571,7 +571,7 @@ fn mspdi_roundtrip_covers_phase_fields() {
     schedule(&mut project).unwrap();
     let baseline = {
         let task = &project.tasks[0];
-        projectdesk_engine::model::Baseline {
+        sheafly_engine::model::Baseline {
             number: 0,
             start: task.start,
             finish: task.finish,
@@ -601,12 +601,12 @@ fn effort_driven_assignment_keeps_work() {
     let task = project.tasks[0].uid;
     let first = project.alloc_resource_uid();
     let second = project.alloc_resource_uid();
-    project.resources.push(projectdesk_engine::Resource::new(
+    project.resources.push(sheafly_engine::Resource::new(
         first,
         "An",
         ResourceKind::Person,
     ));
-    project.resources.push(projectdesk_engine::Resource::new(
+    project.resources.push(sheafly_engine::Resource::new(
         second,
         "Bình",
         ResourceKind::Person,
@@ -637,12 +637,12 @@ fn effort_driven_assignment_keeps_work() {
     fixed.tasks[0].effort_driven = true;
     let first = fixed.alloc_resource_uid();
     let second = fixed.alloc_resource_uid();
-    fixed.resources.push(projectdesk_engine::Resource::new(
+    fixed.resources.push(sheafly_engine::Resource::new(
         first,
         "Máy",
         ResourceKind::Machine,
     ));
-    fixed.resources.push(projectdesk_engine::Resource::new(
+    fixed.resources.push(sheafly_engine::Resource::new(
         second,
         "Máy 2",
         ResourceKind::Machine,
@@ -659,7 +659,7 @@ fn effort_driven_assignment_keeps_work() {
 
     fixed.tasks[0].effort_driven = false;
     let third = fixed.alloc_resource_uid();
-    fixed.resources.push(projectdesk_engine::Resource::new(
+    fixed.resources.push(sheafly_engine::Resource::new(
         third,
         "Máy 3",
         ResourceKind::Machine,
@@ -684,7 +684,7 @@ fn summary_fixed_cost_includes_children_after_one_pass() {
     project.tasks = vec![summary, child];
     project.next_task_uid = 3;
     let resource = project.alloc_resource_uid();
-    let mut person = projectdesk_engine::Resource::new(resource, "An", ResourceKind::Person);
+    let mut person = sheafly_engine::Resource::new(resource, "An", ResourceKind::Person);
     person.standard_rate = 10.0;
     project.resources.push(person);
     work::add_assignment(&mut project, 2, resource, 1.0);
@@ -698,8 +698,8 @@ fn mspdi_roundtrip_keeps_exception_hours_and_ranges() {
     let mut project = project_with(vec![("A", 480)], vec![]);
     let tuesday = chrono::NaiveDate::from_ymd_opt(2026, 1, 6).unwrap();
     project.calendar_mut().exceptions.insert(
-        projectdesk_engine::timeutil::date_key(tuesday),
-        vec![projectdesk_engine::calendar::TimeRange::new(
+        sheafly_engine::timeutil::date_key(tuesday),
+        vec![sheafly_engine::calendar::TimeRange::new(
             8 * 60,
             12 * 60,
         )],
@@ -760,8 +760,8 @@ fn mspdi_roundtrip_keeps_exception_hours_and_ranges() {
     }
 }
 
-fn standard_week() -> Vec<Vec<projectdesk_engine::calendar::TimeRange>> {
-    use projectdesk_engine::calendar::TimeRange;
+fn standard_week() -> Vec<Vec<sheafly_engine::calendar::TimeRange>> {
+    use sheafly_engine::calendar::TimeRange;
     let work = vec![
         TimeRange::new(8 * 60, 12 * 60),
         TimeRange::new(13 * 60, 17 * 60),
@@ -775,7 +775,7 @@ fn standard_week() -> Vec<Vec<projectdesk_engine::calendar::TimeRange>> {
 
 #[test]
 fn changed_working_week_skips_morning_before_0800() {
-    use projectdesk_engine::calendar::TimeRange;
+    use sheafly_engine::calendar::TimeRange;
     let mut doc = Document::from_project(Project::new("Tuần", monday()));
     let calendar_id = doc.project.calendar_id;
     let mut early = standard_week();
@@ -912,7 +912,7 @@ fn ranged_exception_applies_to_each_day() {
         calendar_id,
         from: "2026-01-06".into(),
         to: "2026-01-08".into(),
-        ranges: vec![projectdesk_engine::calendar::TimeRange::new(9 * 60, 12 * 60)],
+        ranges: vec![sheafly_engine::calendar::TimeRange::new(9 * 60, 12 * 60)],
     })
     .unwrap();
     for day in ["2026-01-06", "2026-01-07", "2026-01-08"] {
@@ -1007,7 +1007,7 @@ fn late_when_any_of_status_baseline_or_deadline_is_missed() {
         "a complete task is not late from the status date alone"
     );
 
-    task.baselines.push(projectdesk_engine::model::Baseline {
+    task.baselines.push(sheafly_engine::model::Baseline {
         number: 1,
         start,
         finish: finish - 1,
@@ -1016,7 +1016,7 @@ fn late_when_any_of_status_baseline_or_deadline_is_missed() {
         segments: Vec::new(),
     });
     assert!(!task.is_late(None, &cal), "only baseline 0 counts");
-    task.baselines.push(projectdesk_engine::model::Baseline {
+    task.baselines.push(sheafly_engine::model::Baseline {
         number: 0,
         start,
         finish,
@@ -1029,7 +1029,7 @@ fn late_when_any_of_status_baseline_or_deadline_is_missed() {
         "finish equal to baseline 0 is not late"
     );
     task.baselines.retain(|baseline| baseline.number != 0);
-    task.baselines.push(projectdesk_engine::model::Baseline {
+    task.baselines.push(sheafly_engine::model::Baseline {
         number: 0,
         start,
         finish: finish - 1,
@@ -1074,7 +1074,7 @@ fn schedule_publishes_late_from_status_date_and_baseline() {
     project.tasks[0].percent_complete = 0.0;
     project.tasks[0]
         .baselines
-        .push(projectdesk_engine::model::Baseline {
+        .push(sheafly_engine::model::Baseline {
             number: 0,
             start,
             finish,
@@ -1117,7 +1117,7 @@ fn deadline_command_is_undoable_and_is_not_a_constraint() {
     assert_eq!(doc.project.tasks[0].deadline, Some(finish - 1));
 
     let path = std::env::temp_dir().join(format!(
-        "projectdesk-deadline-{}-{}.pdproj",
+        "sheafly-deadline-{}-{}.pdproj",
         std::process::id(),
         uid
     ));
@@ -1292,7 +1292,7 @@ fn series_is_a_summary_of_real_occurrence_tasks() {
         RecurrenceEnd::Count { count: 4 },
     );
     let mut project = Project::new("Lặp", monday());
-    project.resources.push(projectdesk_engine::Resource::new(1, "An", ResourceKind::Person));
+    project.resources.push(sheafly_engine::Resource::new(1, "An", ResourceKind::Person));
     project.next_resource_uid = 2;
     spec.resource_uids = vec![1];
     let (doc, summary_uid) = series_doc(project, spec);
@@ -1407,7 +1407,7 @@ fn series_survives_store_round_trip() {
     let second = occurrences(&doc.project, summary)[1].uid;
     doc.apply(Command::SetDuration { uid: second, minutes: 60 }).unwrap();
 
-    let path = std::env::temp_dir().join(format!("projectdesk-recurring-{}.pdproj", std::process::id()));
+    let path = std::env::temp_dir().join(format!("sheafly-recurring-{}.pdproj", std::process::id()));
     let path = path.to_string_lossy().to_string();
     save(&doc, &path).unwrap();
     let loaded = load(&path).unwrap();
@@ -1728,7 +1728,7 @@ fn burndown_ideal_line_and_snapshots() {
     doc.apply(Command::SetPercentComplete { uid: 2, percent: 50.0 }).unwrap();
 
     // Saving samples again; the same day overwrites its snapshot.
-    let path = std::env::temp_dir().join(format!("projectdesk-burndown-{}.pdproj", std::process::id()));
+    let path = std::env::temp_dir().join(format!("sheafly-burndown-{}.pdproj", std::process::id()));
     let path = path.to_string_lossy().to_string();
     save_with_snapshot(&mut doc, &path, at(9, 9, 0)).unwrap();
     let expected = vec![
@@ -1776,7 +1776,7 @@ fn burndown_without_status_date_samples_the_given_day() {
 
 #[test]
 fn network_layout_follows_scheduled_dependencies_and_cycles_are_rejected() {
-    use projectdesk_engine::network::{layout, NetworkOptions};
+    use sheafly_engine::network::{layout, NetworkOptions};
 
     let mut doc = Document::from_project(project_with(
         vec![("A", 480), ("B", 960), ("C", 480), ("Mốc", 0)],

@@ -2,18 +2,18 @@
 
 use std::fs;
 
-use projectdesk_engine::autosave::AutosaveSlot;
-use projectdesk_engine::command::Command;
-use projectdesk_engine::document::replay;
-use projectdesk_engine::store::{open, save};
-use projectdesk_engine::timeutil::timestamp;
-use projectdesk_engine::{Document, Project};
+use sheafly_engine::autosave::AutosaveSlot;
+use sheafly_engine::command::Command;
+use sheafly_engine::document::replay;
+use sheafly_engine::store::{open, save};
+use sheafly_engine::timeutil::timestamp;
+use sheafly_engine::{Document, Project};
 
 const DAY: i64 = 480;
 
 fn temp_dir(name: &str) -> std::path::PathBuf {
     let dir = std::env::temp_dir().join(format!(
-        "projectdesk-autosave-{}-{name}",
+        "sheafly-autosave-{}-{name}",
         std::process::id()
     ));
     let _ = fs::remove_dir_all(&dir);

@@ -1,15 +1,15 @@
 use chrono::Datelike;
 
-use projectdesk_engine::command::Command;
-use projectdesk_engine::evm::{burndown, evm_at, s_curve, BurndownPoint};
-use projectdesk_engine::model::{Accrual, DepKind, Dependency, ResourceKind, Task};
-use projectdesk_engine::mspdi::{read_mspdi, write_mspdi};
-use projectdesk_engine::recurrence::{RecurrenceEnd, RecurrencePattern, RecurrenceSpec};
-use projectdesk_engine::schedule::schedule;
-use projectdesk_engine::split::{Segment, Split};
-use projectdesk_engine::store::{load, save};
-use projectdesk_engine::timeutil::timestamp;
-use projectdesk_engine::{Document, Project, Resource};
+use sheafly_engine::command::Command;
+use sheafly_engine::evm::{burndown, evm_at, s_curve, BurndownPoint};
+use sheafly_engine::model::{Accrual, DepKind, Dependency, ResourceKind, Task};
+use sheafly_engine::mspdi::{read_mspdi, write_mspdi};
+use sheafly_engine::recurrence::{RecurrenceEnd, RecurrencePattern, RecurrenceSpec};
+use sheafly_engine::schedule::schedule;
+use sheafly_engine::split::{Segment, Split};
+use sheafly_engine::store::{load, save};
+use sheafly_engine::timeutil::timestamp;
+use sheafly_engine::{Document, Project, Resource};
 
 /// 2026-01-05 is a Monday; `day` 0 is that Monday.
 fn at(day: u32, hour: u32, minute: u32) -> i64 {
@@ -407,7 +407,7 @@ fn split_and_join_undo_redo() {
 fn temp_path(name: &str) -> String {
     std::env::temp_dir()
         .join(format!(
-            "projectdesk-split-{name}-{}.pdproj",
+            "sheafly-split-{name}-{}.pdproj",
             std::process::id()
         ))
         .to_string_lossy()
