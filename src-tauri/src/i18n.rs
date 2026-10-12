@@ -3,6 +3,8 @@
 
 use sheafly_engine::Lang;
 
+use crate::settings::Theme;
+
 /// Fixed text for one language.
 pub struct Text {
     // Menu bar
@@ -11,6 +13,7 @@ pub struct Text {
     pub menu_view: &'static str,
     pub menu_project: &'static str,
     pub menu_language: &'static str,
+    pub menu_theme: &'static str,
     pub menu_help: &'static str,
     pub open_recent: &'static str,
     pub recent_clear: &'static str,
@@ -49,6 +52,7 @@ pub static VI: Text = Text {
     menu_view: "Xem",
     menu_project: "Dự án",
     menu_language: "Ngôn ngữ",
+    menu_theme: "Giao diện",
     menu_help: "Trợ giúp",
     open_recent: "Mở gần đây",
     recent_clear: "Xóa danh sách",
@@ -92,6 +96,7 @@ pub static EN: Text = Text {
     menu_view: "View",
     menu_project: "Project",
     menu_language: "Language",
+    menu_theme: "Appearance",
     menu_help: "Help",
     open_recent: "Open Recent",
     recent_clear: "Clear Menu",
@@ -262,6 +267,13 @@ pub const LANGUAGES: [(&str, Lang, &str); 2] = [
     ("lang-en", Lang::En, "English"),
 ];
 
+/// The theme choices: menu id, theme, and the label in Vietnamese and English.
+pub const THEMES: [(&str, Theme, &str, &str); 3] = [
+    ("theme-system", Theme::System, "Theo hệ thống", "System"),
+    ("theme-light", Theme::Light, "Sáng", "Light"),
+    ("theme-dark", Theme::Dark, "Tối", "Dark"),
+];
+
 /// "Save changes?" for the project called `name`.
 pub fn unsaved_message(lang: Lang, name: &str) -> String {
     match lang {
@@ -334,6 +346,13 @@ pub fn compact_question(lang: Lang, folded: usize, kept: usize) -> String {
     }
 }
 
+pub fn unknown_theme(lang: Lang, code: &str) -> String {
+    match lang {
+        Lang::Vi => format!("Giao diện không được hỗ trợ: {code}"),
+        Lang::En => format!("Unsupported appearance: {code}"),
+    }
+}
+
 pub fn unknown_language(lang: Lang, code: &str) -> String {
     match lang {
         Lang::Vi => format!("Ngôn ngữ không được hỗ trợ: {code}"),
@@ -384,6 +403,10 @@ mod tests {
             assert!(!name.is_empty());
             assert!(ids.insert(id), "duplicate menu id {id}");
         }
+        for (id, _, vi, en) in THEMES {
+            assert!(!vi.is_empty() && !en.is_empty() && vi != en, "{id}");
+            assert!(ids.insert(id), "duplicate menu id {id}");
+        }
     }
 
     #[test]
@@ -421,6 +444,7 @@ mod tests {
             (VI.menu_file, EN.menu_file),
             (VI.menu_view, EN.menu_view),
             (VI.menu_language, EN.menu_language),
+            (VI.menu_theme, EN.menu_theme),
             (VI.save, EN.save),
             (VI.dont_save, EN.dont_save),
             (VI.cancel, EN.cancel),

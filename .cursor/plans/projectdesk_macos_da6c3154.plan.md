@@ -75,7 +75,7 @@ todos:
     content: "Pha 16: quá tải theo giờ trùng nhau, leveling tuần tự, lưu độ trễ vào log"
     status: completed
   - id: project-parity-ux
-    content: "Pha 17: UX ngang MS Project (copy/paste, tách App.tsx, bàn phím, giao diện còn lại). PR A (dọn dẹp, tiêu đề, EVM, README), B (sơ đồ mạng) và C (thanh công cụ, focus, bàn phím Gantt, EVM phóng to, tab, màu và biểu tượng) xong"
+    content: "Pha 17: UX ngang MS Project (copy/paste, tách App.tsx, bàn phím, giao diện còn lại). PR A (dọn dẹp, tiêu đề, EVM, README), B (sơ đồ mạng), C (thanh công cụ, focus, bàn phím Gantt, EVM phóng to, tab, màu và biểu tượng) và E (token màu, giao diện tối, tách App.tsx, test còn thiếu) xong; còn D (copy/paste, điền xuống, kéo từng đoạn)"
     status: in_progress
 isProject: false
 ---
@@ -458,8 +458,10 @@ Chia 5 PR: (A) dọn dẹp và chỉnh nhỏ, (B) sơ đồ mạng, (C) thanh c�
 
 **PR C2 — tab, màu và biểu tượng (sau góp ý khi chạy thử):** các view là tab thật (`role="tablist"`, ← → Home End chuyển tab, tab đang chọn nối liền vùng view bên dưới); Ngày/Tuần/Tháng thành một nút phân đoạn liền khối. Nút thanh công cụ có biểu tượng Lucide (`lucide-react`, ISC) và màu theo nhóm (token `--tone-*` trong `styles.css`): lịch sử xám, tạo việc xanh lá (nút chính tô đặc), sửa việc xanh dương, xóa đỏ, dự án tím, báo cáo cam; cửa sổ hẹp hơn 1200 px chỉ còn biểu tượng (chữ vẫn có cho trình đọc màn hình và chú thích). Khi hàng view quá hẹp, các điều khiển lên dòng trên, tab vẫn nằm sát view. Nút trong hộp thoại và bảng EVM dùng `Button.tsx` (chính / phụ / xóa, có biểu tượng); hàng nút cuối hộp thoại canh phải, nút chính ở cuối như macOS. Hộp "Giới thiệu Sheafly" có phiên bản, mô tả, bản quyền và ghi công; README thêm mục Giao diện. Hộp thoại có tiêu đề (kèm nút ✕) và hàng nút cuối cố định, chỉ phần giữa cuộn. "Thông tin dự án" thành giao dịch Lưu/Hủy: thay đổi áp dụng ngay để xem trước trên lịch, Lưu giữ lại, Hủy (✕, Esc) hoàn tác về đúng trạng thái lúc mở (`Snapshot.history_cursor`, `undoTo.ts`); trong lúc mở, ⌘Z không lùi quá điểm đó. Các bước đã hủy nằm trong danh sách làm lại; nếu trước khi mở có danh sách làm lại cũ, thay đổi trong hộp thoại thay thế nó (như mọi chỉnh sửa khác). Hoàn tác lỗi giữa chừng thì hộp thoại không đóng và báo lỗi.
 
+**PR E — token màu, giao diện tối, tách `App.tsx`, test:** mọi màu là token CSS trong `src/tokens.css` theo nghĩa (nền `--surface*`, chữ `--text*`, viền `--border*`, lưới `--grid`, cuối tuần `--weekend`, thanh Gantt `--bar-*`, biểu đồ `--chart-*`, nhóm thanh công cụ `--tone-*`…); sáng ở `:root`, tối ở `:root[data-theme="dark"]`. Xem → Giao diện: Theo hệ thống / Sáng / Tối, lưu trong `settings.json` như ngôn ngữ (`get_theme`/`set_theme`), thanh tiêu đề cửa sổ theo cùng (`set_theme` của Tauri); Root áp dụng lựa chọn đã lưu trước khi vẽ lần đầu; đổi giao diện được cả khi hộp thoại đang mở. Gantt (canvas) đọc màu qua `canvasPalette()` (`theme.ts`) và vẽ lại khi giao diện đổi; sơ đồ mạng và biểu đồ EVM (SVG) dùng `var(--…)` trong `style`. Xuất PDF vẫn sáng. `theme.test.ts` kiểm tra mọi token có ở cả hai giao diện và chữ đạt 4.5:1 trên nền nó nằm (WCAG AA); vì vậy `--text-muted` sáng đậm hơn một chút, `--text-faint` thay `#8e8e93` (chỉ 3.3:1), ngày đang chọn trong lịch dùng `--accent-strong`. `App.tsx` còn khoảng 560 dòng: `ProjectDialog`, `BaselineDialog`, `StatusBar` thành component riêng; `useFileDialog` (một hộp thoại tệp mỗi lúc, mở tệp hệ thống gửi khi rảnh); `menuActions.ts` (`handleMenuAction`, thuần, có test); `appCommands.ts`. PDF: `pdfDraw.ts` gom hàm vẽ dùng chung, `ganttPageGrid`, `networkPage`, `nodeFields` tách ra để test. Test mới: `GanttChart` (phím, hàng nhóm, vẽ lại theo giao diện), `ganttPdf`/`networkPdf`/`pdfDraw`, `menuActions`, `theme`, luồng App qua `Root.test.tsx` (giao diện đã lưu, đổi giao diện từ menu, đổi view), thêm ca cho `ResourceSheet`, `CalendarEditor`, `SplitDialog`. `styles.css` dưới 800 dòng nhờ tách `tokens.css`.
+
 - Copy/paste và điền xuống (fill-down) task.
-- Tách `App.tsx` tiếp (PR #25 đã giảm còn 730 dòng); thêm test cho `GanttChart`, `ganttPdf`, `networkPdf`, `App`, `ResourceSheet`, `CalendarEditor`, `SplitDialog`, `TaskUsage`.
+- Tách `App.tsx` tiếp (PR #25 đã giảm còn 730 dòng); thêm test cho `GanttChart`, `ganttPdf`, `networkPdf`, `App`, `ResourceSheet`, `CalendarEditor`, `SplitDialog`, `TaskUsage`. (PR E; `TaskUsage` đã có test từ trước)
 - Gantt dùng được bằng bàn phím; nút có kiểu focus. (PR C; kéo/sửa bằng chuột vẫn như cũ)
 - Kéo riêng từng đoạn của task tách.
 - Sơ đồ mạng giữ liên kết gắn vào summary khi ẩn summary (chuyển xuống task con); các lần của chuỗi lặp không chen vào cột đầu cạnh việc chính (gom lại hoặc tùy chọn ẩn). (PR B: gom chuỗi thành một ô)
@@ -473,7 +475,7 @@ Chia 5 PR: (A) dọn dẹp và chỉnh nhỏ, (B) sơ đồ mạng, (C) thanh c�
 - Tiêu đề cửa sổ là tên dự án kèm dấu đã sửa; thanh trạng thái chỉ hiện tên tệp. (PR A)
 - Bớt biểu tượng lịch lặp lại ở mỗi dòng của bảng task. (PR A; tô quá tải chỉ ở ô có giờ và dấu phẩy thập phân ở view Sử dụng đã làm ở Pha 16.)
 - Bảng EVM: biểu đồ burn-down bị ép gần hết khi panel thuộc tính đang mở; cho bảng EVM chiếm đủ chiều cao hoặc thu panel lại khi mở EVM. (PR A: bảng EVM cao hết cửa sổ)
-- Màu thành token CSS rồi mới làm giao diện tối; xóa `src/App.css` thừa từ template (đã xóa ở PR A).
+- Màu thành token CSS rồi mới làm giao diện tối; xóa `src/App.css` thừa từ template (đã xóa ở PR A). (PR E)
 - Dọn 9 warning clippy của engine. (PR A)
 - Viết lại README: tính năng, cách cài bản phát hành, cách build; bỏ đường dẫn cứng. (PR A)
 

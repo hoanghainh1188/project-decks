@@ -19,6 +19,8 @@ class FakeBackend {
   autosave: Snapshot | null = null;
   /** The remembered interface language (`get_language`); null follows the system. */
   language: string | null = null;
+  /** The remembered theme (`get_theme`). */
+  theme = "system";
   private failures = new Map<string, unknown>();
   private holds = new Map<string, Promise<void>>();
 
@@ -31,6 +33,7 @@ class FakeBackend {
     this.holds.clear();
     this.autosave = null;
     this.language = null;
+    this.theme = "system";
   }
 
   /** The next call to `cmd` waits until the returned function runs, like a slow Rust command. */
@@ -90,6 +93,11 @@ class FakeBackend {
       case "check_autosave":
         if (this.autosave) this.snapshot = structuredClone(this.autosave);
         return this.autosave ? structuredClone(this.autosave) : null;
+      case "get_theme":
+        return this.theme;
+      case "set_theme":
+        this.theme = args?.theme as string;
+        return null;
       case "get_language":
         return this.language;
       case "set_language":

@@ -1,6 +1,7 @@
 import { utcMidnight } from "./format";
 import { timescaleMessages } from "./ganttLayout.i18n";
 import { pick } from "./i18n";
+import { LIGHT_CANVAS, type CanvasPalette } from "./theme";
 import type { Project, Scale, Segment, Task } from "./types";
 
 export const ROW = 28;
@@ -87,11 +88,12 @@ export function progressWidths(spans: { w: number }[], percent: number): number[
   });
 }
 
-export function barColor(task: Task): string {
-  if (task.critical) return "#c23b3b";
-  if (task.manual) return "#2a9d8f";
-  if (task.summary) return "#1d1d1f";
-  return "#2f6fad";
+/** The bar colour of `task`: light for PDF export, or the on-screen canvas palette. */
+export function barColor(task: Task, palette: Pick<CanvasPalette, "critical" | "manual" | "summary" | "task"> = LIGHT_CANVAS): string {
+  if (task.critical) return palette.critical;
+  if (task.manual) return palette.manual;
+  if (task.summary) return palette.summary;
+  return palette.task;
 }
 
 /** Full-day exceptions on the project calendar, matching the Gantt shading. */
