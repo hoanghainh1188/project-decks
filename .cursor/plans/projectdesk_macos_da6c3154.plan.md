@@ -410,9 +410,9 @@ Nghiệm thu: test CPM bằng số tính tay (bắt đầu muộn đẩy task sa
 ### Pha 14 — phát hành macOS (S–M, song song Pha 13)
 
 - Ký số Developer ID, hardened runtime, notarize và staple qua `tauri-action` với secrets Apple trong CI.
-- Bản universal (`--target universal-apple-darwin`).
+- Bản universal (`--target universal-apple-darwin`). **Đã làm:** job macOS trong `build.yml` build universal (Apple Silicon và Intel trong một `.dmg`).
 - `bundle.fileAssociations` cho `.sheafly` (và `.pdproj` cũ) với UTI riêng; xử lý `RunEvent::Opened` qua `confirm_discard`; danh sách "Mở gần đây".
-- CSP thay cho `csp: null`, cho phép `data:` và `blob:` mà jsPDF cần.
+- CSP thay cho `csp: null`, cho phép `data:` và `blob:` mà jsPDF cần. **Đã làm:** script chỉ từ app, style inline được phép (component dùng `style={…}`), ảnh và phông thêm `data:`/`blob:`, `object-src`/`frame-src` `none`; `devCsp` riêng cho Vite (HMR qua ws). Kiểm tra trên bản build production với cùng header: không vi phạm nào khi mở EVM, sơ đồ mạng, hộp thoại và xuất PDF; script inline bị chặn.
 - Sửa metadata `src-tauri/Cargo.toml` (`description`, `authors`). (Đã làm ở PR #38.)
 - Quy trình phát hành: tăng phiên bản đồng bộ ở `package.json`, `tauri.conf.json`, `Cargo.toml` (workspace và `src-tauri`); ghi chú phát hành tiếng Việt kèm giới hạn đã biết trong `docs/releases/v<phiên bản>.md`; tag `v*` từ `main`; workflow tạo bản nháp, rồi thay nội dung bằng ghi chú đó và publish. Bản `v1.0.0` phát hành theo quy trình này, chưa ký số, macOS chỉ arm64. Đổi phiên bản crate cũng đổi `engine_tag()`, nên checkpoint trong tệp cũ bị bỏ qua và tệp được dựng lại bằng replay (chậm hơn một lần, kết quả như nhau).
 

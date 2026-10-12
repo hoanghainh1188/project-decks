@@ -24,7 +24,7 @@
 
 ## Cài bản phát hành
 
-Tải bản cài ở trang [Releases](https://github.com/hoanghainh1188/sheafly/releases): `.dmg` cho macOS (Apple Silicon), `.msi` hoặc `-setup.exe` cho Windows, `.AppImage`, `.deb` hoặc `.rpm` cho Linux.
+Tải bản cài ở trang [Releases](https://github.com/hoanghainh1188/sheafly/releases): `.dmg` cho macOS (Apple Silicon và Intel từ bản 1.2.0; các bản trước chỉ có Apple Silicon), `.msi` hoặc `-setup.exe` cho Windows, `.AppImage`, `.deb` hoặc `.rpm` cho Linux.
 
 Bản cài chưa ký số. Trên macOS, hãy mở Sheafly một lần, rồi vào **Cài đặt hệ thống → Quyền riêng tư & Bảo mật** và bấm **Vẫn mở** ở phía dưới (từ macOS 15, nhấp chuột phải → Mở không còn dùng được cho app chưa ký). Nếu macOS báo ứng dụng bị hỏng, chạy:
 
@@ -68,7 +68,7 @@ cargo bench -p sheafly-engine --bench large_project -- leveling  # cân bằng 5
 ## Giới hạn đã biết
 
 - Không đọc tệp `.mpp`; dùng MSPDI (`.xml`) để trao đổi với Project.
-- Bản cài chưa ký số và chưa notarize; macOS mới có bản cho Apple Silicon.
+- Bản cài chưa ký số và chưa notarize.
 - Một người dùng, một cửa sổ; chưa có giao diện tối.
 - Chỉ có tiếng Việt và tiếng Anh.
 
