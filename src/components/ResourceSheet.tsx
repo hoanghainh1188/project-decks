@@ -1,4 +1,6 @@
+import { useMessages } from "../i18n";
 import type { Calendar, Overallocation, Resource, ResourceKind } from "../types";
+import { resourceSheetMessages } from "./ResourceSheet.i18n";
 
 interface Props {
   resources: Resource[];
@@ -21,24 +23,25 @@ export function ResourceSheet({
   onEditCalendar,
   onCreateCalendar,
 }: Props) {
+  const m = useMessages(resourceSheetMessages);
   const overloaded = new Set(overallocations.map((item) => item.resource_uid));
   return (
     <div className="resource-sheet">
       <div className="resource-tools">
-        <button type="button" onClick={() => onAdd("person")}>Thêm người</button>
-        <button type="button" onClick={() => onAdd("machine")}>Thêm máy</button>
+        <button type="button" onClick={() => onAdd("person")}>{m.addPerson}</button>
+        <button type="button" onClick={() => onAdd("machine")}>{m.addMachine}</button>
       </div>
       <table>
         <thead>
           <tr>
-            <th>Tên</th>
-            <th>Loại</th>
-            <th>Đơn vị tối đa</th>
-            <th>Lịch</th>
-            <th>Giá chuẩn / giờ</th>
-            <th>Giá tăng ca</th>
-            <th>Chi phí mỗi lần</th>
-            <th>Quá tải</th>
+            <th>{m.name}</th>
+            <th>{m.kind}</th>
+            <th>{m.maxUnits}</th>
+            <th>{m.calendar}</th>
+            <th>{m.standardRate}</th>
+            <th>{m.overtimeRate}</th>
+            <th>{m.costPerUse}</th>
+            <th>{m.overallocated}</th>
             <th></th>
           </tr>
         </thead>
@@ -59,8 +62,8 @@ export function ResourceSheet({
                   value={resource.kind}
                   onChange={(event) => onChange({ ...resource, kind: event.target.value as ResourceKind })}
                 >
-                  <option value="person">Người</option>
-                  <option value="machine">Máy</option>
+                  <option value="person">{m.person}</option>
+                  <option value="machine">{m.machine}</option>
                 </select>
               </td>
               <td>
@@ -73,7 +76,7 @@ export function ResourceSheet({
               <td>
                 <div className="calendar-cell">
                   <select
-                    aria-label={`Lịch ${resource.name}`}
+                    aria-label={m.calendarOf(resource.name)}
                     value={resource.calendar_id ?? ""}
                     onChange={(event) =>
                       onChange({
@@ -82,7 +85,7 @@ export function ResourceSheet({
                       })
                     }
                   >
-                    <option value="">Lịch dự án</option>
+                    <option value="">{m.projectCalendar}</option>
                     {calendars.map((calendar) => (
                       <option key={calendar.id} value={calendar.id}>{calendar.name}</option>
                     ))}
@@ -92,9 +95,9 @@ export function ResourceSheet({
                     disabled={resource.calendar_id == null}
                     onClick={() => resource.calendar_id != null && onEditCalendar(resource.calendar_id)}
                   >
-                    Sửa
+                    {m.editCalendar}
                   </button>
-                  <button type="button" onClick={() => onCreateCalendar(resource)}>Tạo lịch</button>
+                  <button type="button" onClick={() => onCreateCalendar(resource)}>{m.newCalendar}</button>
                 </div>
               </td>
               <td>
@@ -119,16 +122,16 @@ export function ResourceSheet({
                 />
               </td>
               <td className={overloaded.has(resource.uid) ? "bad" : ""}>
-                {overloaded.has(resource.uid) ? "Có" : "Không"}
+                {overloaded.has(resource.uid) ? m.yes : m.no}
               </td>
               <td>
-                <button type="button" onClick={() => onDelete(resource.uid)}>Xóa</button>
+                <button type="button" onClick={() => onDelete(resource.uid)}>{m.remove}</button>
               </td>
             </tr>
           ))}
           {resources.length === 0 && (
             <tr>
-              <td colSpan={9} className="empty">Chưa có nguồn lực.</td>
+              <td colSpan={9} className="empty">{m.empty}</td>
             </tr>
           )}
         </tbody>

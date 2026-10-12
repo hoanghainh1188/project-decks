@@ -1,20 +1,14 @@
 import { formatDuration, formatMoney, parseDuration } from "../../format";
+import { useMessages } from "../../i18n";
 import type { Accrual, Command, ConstraintType, Project, Task, TaskType } from "../../types";
 import { DateTimeField } from "../DateTimeField";
 import { AssignmentEditor } from "./AssignmentEditor";
 import { canSplit, SplitSection } from "./SplitSection";
+import { inspectorMessages } from "./Inspector.i18n";
 import { useInspectorOpen } from "./useInspectorOpen";
 
-const CONSTRAINTS: { id: ConstraintType; label: string }[] = [
-  { id: "asap", label: "Sớm nhất" },
-  { id: "alap", label: "Muộn nhất" },
-  { id: "snet", label: "Bắt đầu không sớm hơn" },
-  { id: "snlt", label: "Bắt đầu không muộn hơn" },
-  { id: "fnet", label: "Kết thúc không sớm hơn" },
-  { id: "fnlt", label: "Kết thúc không muộn hơn" },
-  { id: "mso", label: "Phải bắt đầu vào" },
-  { id: "mfo", label: "Phải kết thúc vào" },
-];
+/** Constraint types in menu order; each id is also its message key. */
+const CONSTRAINTS: ConstraintType[] = ["asap", "alap", "snet", "snlt", "fnet", "fnlt", "mso", "mfo"];
 
 interface Props {
   project: Project;
@@ -34,30 +28,31 @@ interface Props {
 export function Inspector(props: Props) {
   const { task } = props;
   const [open, toggle] = useInspectorOpen();
+  const m = useMessages(inspectorMessages);
   return (
-    <section className="inspector" aria-label="Thuộc tính công việc">
+    <section className="inspector" aria-label={m.region}>
       <header className="inspector-head">
         <button
           type="button"
           className="inspector-toggle"
           aria-expanded={open}
-          aria-label="Chi tiết thuộc tính"
-          title={open ? "Thu gọn" : "Mở rộng"}
+          aria-label={m.details}
+          title={open ? m.collapse : m.expand}
           onClick={toggle}
         >
           {open ? "▾" : "▸"}
         </button>
-        <h2>{task.name.trim() || "(Chưa đặt tên)"}</h2>
+        <h2>{task.name.trim() || m.untitled}</h2>
         <span className="meta">
-          ID {task.id} · WBS {task.wbs}
-          {task.summary ? " · Công việc tóm tắt" : ""}
-          {task.milestone ? " · Mốc" : ""}
+          {m.ids(task.id, task.wbs)}
+          {task.summary ? m.summaryTag : ""}
+          {task.milestone ? m.milestoneTag : ""}
         </span>
         <span className="meta inspector-facts">
-          Chi phí {formatMoney(task.cost)} · Thực tế {formatMoney(task.actual_cost)}
-          {task.leveling_delay ? ` · Trễ cân bằng ${formatDuration(task.leveling_delay)}` : ""}
-          {task.late ? " · Trễ hạn" : ""}
-          {task.conflict ? " · Vi phạm ràng buộc" : ""}
+          {m.costs(formatMoney(task.cost), formatMoney(task.actual_cost))}
+          {task.leveling_delay ? m.levelingDelay(formatDuration(task.leveling_delay)) : ""}
+          {task.late ? m.lateTag : ""}
+          {task.conflict ? m.conflictTag : ""}
         </span>
       </header>
       {open && (
@@ -68,14 +63,14 @@ export function Inspector(props: Props) {
           <CostGroup {...props} />
           {!task.summary && (
             <fieldset className="inspector-group assign-group">
-              <legend>Nguồn lực</legend>
+              <legend>{m.resources}</legend>
               <AssignmentEditor project={props.project} task={task} send={props.send} />
             </fieldset>
           )}
           <fieldset className="inspector-group notes-group">
-            <legend>Ghi chú</legend>
+            <legend>{m.notes}</legend>
             <input
-              aria-label="Ghi chú"
+              aria-label={m.notes}
               defaultValue={task.notes}
               key={`n-${task.uid}-${task.notes}`}
               onBlur={(event) => props.send({ type: "set_notes", uid: task.uid, notes: event.target.value })}
@@ -88,17 +83,18 @@ export function Inspector(props: Props) {
 }
 
 function SeriesGroup({ project, task, onEditSeries }: Props) {
+  const m = useMessages(inspectorMessages);
   const series = task.series_uid != null ? project.tasks.find((item) => item.uid === task.series_uid) : null;
   if (!task.recurrence && !series) return null;
   return (
     <fieldset className="inspector-group">
-      <legend>Công việc lặp</legend>
+      <legend>{m.recurring}</legend>
       <button type="button" onClick={() => onEditSeries(task.recurrence ? task.uid : (series?.uid ?? task.uid))}>
-        Sửa cả chuỗi…
+        {m.editSeries}
       </button>
       {series && (
         <p className="meta">
-          {task.detached ? "Lần này đã sửa riêng; sinh lại chuỗi sẽ giữ nguyên." : `Một lần của chuỗi “${series.name}”.`}
+          {task.detached ? m.detached : m.occurrenceOf(series.name)}
         </p>
       )}
     </fieldset>
@@ -106,14 +102,15 @@ function SeriesGroup({ project, task, onEditSeries }: Props) {
 }
 
 function ScheduleGroup({ project, task, send, onEditCalendar, onCreateCalendar }: Props) {
+  const m = useMessages(inspectorMessages);
   const needsDate = task.constraint_type !== "asap" && task.constraint_type !== "alap";
   return (
     <fieldset className="inspector-group">
-      <legend>Lịch</legend>
+      <legend>{m.schedule}</legend>
       <div>
-        <label>Ràng buộc</label>
+        <label>{m.constraint}</label>
         <select
-          aria-label="Ràng buộc"
+          aria-label={m.constraint}
           value={task.constraint_type}
           onChange={(event) =>
             send({
@@ -124,35 +121,35 @@ function ScheduleGroup({ project, task, send, onEditCalendar, onCreateCalendar }
             })
           }
         >
-          {CONSTRAINTS.map((item) => (
-            <option key={item.id} value={item.id}>{item.label}</option>
+          {CONSTRAINTS.map((id) => (
+            <option key={id} value={id}>{m[id]}</option>
           ))}
         </select>
       </div>
       {needsDate && (
         <div>
-          <label>Ngày ràng buộc</label>
+          <label>{m.constraintDate}</label>
           <DateTimeField
-            ariaLabel="Ngày ràng buộc"
+            ariaLabel={m.constraintDate}
             value={task.constraint_date}
             onCommit={(date) => send({ type: "set_constraint", uid: task.uid, constraint_type: task.constraint_type, date })}
           />
         </div>
       )}
       <div>
-        <label>Hạn chót</label>
+        <label>{m.deadline}</label>
         <DateTimeField
           optional
-          ariaLabel="Hạn chót"
+          ariaLabel={m.deadline}
           value={task.deadline}
           onCommit={(date) => send({ type: "set_deadline", uid: task.uid, date })}
         />
       </div>
       {!task.summary && (
         <div>
-          <label>Lịch công việc</label>
+          <label>{m.taskCalendar}</label>
           <select
-            aria-label="Lịch công việc"
+            aria-label={m.taskCalendar}
             value={task.calendar_id ?? ""}
             onChange={(event) =>
               send({
@@ -162,7 +159,7 @@ function ScheduleGroup({ project, task, send, onEditCalendar, onCreateCalendar }
               })
             }
           >
-            <option value="">Lịch dự án</option>
+            <option value="">{m.projectCalendar}</option>
             {project.calendars.map((calendar) => (
               <option key={calendar.id} value={calendar.id}>{calendar.name}</option>
             ))}
@@ -173,17 +170,17 @@ function ScheduleGroup({ project, task, send, onEditCalendar, onCreateCalendar }
               disabled={task.calendar_id == null}
               onClick={() => task.calendar_id != null && onEditCalendar(task.calendar_id)}
             >
-              Sửa lịch
+              {m.editCalendar}
             </button>
-            <button type="button" onClick={onCreateCalendar}>Tạo lịch riêng</button>
+            <button type="button" onClick={onCreateCalendar}>{m.newCalendar}</button>
           </div>
         </div>
       )}
       {!task.summary && (
         <div>
-          <label>Kiểu công việc</label>
+          <label>{m.taskType}</label>
           <select
-            aria-label="Kiểu công việc"
+            aria-label={m.taskType}
             value={task.task_type}
             onChange={(event) =>
               send({
@@ -194,9 +191,9 @@ function ScheduleGroup({ project, task, send, onEditCalendar, onCreateCalendar }
               })
             }
           >
-            <option value="fixed_units">Đơn vị cố định</option>
-            <option value="fixed_duration">Thời lượng cố định</option>
-            <option value="fixed_work">Công việc cố định</option>
+            <option value="fixed_units">{m.fixedUnits}</option>
+            <option value="fixed_duration">{m.fixedDuration}</option>
+            <option value="fixed_work">{m.fixedWork}</option>
           </select>
           <label className="check">
             <input
@@ -211,7 +208,7 @@ function ScheduleGroup({ project, task, send, onEditCalendar, onCreateCalendar }
                 })
               }
             />
-            Hướng theo nỗ lực
+            {m.effortDriven}
           </label>
         </div>
       )}
@@ -223,12 +220,12 @@ function ScheduleGroup({ project, task, send, onEditCalendar, onCreateCalendar }
             send({ type: "set_manual", uid: task.uid, manual: event.target.checked, start: task.start, finish: task.finish })
           }
         />
-        Lên lịch tay
+        {m.manual}
       </label>
       <div>
-        <label>Ưu tiên</label>
+        <label>{m.priority}</label>
         <input
-          aria-label="Ưu tiên"
+          aria-label={m.priority}
           className="narrow"
           defaultValue={task.priority}
           key={`p-${task.uid}-${task.priority}`}
@@ -240,46 +237,47 @@ function ScheduleGroup({ project, task, send, onEditCalendar, onCreateCalendar }
 }
 
 function TrackingGroup({ project, task, send, onSplit }: Props) {
+  const m = useMessages(inspectorMessages);
   const overtime = project.assignments
     .filter((item) => item.task_uid === task.uid)
     .reduce((sum, item) => sum + item.overtime_work, 0);
   return (
     <fieldset className="inspector-group">
-      <legend>Theo dõi</legend>
+      <legend>{m.tracking}</legend>
       <div>
-        <label>Bắt đầu thực</label>
+        <label>{m.actualStart}</label>
         <DateTimeField
           optional
-          ariaLabel="Bắt đầu thực"
+          ariaLabel={m.actualStart}
           value={task.actual_start}
           onCommit={(start) => send({ type: "set_actual_start", uid: task.uid, start })}
         />
       </div>
       <div>
-        <label>Kết thúc thực</label>
+        <label>{m.actualFinish}</label>
         <DateTimeField
           optional
-          ariaLabel="Kết thúc thực"
+          ariaLabel={m.actualFinish}
           value={task.actual_finish}
           onCommit={(finish) => send({ type: "set_actual_finish", uid: task.uid, finish })}
         />
       </div>
       <DurationInput
-        label="Công việc"
+        label={m.work}
         name="work"
         task={task}
         value={task.work}
         onCommit={(minutes) => send({ type: "set_work", uid: task.uid, minutes })}
       />
       <DurationInput
-        label="Việc còn lại"
+        label={m.remainingWork}
         name="rw"
         task={task}
         value={task.remaining_work}
         onCommit={(minutes) => send({ type: "set_remaining_work", uid: task.uid, minutes })}
       />
       <DurationInput
-        label="Giờ làm thêm"
+        label={m.overtimeWork}
         name="ot"
         task={task}
         value={overtime}
@@ -321,13 +319,14 @@ function DurationInput({
 }
 
 function CostGroup({ task, send }: Props) {
+  const m = useMessages(inspectorMessages);
   return (
     <fieldset className="inspector-group">
-      <legend>Chi phí</legend>
+      <legend>{m.cost}</legend>
       <div>
-        <label>Chi phí cố định</label>
+        <label>{m.fixedCost}</label>
         <input
-          aria-label="Chi phí cố định"
+          aria-label={m.fixedCost}
           className="narrow"
           defaultValue={task.fixed_cost}
           key={`c-${task.uid}-${task.fixed_cost}`}
@@ -342,9 +341,9 @@ function CostGroup({ task, send }: Props) {
         />
       </div>
       <div>
-        <label>Cộng dồn</label>
+        <label>{m.accrual}</label>
         <select
-          aria-label="Cộng dồn"
+          aria-label={m.accrual}
           value={task.fixed_cost_accrual}
           onChange={(event) =>
             send({
@@ -355,9 +354,9 @@ function CostGroup({ task, send }: Props) {
             })
           }
         >
-          <option value="start">Đầu</option>
-          <option value="prorated">Phân bổ</option>
-          <option value="end">Cuối</option>
+          <option value="start">{m.accrualStart}</option>
+          <option value="prorated">{m.accrualProrated}</option>
+          <option value="end">{m.accrualEnd}</option>
         </select>
       </div>
     </fieldset>
