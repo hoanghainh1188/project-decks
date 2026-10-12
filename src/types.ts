@@ -275,6 +275,7 @@ export type Command =
   | { type: "set_baseline"; number: number }
   | { type: "clear_baseline"; number: number }
   | { type: "level_resources" }
+  | { type: "apply_leveling"; delays: { uid: number; minutes: number }[] }
   | { type: "clear_leveling" }
   | { type: "reschedule_uncompleted" }
   | { type: "set_leveling_delay"; uid: number; minutes: number }

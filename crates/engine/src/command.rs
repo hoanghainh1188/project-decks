@@ -198,7 +198,14 @@ pub enum Command {
     ClearBaseline {
         number: u8,
     },
+    /// Run the leveling heuristic. `Document::apply` logs the result as `ApplyLeveling`
+    /// instead, so replay never reruns the heuristic; files from before phase 16 still
+    /// replay this.
     LevelResources,
+    /// Leveling delays chosen by a leveling run: each listed task gets its value.
+    ApplyLeveling {
+        delays: Vec<LevelingDelay>,
+    },
     ClearLeveling,
     /// Move work that should be done by the status date but is not to after it.
     RescheduleUncompleted,
@@ -229,6 +236,29 @@ pub enum Command {
         uid: u32,
         index: Option<u32>,
     },
+}
+
+/// One task's leveling delay, in working minutes.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LevelingDelay {
+    pub uid: u32,
+    pub minutes: i64,
+}
+
+/// The delays a leveling run would set on `project`, as a command that replays them
+/// without running the heuristic again.
+pub fn leveled(project: &Project) -> Result<Command, EngineError> {
+    let mut trial = project.clone();
+    level_project(&mut trial)?;
+    let delays = trial
+        .tasks
+        .iter()
+        .filter(|after| {
+            project.task(after.uid).map(|before| before.leveling_delay) != Some(after.leveling_delay)
+        })
+        .map(|after| LevelingDelay { uid: after.uid, minutes: after.leveling_delay })
+        .collect();
+    Ok(Command::ApplyLeveling { delays })
 }
 
 pub fn apply_one(project: &mut Project, command: &Command) -> Result<(), EngineError> {
@@ -667,6 +697,13 @@ fn apply_inner(project: &mut Project, command: &Command) -> Result<(), EngineErr
             }
         }
         Command::LevelResources => level_project(project)?,
+        Command::ApplyLeveling { delays } => {
+            for delay in delays {
+                if let Some(task) = project.task_mut(delay.uid) {
+                    task.leveling_delay = delay.minutes.max(0);
+                }
+            }
+        }
         Command::ClearLeveling => {
             for task in &mut project.tasks {
                 task.leveling_delay = 0;

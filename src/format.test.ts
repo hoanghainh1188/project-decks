@@ -218,11 +218,11 @@ describe("number formatting", () => {
     expect(formatMoney(-2500)).toBe("-2.500");
   });
 
-  it("formatHours hides near-zero values and keeps one decimal", () => {
+  it("formatHours hides near-zero values and keeps one decimal with a comma", () => {
     expect(formatHours(0)).toBe("");
     expect(formatHours(0.04)).toBe("");
     expect(formatHours(8)).toBe("8");
-    expect(formatHours(7.25)).toBe("7.3");
-    expect(formatHours(-1.5)).toBe("-1.5");
+    expect(formatHours(7.25)).toBe("7,3");
+    expect(formatHours(-1.5)).toBe("-1,5");
   });
 });
