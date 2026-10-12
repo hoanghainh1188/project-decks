@@ -57,7 +57,7 @@ todos:
     content: "Pha 11: giao diện cơ bản (PR #25; kiểm tra bằng mắt sau Pha 13, sửa ở PR #33)"
     status: completed
   - id: release-1-0-0
-    content: "Bản v1.0.0: bản chính thức đầu tiên (chưa ký số, macOS chỉ arm64, định dạng tệp 4); ghi chú ở docs/releases/v1.0.0.md. Bản nháp v0.1.0 đã xóa, tag v0.1.0 giữ lại. Ký số và bản universal vẫn chờ Pha 14"
+    content: "Bản v1.0.0: bản chính thức đầu tiên (chưa ký số, macOS chỉ arm64, định dạng tệp 4); ghi chú ở docs/releases/v1.0.0.md. Bản nháp v0.1.0 đã xóa, tag v0.1.0 giữ lại. Ngày 12/10 build lại v1.0.0 (tag dời lên main) để có tiếng Anh và icon mới, theo quyết định của chủ dự án. Ký số và bản universal vẫn chờ Pha 14"
     status: completed
   - id: file-performance
     content: "Pha 12: nền tệp và hiệu năng (checkpoint, lệnh bất đồng bộ, tệp hỏng, báo đổi ngày, tự lưu, gộp lịch sử; PR #28, #29 và phần 3)"
