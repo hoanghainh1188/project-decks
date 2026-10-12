@@ -145,11 +145,16 @@ export interface DayLabelParts {
   date: string;
 }
 
-/** Weekday and date for a day column; the window stacks them so they never touch. */
+/**
+ * Weekday and date for a day column; the window stacks them so they never touch. On the
+ * week scale a column is too narrow for every two-digit date, so only Mondays, the first
+ * day of each week band, carry one.
+ */
 export function dayLabelParts(ms: number, px: number): DayLabelParts {
   const date = new Date(ms);
   if (px < 10) return { weekday: "", date: "" };
-  return { weekday: px < 20 ? "" : WEEKDAYS[date.getUTCDay()], date: String(date.getUTCDate()) };
+  if (px < 20) return { weekday: "", date: date.getUTCDay() === 1 ? String(date.getUTCDate()) : "" };
+  return { weekday: WEEKDAYS[date.getUTCDay()], date: String(date.getUTCDate()) };
 }
 
 /** One-line day label, used by the PDF export where the text is shrunk to fit. */
