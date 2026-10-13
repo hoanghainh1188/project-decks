@@ -480,6 +480,8 @@ fn rollup_summary_work(project: &mut Project) {
             }
         };
         let task = &mut project.tasks[index];
+        // A summary's actual cost is always the rollup; an entry there is stale.
+        task.manual_actual_cost = None;
         task.work = work;
         task.actual_work = actual;
         task.remaining_work = remaining;
@@ -529,6 +531,7 @@ fn refresh_tracking(project: &mut Project, by_task: &HashMap<u32, Vec<usize>>) {
 }
 
 fn compute_costs(project: &mut Project, by_task: &HashMap<u32, Vec<usize>>) {
+    let editable = project.editable_actual_costs;
     let rates: Vec<(u32, f64, f64, f64)> = project
         .resources
         .iter()
@@ -555,6 +558,10 @@ fn compute_costs(project: &mut Project, by_task: &HashMap<u32, Vec<usize>>) {
         let task = &project.tasks[index];
         let total = labor + task.fixed_cost;
         let pct = task.percent_complete.clamp(0.0, 100.0) / 100.0;
+        let manual = task
+            .manual_actual_cost
+            .filter(|_| editable)
+            .map(|cost| cost.max(0.0));
         let actual = match task.fixed_cost_accrual {
             Accrual::Prorated => total * pct,
             Accrual::Start => {
@@ -572,7 +579,15 @@ fn compute_costs(project: &mut Project, by_task: &HashMap<u32, Vec<usize>>) {
                 }
             }
         };
+        let actual = manual.unwrap_or(actual);
         let actual_labor = match task.fixed_cost_accrual {
+            _ if manual.is_some() => {
+                if total > 0.0 {
+                    labor * (actual / total).min(1.0)
+                } else {
+                    0.0
+                }
+            }
             Accrual::Prorated => labor * pct,
             Accrual::Start => {
                 if pct > 0.0 {

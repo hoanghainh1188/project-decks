@@ -218,6 +218,16 @@ pub enum Command {
         uid: u32,
         date: Option<i64>,
     },
+    /// Turn hand-entered actual costs on or off for the whole project.
+    SetEditableActualCosts {
+        editable: bool,
+    },
+    /// Actual cost entered by hand for a task; it counts only while the project's
+    /// actual costs are editable. `None` goes back to the computed value.
+    SetTaskActualCost {
+        uid: u32,
+        cost: Option<f64>,
+    },
     CreateRecurringTask {
         after_uid: Option<u32>,
         spec: RecurrenceSpec,
@@ -735,6 +745,14 @@ fn apply_inner(project: &mut Project, command: &Command) -> Result<(), EngineErr
         Command::SetDeadline { uid, date } => {
             let task = project.task_mut(*uid).ok_or(EngineError::TaskNotFound)?;
             task.deadline = *date;
+        }
+        Command::SetEditableActualCosts { editable } => project.editable_actual_costs = *editable,
+        Command::SetTaskActualCost { uid, cost } => {
+            let task = project.task_mut(*uid).ok_or(EngineError::TaskNotFound)?;
+            if task.summary {
+                return Ok(());
+            }
+            task.manual_actual_cost = cost.map(|cost| cost.max(0.0));
         }
         Command::CreateRecurringTask { after_uid, spec } => {
             let spec = recurrence::clean_spec(spec);

@@ -198,6 +198,16 @@ class FakeBackend {
         }
         return;
       }
+      case "set_editable_actual_costs":
+        project.editable_actual_costs = command.editable;
+        return;
+      case "set_task_actual_cost": {
+        const task = project.tasks.find((item) => item.uid === command.uid);
+        if (!task) throw `Không có công việc ${command.uid}`;
+        task.manual_actual_cost = command.cost;
+        if (project.editable_actual_costs && command.cost != null) task.actual_cost = command.cost;
+        return;
+      }
       default:
         // Other commands are only recorded; tests assert on the payload.
         return;

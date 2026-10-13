@@ -351,3 +351,181 @@ fn a_day_without_actual_work_is_not_a_split_when_planned_work_is_given() {
     assert!(task.splits.is_empty());
     assert_eq!(task.finish, at(2, 17, 0));
 }
+
+fn with_costs() -> Document {
+    let mut doc = doc_with(&[2, 4]);
+    doc.apply(Command::AddResource {
+        name: "An".into(),
+        kind: ResourceKind::Person,
+    })
+    .unwrap();
+    doc.apply(Command::UpdateResource {
+        uid: 1,
+        name: "An".into(),
+        kind: ResourceKind::Person,
+        max_units: 1.0,
+        calendar_id: None,
+        standard_rate: 100.0,
+        overtime_rate: 150.0,
+        cost_per_use: 0.0,
+    })
+    .unwrap();
+    doc.apply(Command::AssignResource {
+        task_uid: 1,
+        resource_uid: 1,
+        units: 1.0,
+    })
+    .unwrap();
+    doc.apply(Command::SetFixedCost {
+        uid: 2,
+        cost: 1000.0,
+        accrual: sheafly_engine::model::Accrual::Start,
+    })
+    .unwrap();
+    doc.apply(Command::SetPercentComplete {
+        uid: 1,
+        percent: 50.0,
+    })
+    .unwrap();
+    doc
+}
+
+#[test]
+fn computed_costs_are_written_and_the_flag_is_off() {
+    let doc = with_costs();
+    let (xml, back) = round_trip(&doc.project);
+    assert!(xml.contains("<EditableActualCosts>0</EditableActualCosts>"));
+    // Task 1: 16 h at 100 = 1,600; half done.
+    assert_eq!(element(&xml, "Việc 1", "Cost"), Some("1600"));
+    assert_eq!(element(&xml, "Việc 1", "ActualCost"), Some("800"));
+    assert_eq!(element(&xml, "Việc 1", "RemainingCost"), Some("800"));
+    for task in &doc.project.tasks {
+        let after = back.task(task.uid).unwrap();
+        assert_eq!(after.cost, task.cost, "{}: cost", task.name);
+        assert_eq!(
+            after.actual_cost, task.actual_cost,
+            "{}: actual cost",
+            task.name
+        );
+        assert_eq!(after.manual_actual_cost, None);
+    }
+    assert!(!back.editable_actual_costs);
+}
+
+#[test]
+fn hand_entered_actual_costs_round_trip_and_feed_the_totals() {
+    let mut doc = with_costs();
+    doc.apply(Command::SetEditableActualCosts { editable: true })
+        .unwrap();
+    doc.apply(Command::SetTaskActualCost {
+        uid: 1,
+        cost: Some(1234.0),
+    })
+    .unwrap();
+    doc.apply(Command::SetTaskActualCost {
+        uid: 2,
+        cost: Some(250.0),
+    })
+    .unwrap();
+    assert_eq!(doc.project.task(1).unwrap().actual_cost, 1234.0);
+    assert_eq!(doc.project.task(1).unwrap().remaining_cost, 366.0);
+
+    let (xml, back) = round_trip(&doc.project);
+    assert!(xml.contains("<EditableActualCosts>1</EditableActualCosts>"));
+    assert!(back.editable_actual_costs);
+    for task in &doc.project.tasks {
+        let after = back.task(task.uid).unwrap();
+        assert_eq!(
+            after.manual_actual_cost, task.manual_actual_cost,
+            "{}",
+            task.name
+        );
+        assert_eq!(
+            after.actual_cost, task.actual_cost,
+            "{}: actual cost",
+            task.name
+        );
+        assert_eq!(
+            after.remaining_cost, task.remaining_cost,
+            "{}: remaining",
+            task.name
+        );
+    }
+    // The assignment carries the labour part of the entered cost.
+    assert_eq!(
+        back.assignments[0].actual_cost,
+        doc.project.assignments[0].actual_cost
+    );
+
+    // Turning the switch off brings the computed numbers back; the entries are kept.
+    doc.apply(Command::SetEditableActualCosts { editable: false })
+        .unwrap();
+    assert_eq!(doc.project.task(1).unwrap().actual_cost, 800.0);
+    assert_eq!(
+        doc.project.task(1).unwrap().manual_actual_cost,
+        Some(1234.0)
+    );
+}
+
+#[test]
+fn entered_costs_spread_over_the_progress_and_unstarted_ones_land_on_the_status_date() {
+    use sheafly_engine::evm::evm_at;
+    let mut doc = with_costs();
+    doc.apply(Command::SetStatusDate {
+        date: Some(at(3, 8, 0)),
+    })
+    .unwrap();
+    doc.apply(Command::SetEditableActualCosts { editable: true })
+        .unwrap();
+    doc.apply(Command::SetTaskActualCost {
+        uid: 2,
+        cost: Some(500.0),
+    })
+    .unwrap();
+    // Task 2 has no progress: nothing before the status date, all of it from then on.
+    assert_eq!(evm_at(&doc.project, at(2, 8, 0)).ac, 800.0);
+    assert_eq!(evm_at(&doc.project, at(3, 8, 0)).ac, 1300.0);
+}
+
+#[test]
+fn a_file_that_computes_its_own_actual_costs_gives_no_entries() {
+    let xml = one_task(
+        "<Duration>PT8H0M0S</Duration><ActualCost>777</ActualCost>",
+        "",
+    );
+    let project = read_mspdi(&xml).unwrap();
+    assert!(!project.editable_actual_costs);
+    assert_eq!(project.task(1).unwrap().manual_actual_cost, None);
+    let editable = xml.replace(
+        "<StartDate>",
+        "<EditableActualCosts>1</EditableActualCosts><StartDate>",
+    );
+    let project = read_mspdi(&editable).unwrap();
+    assert!(project.editable_actual_costs);
+    assert_eq!(project.task(1).unwrap().manual_actual_cost, Some(777.0));
+    assert_eq!(project.task(1).unwrap().actual_cost, 777.0);
+}
+
+#[test]
+fn infinite_or_summary_actual_costs_in_a_file_are_not_kept() {
+    let xml = one_task(
+        "<Duration>PT8H0M0S</Duration><ActualCost>1e999</ActualCost>",
+        "",
+    )
+    .replace(
+        "<StartDate>",
+        "<EditableActualCosts>1</EditableActualCosts><StartDate>",
+    );
+    let project = read_mspdi(&xml).unwrap();
+    assert_eq!(project.task(1).unwrap().manual_actual_cost, None);
+    assert!(project.task(1).unwrap().actual_cost.is_finite());
+
+    let summary = "<Task><UID>2</UID><Name>S</Name><OutlineLevel>1</OutlineLevel><Summary>1</Summary><ActualCost>999</ActualCost></Task>\
+                   <Task><UID>3</UID><Name>L</Name><OutlineLevel>2</OutlineLevel><Duration>PT8H0M0S</Duration></Task>";
+    let xml = format!(
+        "<Project xmlns=\"http://schemas.microsoft.com/project\"><EditableActualCosts>1</EditableActualCosts>\
+         <StartDate>2026-01-05T08:00:00</StartDate><Tasks>{summary}</Tasks></Project>"
+    );
+    let project = read_mspdi(&xml).unwrap();
+    assert_eq!(project.task(2).unwrap().manual_actual_cost, None);
+}

@@ -88,6 +88,8 @@ export interface Task {
   cost: number;
   actual_cost: number;
   remaining_cost: number;
+  /** Hand-entered actual cost; counts only while `Project.editable_actual_costs` is on. */
+  manual_actual_cost: number | null;
   conflict: boolean;
   predecessors: string;
   baselines: Baseline[];
@@ -206,6 +208,8 @@ export interface Project {
   next_resource_uid: number;
   overallocations: Overallocation[];
   usage: UsageRow[];
+  /** Actual costs are entered by hand instead of computed from progress. */
+  editable_actual_costs: boolean;
 }
 
 export interface Snapshot {
@@ -285,6 +289,8 @@ export type Command =
   | { type: "reschedule_uncompleted" }
   | { type: "set_leveling_delay"; uid: number; minutes: number }
   | { type: "set_deadline"; uid: number; date: number | null }
+  | { type: "set_editable_actual_costs"; editable: boolean }
+  | { type: "set_task_actual_cost"; uid: number; cost: number | null }
   | { type: "create_recurring_task"; after_uid: number | null; spec: RecurrenceSpec }
   | { type: "update_recurring_task"; uid: number; spec: RecurrenceSpec }
   | { type: "split_task"; uid: number; at: number; gap: number }
