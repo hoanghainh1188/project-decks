@@ -11,7 +11,7 @@
 //! and one availability each.
 
 use std::cmp::Reverse;
-use std::collections::{BTreeMap, BinaryHeap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap};
 
 use chrono::NaiveDate;
 
@@ -22,10 +22,21 @@ use crate::model::{ConstraintType, Overallocation, Project, Resource, Task};
 use crate::ripple::Ripple;
 use crate::schedule::{prepare, publish_derived, schedule_dates};
 use crate::split;
-use crate::timeutil::{civil, compose, date_key};
+use crate::timeutil::{civil, compose, date_key, parse_date_key};
 
 /// Units below this are rounding noise.
 const EPSILON: f64 = 1e-6;
+
+/// Wall-clock time has no daylight saving, so every week is this long.
+const WEEK: i64 = 7 * 86_400_000;
+
+#[cfg(test)]
+thread_local! {
+    /// Tests turn off ending a search that has come round, to check it changes nothing.
+    pub(crate) static SEARCH_IN_FULL: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    /// Searches that came round (or would have, with `SEARCH_IN_FULL`).
+    pub(crate) static CAME_ROUND: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
 
 pub fn publish_overallocations(project: &mut Project) {
     project.overallocations = find_overallocations(project);
@@ -533,6 +544,21 @@ fn earliest_fit(
 ) -> i64 {
     let calendar = project.task_calendar(task);
     let duration = task.duration.max(0);
+    let empty = Busy::default();
+    let checked: Vec<(&Resource, f64, &Busy, &Calendar)> = resources
+        .iter()
+        .filter_map(|(resource_uid, units)| {
+            let resource = lookup.resource(project, *resource_uid)?;
+            // A resource the task alone overloads cannot be helped by waiting.
+            if *units > resource.max_units + EPSILON {
+                return None;
+            }
+            let placed = busy.get(resource_uid).unwrap_or(&empty);
+            let resource_calendar = project.resource_calendar(resource);
+            Some((resource, *units, placed, resource_calendar))
+        })
+        .collect();
+    let mut cycle = Cycle::new(&checked);
     let mut start = task.start;
     // Each round moves past one busy block. Past four years the resource will not have
     // room (its calendar never meets the task's, say): leave the task where it was.
@@ -548,16 +574,9 @@ fn earliest_fit(
             .collect();
         let mut pieces = Vec::new();
         cut_to_calendar(calendar, &intervals, 0.0, &mut pieces);
-        let clash = resources
+        let clash = checked
             .iter()
-            .filter_map(|(resource_uid, units)| {
-                let resource = lookup.resource(project, *resource_uid)?;
-                if *units > resource.max_units + EPSILON {
-                    return None;
-                }
-                let empty = Busy::default();
-                let placed = busy.get(resource_uid).unwrap_or(&empty);
-                let resource_calendar = project.resource_calendar(resource);
+            .filter_map(|(resource, units, placed, resource_calendar)| {
                 let (from, to) = first_clash(
                     resource_calendar,
                     resource.max_units,
@@ -571,12 +590,95 @@ fn earliest_fit(
         let Some((from, room)) = clash else {
             return start;
         };
+        if cycle.came_round(start, calendar, &checked) {
+            break;
+        }
         // Slide the task so the work that met the clash starts where the resource next
         // has room, past the whole busy block at once.
         let shift = calendar.working_between(from, room).max(1);
         start = calendar.add_lag(start, shift);
     }
     task.start
+}
+
+/// Ends a search that can never succeed: the task's calendar works hours its resources
+/// never do, so some of its work clashes wherever it starts.
+///
+/// Past the placed work of every checked resource (`horizon`), a round sees no load:
+/// the clash, the room after it and the slide come from the calendars alone. Past the
+/// last exception and work week of those calendars (`steady`), the calendars repeat
+/// every week, so a round starting a whole number of weeks later is the same round
+/// moved by those weeks, and so is every round after it. When a start from there on
+/// lands on the same point of the week as an earlier clashing start from there on,
+/// the search has entered a loop of clashing starts and no later start can fit.
+/// Every search that does fit ends exactly as before.
+struct Cycle {
+    horizon: i64,
+    steady: Option<i64>,
+    seen: BTreeSet<i64>,
+}
+
+impl Cycle {
+    fn new(checked: &[(&Resource, f64, &Busy, &Calendar)]) -> Self {
+        let horizon = checked
+            .iter()
+            .map(|(_, _, placed, _)| {
+                // `room_from` reads the placed stretches up to the last one's start.
+                let last = placed.stretches.last().map_or(i64::MIN, |s| s.start + 1);
+                placed.until.max(last)
+            })
+            .max()
+            .unwrap_or(i64::MIN);
+        Self {
+            horizon,
+            steady: None,
+            seen: BTreeSet::new(),
+        }
+    }
+
+    /// Whether `start`, which clashes, repeats an earlier clashing start.
+    fn came_round(
+        &mut self,
+        start: i64,
+        calendar: &Calendar,
+        checked: &[(&Resource, f64, &Busy, &Calendar)],
+    ) -> bool {
+        if start < self.horizon {
+            return false;
+        }
+        let horizon = self.horizon;
+        let steady = *self.steady.get_or_insert_with(|| {
+            checked
+                .iter()
+                .map(|(_, _, _, resource_calendar)| weekly_from(resource_calendar))
+                .fold(horizon.max(weekly_from(calendar)), i64::max)
+        });
+        let came_round = start >= steady && !self.seen.insert(start.rem_euclid(WEEK));
+        #[cfg(test)]
+        if came_round {
+            CAME_ROUND.with(|count| count.set(count.get() + 1));
+            // Searching on: the same start of the week is not counted twice.
+            self.seen.clear();
+            self.steady = Some(i64::MAX);
+            return !SEARCH_IN_FULL.with(std::cell::Cell::get);
+        }
+        came_round
+    }
+}
+
+/// Midnight after the last day a calendar sets apart from its weekly pattern (an
+/// exception or a work week), from which on it repeats every week.
+fn weekly_from(calendar: &Calendar) -> i64 {
+    let last_exception = calendar
+        .exceptions
+        .keys()
+        .filter_map(|key| parse_date_key(key))
+        .max();
+    let last_work_week = calendar.work_weeks.iter().map(|week| week.to).max();
+    match last_exception.max(last_work_week) {
+        Some(date) => date.succ_opt().map_or(i64::MAX, |next| compose(next, 0)),
+        None => i64::MIN,
+    }
 }
 
 /// The first time from `at` on when the resource works and has room for `units` more:

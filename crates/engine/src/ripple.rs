@@ -150,7 +150,7 @@ mod tests {
     use crate::calendar::TimeRange;
     use crate::command::{apply_one, Command};
     use crate::document::Document;
-    use crate::level::level_with;
+    use crate::level::{level_with, CAME_ROUND, SEARCH_IN_FULL};
     use crate::model::{ConstraintType, DepKind, Project, ResourceKind};
     use crate::schedule::{prepare, schedule, schedule_dates};
     use crate::timeutil::civil;
@@ -232,9 +232,10 @@ mod tests {
             }
         }
         let start = project.start;
-        // Task calendars work inside the standard hours and resource calendars around
-        // them, so every task can find room. (A task whose hours a resource never fully
-        // works searches four years before it gives up: slow, and not what this tests.)
+        // Most task calendars work inside the standard hours and resource calendars
+        // around them, so most tasks can find room. A few tasks work the long days,
+        // which a resource on the standard hours never fully covers: leveling gives up
+        // on them once the search comes round to the same point of the week.
         let morning = vec![TimeRange::new(8 * 60, 12 * 60)];
         let mornings = calendar(&mut project, "Buổi sáng", vec![morning; 5]);
         let long_day = vec![TimeRange::new(7 * 60, 18 * 60)];
@@ -252,6 +253,8 @@ mod tests {
             apply(&mut project, Command::SetPriority { uid, priority });
             if random.chance(15) {
                 apply(&mut project, Command::SetTaskCalendar { uid, calendar_id: mornings });
+            } else if random.chance(8) {
+                apply(&mut project, Command::SetTaskCalendar { uid, calendar_id: long_days });
             }
         }
         let kinds = [DepKind::Fs, DepKind::Fs, DepKind::Ss, DepKind::Ff, DepKind::Sf];
@@ -396,5 +399,36 @@ mod tests {
         assert!(seen.started >= 50, "only {} started tasks", seen.started);
         assert!(seen.manual >= 50, "only {} manual tasks", seen.manual);
         assert!(seen.links_into_groups >= 100, "only {} links into groups", seen.links_into_groups);
+    }
+
+    /// Projects for the check against searching four years: a search that never fits
+    /// takes a few thousand rounds then.
+    const FULL_SEARCH_SEEDS: u64 = 60;
+
+    #[test]
+    fn ending_searches_that_came_round_levels_like_searching_four_years() {
+        let mut came_round = 0;
+        for seed in 0..FULL_SEARCH_SEEDS {
+            let base = project(seed, Mix::OnePass);
+            CAME_ROUND.with(|count| count.set(0));
+            let early = leveled(base.clone(), true);
+            let stopped = CAME_ROUND.with(|count| count.get());
+            SEARCH_IN_FULL.with(|full| full.set(true));
+            CAME_ROUND.with(|count| count.set(0));
+            let full = leveled(base, true);
+            SEARCH_IN_FULL.with(|full| full.set(false));
+            // Searching on, every search that came round still gives up in the end.
+            assert_eq!(CAME_ROUND.with(|count| count.get()), stopped, "seed {seed}");
+            for (a, b) in early.tasks.iter().zip(&full.tasks) {
+                assert_eq!(
+                    (a.uid, a.leveling_delay, a.start, a.finish, a.total_slack),
+                    (b.uid, b.leveling_delay, b.start, b.finish, b.total_slack),
+                    "seed {seed}"
+                );
+            }
+            assert_eq!(early.overallocations, full.overallocations, "seed {seed}");
+            came_round += stopped;
+        }
+        assert!(came_round >= 25, "only {came_round} searches came round");
     }
 }
