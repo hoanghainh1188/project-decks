@@ -3,14 +3,20 @@
 //! `cargo bench -p sheafly-engine` builds a project of grouped tasks with chained
 //! and summary-to-summary links, then pads the log with edits. Pass `-- <tasks> <commands>`
 //! to change the size (default 1000 tasks, 10000 commands).
+//!
+//! `-- leveling` levels 500 tasks on ten people. `-- capacity [<people> <tasks>]` levels a
+//! sprint-sized backlog (default 100 people, 1000 tasks): unlinked tasks of one to sixteen
+//! hours with random priorities, one person each, built straight into the model so the
+//! setup does not replay thousands of commands.
 
 use std::time::{Duration, Instant};
 
 use sheafly_engine::command::Command;
-use sheafly_engine::model::{DepKind, ResourceKind};
+use sheafly_engine::level::level_project;
+use sheafly_engine::model::{Assignment, DepKind, Resource, ResourceKind, Task, TaskType};
 use sheafly_engine::store::{load, save};
 use sheafly_engine::timeutil::timestamp;
-use sheafly_engine::{Document, Project};
+use sheafly_engine::{schedule, Document, Project};
 
 const GROUP: u32 = 10;
 const DAY: i64 = 480;
@@ -117,15 +123,87 @@ fn leveling(tasks: u32) {
     println!("{:<28} {:>10.1} ngày (tối thiểu {busiest})", "độ dài sau cân bằng", days);
 }
 
+/// A backlog of `tasks` effort-only tasks spread over `people`, the way a sprint plan
+/// arrives: no links, every task free to start at the project start, priority deciding
+/// the order. Prints the leveling time and the idle hours left between a person's tasks.
+fn capacity(people: u32, tasks: u32) {
+    // A fixed linear congruential generator, so every run builds the same backlog.
+    let mut seed: u64 = 42;
+    let mut random = |below: u64| {
+        seed = seed.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
+        (seed >> 33) % below
+    };
+    let mut project = Project::new("Năng lực", timestamp(2026, 1, 5, 8, 0));
+    for uid in 1..=people {
+        project.resources.push(Resource::new(uid, format!("Người {uid}"), ResourceKind::Person));
+    }
+    for uid in 1..=tasks {
+        let work = 60 * (1 + random(16) as i64);
+        let mut task = Task::new(uid, format!("Việc {uid}"));
+        task.task_type = TaskType::FixedWork;
+        task.duration = work;
+        task.remaining_duration = work;
+        task.work = work;
+        task.remaining_work = work;
+        task.priority = 100 + random(800) as i32;
+        task.start = project.start;
+        project.tasks.push(task);
+        project.assignments.push(Assignment {
+            uid,
+            task_uid: uid,
+            resource_uid: 1 + random(u64::from(people)) as u32,
+            units: 1.0,
+            work,
+            overtime_work: 0,
+            actual_work: 0,
+            remaining_work: work,
+            cost: 0.0,
+            actual_cost: 0.0,
+            manual_actual_cost: None,
+        });
+    }
+    project.next_task_uid = tasks + 1;
+    project.next_resource_uid = people + 1;
+    project.next_assignment_uid = tasks + 1;
+
+    timed("lập lịch", || schedule(&mut project).expect("schedule"));
+    println!("{people} người, {tasks} công việc, {} khoảng quá tải", project.overallocations.len());
+    timed("cân bằng nguồn lực", || level_project(&mut project).expect("level"));
+    assert!(project.overallocations.is_empty(), "{:?}", project.overallocations.first());
+
+    // Working time from the project start to a person's last finish, less their work:
+    // zero when leveling packs each person's tasks back to back.
+    let calendar = project.calendar().clone();
+    let idle: i64 = (1..=people)
+        .filter_map(|person| {
+            let mine: Vec<&Task> = project
+                .assignments
+                .iter()
+                .filter(|assignment| assignment.resource_uid == person)
+                .filter_map(|assignment| project.task(assignment.task_uid))
+                .collect();
+            let finish = mine.iter().map(|task| task.finish).max()?;
+            let work: i64 = mine.iter().map(|task| task.work).sum();
+            Some(calendar.working_between(project.start, finish) - work)
+        })
+        .sum();
+    println!("{:<28} {:>10.1} giờ", "giờ rảnh xen giữa", idle as f64 / 60.0);
+}
+
 fn main() {
-    if std::env::args().any(|arg| arg == "leveling") {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let numbers: Vec<usize> = args.iter().filter_map(|arg| arg.parse().ok()).collect();
+    if args.iter().any(|arg| arg == "leveling") {
         leveling(500);
         return;
     }
-    let args: Vec<usize> = std::env::args()
-        .skip(1)
-        .filter_map(|arg| arg.parse().ok())
-        .collect();
+    if args.iter().any(|arg| arg == "capacity") {
+        let people = numbers.first().copied().unwrap_or(100).max(1) as u32;
+        let tasks = numbers.get(1).copied().unwrap_or(1000) as u32;
+        capacity(people, tasks);
+        return;
+    }
+    let args = numbers;
     let tasks = args.first().copied().unwrap_or(1000) as u32;
     let total = args.get(1).copied().unwrap_or(10_000);
     let commands = build_commands(tasks, total);

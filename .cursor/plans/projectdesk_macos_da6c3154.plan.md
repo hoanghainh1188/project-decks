@@ -1,6 +1,6 @@
 ---
 name: Sheafly macOS
-overview: "Sheafly là ứng dụng desktop Tauri (Rust + React) quản lý dự án theo hướng Microsoft Project. Pha 1–13 và 15–17 đã xong; Pha 14 xong phần không cần tài khoản Apple. Sau pha 10 đã thêm: bản cài đa nền tảng (PR #17), test frontend (PR #18), phần còn lại của pha 9–10 (PR #19), sơ đồ mạng (PR #20), tách công việc (PR #21), CLAUDE.md (PR #22), an toàn dữ liệu (PR #23), giao diện cơ bản (Pha 11, PR #25), nền tệp và hiệu năng (Pha 12, PR #28–#30), theo dõi tiến độ (Pha 13, PR #31–#32) và sửa giao diện sau khi chụp màn hình dự án mẫu (PR #33). Sau đó là Pha 14 (cài đặt), 15 và 17 (PR #34–#60: dọn dẹp, sơ đồ mạng, thanh công cụ, giao diện tối, copy/paste, MSPDI đầy đủ). Việc tiếp theo là ký số của Pha 14 (cần tài khoản Apple Developer) và phần còn lại của Pha 15 ở mục Lộ trình; còn nợ vài bước kiểm tra thủ công trong app thật (xem đầu mục Lộ trình)."
+overview: "Sheafly là ứng dụng desktop Tauri (Rust + React) quản lý dự án theo hướng Microsoft Project. Pha 1–13 và 15–17 đã xong; Pha 14 xong phần không cần tài khoản Apple. Sau pha 10 đã thêm: bản cài đa nền tảng (PR #17), test frontend (PR #18), phần còn lại của pha 9–10 (PR #19), sơ đồ mạng (PR #20), tách công việc (PR #21), CLAUDE.md (PR #22), an toàn dữ liệu (PR #23), giao diện cơ bản (Pha 11, PR #25), nền tệp và hiệu năng (Pha 12, PR #28–#30), theo dõi tiến độ (Pha 13, PR #31–#32) và sửa giao diện sau khi chụp màn hình dự án mẫu (PR #33). Sau đó là Pha 14 (cài đặt), 15 và 17 (PR #34–#60: dọn dẹp, sơ đồ mạng, thanh công cụ, giao diện tối, copy/paste, MSPDI đầy đủ). Việc tiếp theo là ký số của Pha 14 (cần tài khoản Apple Developer) và phần còn lại của Pha 15, rồi Pha 18 (lập kế hoạch theo năng lực, đang thiết kế) ở mục Lộ trình; còn nợ vài bước kiểm tra thủ công trong app thật (xem đầu mục Lộ trình)."
 todos:
   - id: scaffold
     content: Tauri 2 + React + crate engine
@@ -77,6 +77,9 @@ todos:
   - id: project-parity-ux
     content: "Pha 17: UX ngang MS Project (copy/paste, tách App.tsx, bàn phím, giao diện còn lại). PR A (dọn dẹp, tiêu đề, EVM, README), B (sơ đồ mạng), C (thanh công cụ, focus, bàn phím Gantt, EVM phóng to, tab, màu và biểu tượng), D (copy/paste, điền xuống, kéo từng đoạn) và E (token màu, giao diện tối, tách App.tsx, test còn thiếu) xong"
     status: completed
+  - id: capacity-scheduling
+    content: "Pha 18: lập kế hoạch theo năng lực cho hàng trăm người, hàng ngàn task mỗi sprint (leveling nhanh, năng lực theo ngày, vai trò → người, nhập hàng loạt, xem trước đề xuất, dự báo khoảng ước lượng). Đang thiết kế; P1 trước"
+    status: pending
 isProject: false
 ---
 
@@ -293,6 +296,8 @@ Theo đánh giá độc lập sau PR #23 (đối chiếu từng mục với code
 
 Trạng thái (13/10/2026): Pha 11–13 và 15–17 đã xong. Pha 14 đã làm phần gắn kiểu tệp, CSP, bản universal; còn ký số và notarize, cần tài khoản Apple Developer. Pha 15 còn đối chiếu với tệp xuất từ Project thật. Lịch nguồn lực vốn đã có giao diện từ Pha 6 (ghi "chưa có giao diện" trước đây là nhầm); sau Pha 15 thêm lịch gốc như Project (`calendar_base.rs`, `SetCalendarBase`, `FORMAT_VERSION` = 9): lịch nguồn lực và lịch task tạo mới dựa trên lịch dự án nên ngày lễ của dự án tự áp dụng, mỗi lịch chỉ lưu phần nó tự đặt. Đã thêm sau Pha 15: chi phí thực tế nhập theo assignment (PR #62) và báo cáo cảnh báo khi nhập MSPDI (PR #63, `mspdi_report.rs`: tuần làm việc bị bỏ, % bị thay bằng số theo ngày thực tế, công việc đổi ngày so với tệp quá một phút); chi phí thực tế theo ngày để backlog. Hộp thoại Thông tin dự án chia tab Chung / Thống kê (số liệu do engine tính, `statistics.rs`, so với đường cơ sở 0) và chọn được lịch dự án (`SetProjectCalendar`, `FORMAT_VERSION` = 10); sửa lịch chuyển sang hộp thoại "Lịch làm việc" riêng (menu Dự án), có Lưu/Hủy riêng như Project.
 
+Trạng thái (13/10/2026): Pha 18 (lập kế hoạch theo năng lực) đã nghiên cứu xong và có thiết kế; P1 (leveling nhanh) là việc engine tiếp theo.
+
 Kiểm tra thủ công còn nợ trong `pnpm tauri dev` (các PR #28–#33 mới được kiểm bằng test, bench và ảnh chụp trình duyệt):
 
 - Tự lưu và khôi phục: sửa, chờ 30 giây, tắt hẳn tiến trình, mở lại, thử "Khôi phục" và "Bỏ bản tự lưu"; thoát bình thường với "Không lưu" thì lần sau không hỏi.
@@ -499,6 +504,58 @@ Chia 5 PR: (A) dọn dẹp và chỉnh nhỏ, (B) sơ đồ mạng, (C) thanh c�
 - Màu thành token CSS rồi mới làm giao diện tối; xóa `src/App.css` thừa từ template (đã xóa ở PR A). (PR E)
 - Dọn 9 warning clippy của engine. (PR A)
 - Viết lại README: tính năng, cách cài bản phát hành, cách build; bỏ đường dẫn cứng. (PR A)
+
+### Pha 18 — lập kế hoạch theo năng lực (L, tách 4 PR) — đang thiết kế
+
+**Nhu cầu (13/10/2026, từ một nhóm dùng thử).** Hàng trăm người, hàng ngàn task mỗi sprint. Mỗi người ôm vài PG (nhóm sản phẩm); trong một PG, task BE giao cho một người, FE cho một người. Input là PIC, năng lực của PIC theo từng ngày, effort của task và thứ tự ưu tiên; muốn engine tự xếp từng người làm lần lượt theo ưu tiên. Với Microsoft Project họ phải gán từng người vào từng task, đặt ràng buộc, rồi tự bấm leveling. Thêm nữa, task đặt duration dài hơn effort (ví dụ 3 ngày cho 3 giờ việc) chiếm chỗ cả 3 ngày, nên task sau bị đẩy ra sau 3 ngày. Con số đó thật ra là cửa sổ hoặc hạn chót; trong Sheafly nó nên là `deadline`, còn duration suy ra từ effort chia năng lực (task Fixed Work).
+
+**Đo hiện trạng.** `cargo bench -p sheafly-engine --bench large_project -- capacity <người> <task>`: task 1–16 giờ không liên kết, ưu tiên ngẫu nhiên, mỗi task một người, Fixed Work, units 100 %, bản release.
+
+| Người | Task | Lập lịch | Cân bằng |
+|---|---|---|---|
+| 50 | 500 | 0,8 ms | 0,2 s |
+| 100 | 1.000 | 3 ms | 0,8 s |
+| 200 | 2.000 | 4 ms | 4,2 s |
+| 300 | 3.000 | 6 ms | 11,9 s |
+| 500 | 5.000 | 13 ms | 46 s |
+
+Kết quả đúng: không còn quá tải, không có giờ rảnh xen giữa các task của một người (thứ tự trong một người theo ưu tiên vì mọi task cùng ngày bắt đầu). Thời gian tăng nhanh hơn bậc hai: mỗi task được đặt thì `next_to_place` quét mọi task, `schedule_dates` tính lại cả dự án sau mỗi lần dời, `dates_of` so ngày của mọi task đã xếp, `add_to_busy` quét lại các khoảng của nguồn lực, và `earliest_fit`, `project.task(uid)` tìm nguồn lực, task bằng cách duyệt danh sách. Nghĩa là thuật toán hiện tại dùng được, chỉ cần nhanh hơn khoảng 50 lần ở cỡ 5.000 task.
+
+**Nghiên cứu ba cách làm** (13/10/2026, từ tài liệu chính thức; vài chi tiết không kiểm chứng được ghi rõ):
+
+- **Jira Plans** (Cloud Premium): Auto-schedule rót việc vào năng lực **của team** theo từng sprint, từ trên xuống theo rank (hòa thì theo ước lượng, rồi cấp bậc); không vừa thì sang sprint sau; Kanban theo giờ/tuần. Không xếp theo từng người: năng lực cá nhân, kỹ năng và stage đã bỏ cùng live plans. Kết quả là **đề xuất** (vạch tím), người dùng chọn trường nào được ghi (sprint, team, release; chỉ ô trống hoặc ghi đè), rồi Review changes mới ghi vào Jira; sprint đang chạy không bị đụng. Giới hạn cứng 5.000 item/plan. Nguồn: support.atlassian.com/jira-software-cloud/docs/how-does-the-auto-scheduler-in-advanced-roadmaps-work, confluence.atlassian.com/advancedroadmapsserver0329/auto-scheduling-issues-1021219007.html, support.atlassian.com/jira-software-cloud/docs/limits-on-plan-size-in-advanced-roadmaps/.
+- **Float / Runn**: **không tự xếp**. Phân bổ là khoảng ngày với giờ/ngày, % hoặc tổng giờ chia đều; người dùng kéo thả, công cụ tô quá tải. Mô hình năng lực đáng học: giờ làm theo từng thứ trong tuần có ngày hiệu lực (Float), hợp đồng có ngày bắt đầu/kết thúc (Runn), trừ nghỉ phép và ngày lễ, mức sử dụng = đã xếp ÷ năng lực hiệu dụng. Placeholder theo vai trò (Runn: vai trò, team, kỹ năng) rồi "Find person" xếp hạng người còn rảnh, người dùng xác nhận. Nguồn: support.float.com/en/articles/4188692-allocate-time, support.float.com/en/articles/28934-individual-custom-hours-and-work-days, help.runn.io/en/articles/1625881-contracts, help.runn.io/en/articles/4177851-placeholders.
+- **LiquidPlanner** (nay là Tempo Portfolio Manager): **xếp tuần tự tham lam theo một danh sách ưu tiên toàn cục**, từng người, từng ngày; task sau bắt đầu khi task trên xong; giới hạn giờ theo ngày/tuần/tháng trên task hoặc dự án là cách cho làm song song. Phụ thuộc chỉ FS, chủ yếu cần giữa người khác nhau vì ưu tiên đã xếp việc của một người. Ước lượng là khoảng thấp–cao; Monte Carlo chạy trên toàn danh mục ra ngày bắt đầu/kết thúc 10 %, 50 % (E), 90 %, 98 %; cờ rủi ro khi E sát deadline. Tự xếp lại sau mỗi thay đổi, chạy nền. Đòi kỷ luật cập nhật effort còn lại và giờ đã làm. Số vòng mô phỏng và phân phối không công bố. Nguồn: help.tempo.io/liquidplannerclassic/latest/priority-based-scheduling-lp-classic-support, help.tempo.io/portfoliomanager/latest/scheduling-limits, help.tempo.io/liquidplannerclassic/latest/schedule-bars-and-calculated-dates-lp-classic-supp.
+
+**Quyết định.** Lõi theo LiquidPlanner (`level.rs` đã cùng họ: xếp tuần tự, theo giờ). Lấy mô hình năng lực và vai trò của Float/Runn, luồng "đề xuất → duyệt → áp dụng" và báo task không vừa sprint của Jira. Không lấy cách xếp theo team (cần từng người) và cách chia đều tổng giờ (chính là lỗi 3 giờ trải trên 3 ngày).
+
+**P1 — leveling nhanh (M).** Cùng kết quả, nhanh hơn; không đổi định dạng tệp.
+
+- Chọn task kế tiếp bằng heap thay cho quét toàn bộ. Khóa của `next_to_place` là (levelable, waiting, start, −priority, total_slack, uid): khi một task được xếp thì các task sau nó có thể hết `waiting`, khi ngày đổi thì `start` đổi, nên đẩy lại các task đó vào heap và bỏ bản cũ lúc lấy ra.
+- `total_slack` đến từ lượt lùi toàn dự án: dời một task có thể đổi ngày kết thúc dự án và slack của cả task không nối sau nó. Chỉ khi hai task trùng cả ngày bắt đầu lẫn ưu tiên thì slack mới quyết định thứ tự, nên tính lại slack khi gặp hòa (hoặc khi ngày kết thúc dự án đổi) thay vì sau mỗi lần dời. Nếu cách đó không giữ đúng thứ tự cũ thì chấp nhận thứ tự hòa mới và tăng `ENGINE_REVISION`.
+- Dời một task thì chỉ tính lại ngày của nó và các task nối sau (theo `Graph`), không gọi `schedule_dates` cho cả dự án. Quay về tính lại toàn bộ như bây giờ khi: task có liên kết qua summary, có task ALAP (phụ thuộc ngày kết thúc dự án), hoặc ràng buộc làm ngày đổi ngoài tập đó.
+- So ngày và dựng lại tải bận chỉ trên tập đã đổi, không trên mọi task đã xếp. Tra task và nguồn lực theo uid bằng chỉ mục, không duyệt danh sách.
+- Tải bận của từng người giữ theo khoảng thời gian có sắp xếp, cập nhật thêm khoảng mới thay vì quét lại, để `earliest_fit` nhảy thẳng tới khe trống.
+- Nghiệm thu: test vàng trên vài dự án sinh ngẫu nhiên (hạt giống cố định, có liên kết, summary, task tách, ràng buộc, ALAP, lịch riêng, và các task trùng ngày bắt đầu, trùng ưu tiên nhưng khác slack): độ trễ sau cân bằng bằng đúng bản hiện tại, ghi trước khi sửa. Bench `-- capacity 500 5000` dưới 1 giây; `-- leveling` không chậm hơn. Kết quả không đổi thì không tăng `ENGINE_REVISION`; replay tệp cũ không bị ảnh hưởng vì log ghi `ApplyLeveling { delays }`, không chạy lại heuristic.
+
+**P2 — mô hình năng lực (M).**
+
+- Năng lực theo khoảng ngày của nguồn lực (MSPDI `AvailabilityPeriods`: từ, đến, đơn vị), dùng trong vòng quét của `level.rs` như một sự kiện đổi khả năng.
+- Giới hạn giờ/ngày cho từng assignment, để một người làm song song có chủ ý (ví dụ 2 giờ/ngày hỗ trợ PG khác).
+- Thứ tự cân bằng "ưu tiên trước" (như "Priority, Standard" của Project) bên cạnh thứ tự hiện tại; lưu trong dự án.
+- Vai trò và bảng PG × vai trò → người (placeholder): task gán vai trò, engine giải ra assignment; đổi người phụ trách một PG là một lệnh.
+- Lệnh mới và trường mới: tăng `FORMAT_VERSION`, cập nhật `types.ts`, MSPDI (vai trò và placeholder không có chỗ trong MSPDI: xuất thành nguồn lực thật).
+
+**P3 — nhập và xem (M–L).**
+
+- Nhập CSV/Excel (PG, vai trò hoặc PIC, tên, effort, ưu tiên, deadline) trong **một** lệnh: ở 5.000 task mỗi lần lập lịch 13 ms, thêm từng task bằng lệnh riêng sẽ mất gần một phút.
+- "Lập kế hoạch": xem trước phần khác biệt (task nào dời, ai quá tải), chấp nhận thì thành một lệnh `ApplyLeveling`, một lần hoàn tác.
+- Sprint là một lớp xem: danh sách task không vừa sprint, tải theo người theo ngày/tuần (heatmap).
+- Đo bảng task và Gantt với 5.000 dòng trước khi làm (chưa kiểm tra ảo hóa).
+
+**P4 — dự báo (M, tùy chọn).** Effort dạng khoảng thấp–cao; Monte Carlo chạy nền trên bộ xếp của P1 (cần khoảng 50 ms một lần để 1.000 vòng còn dưới một phút), ra P50/P90 cho ngày kết thúc và cờ rủi ro theo deadline. Kết quả là trường dẫn xuất, không vào log lệnh; hạt giống cố định để cùng dữ liệu cho cùng số.
+
+**Câu hỏi mở.** Nguồn dữ liệu là nhập tay/CSV hay đồng bộ Jira (nhiều người cùng sửa đang nằm ngoài phạm vi); task ưu tiên cao vào giữa sprint có được chen ngang, tách task đang làm không; ưu tiên toàn cục hay theo PG; BE và FE có phụ thuộc nhau (FE chờ API) thường xuyên không.
 
 ### Tiếng Anh (sau v1.0.0) — đã xong
 
