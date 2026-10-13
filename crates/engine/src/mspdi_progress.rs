@@ -224,23 +224,25 @@ pub(crate) struct FileProgress {
     pub actual_finish: Option<i64>,
     pub start: Option<i64>,
     pub percent: f64,
+    /// The file has a `PercentComplete`.
+    pub percent_given: bool,
 }
 
 impl FileProgress {
     /// Actual dates and remaining amounts win over the percent complete (Phase 13).
-    pub fn apply(&self, task: &mut Task, actual: Option<TimephasedActual>) {
+    /// Returns the file's percent and the one used when the file gave one and they
+    /// differ by more than a point.
+    pub fn apply(&self, task: &mut Task, actual: Option<TimephasedActual>) -> Option<(f64, f64)> {
         if task.summary {
-            return;
+            return None;
         }
-        let Some(percent) = percent_from_file(
+        let percent = percent_from_file(
             &self.progress,
             actual,
             self.duration,
             self.remaining_duration,
             self.actual_finish,
-        ) else {
-            return;
-        };
+        )?;
         // Keep the file's percent when it agrees within a minute of rounding.
         let minute = if self.duration > 0 {
             100.0 / self.duration as f64
@@ -253,11 +255,13 @@ impl FileProgress {
             percent
         };
         task.percent_complete = percent;
+        let differs = (self.percent_given && (percent - self.percent).abs() > 1.0)
+            .then_some((self.percent, percent));
         if percent <= 0.0 {
             // Started only if the file says so.
             task.actual_start = self.actual_start;
             task.actual_finish = None;
-            return;
+            return differs;
         }
         if task.actual_start.is_none() {
             let first = actual.and_then(|actual| actual.first_start);
@@ -270,5 +274,6 @@ impl FileProgress {
         } else if task.actual_finish.is_none() {
             task.actual_finish = Some(task.finish);
         }
+        differs
     }
 }

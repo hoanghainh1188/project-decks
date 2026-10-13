@@ -14,7 +14,7 @@ use sheafly_engine::autosave::AutosaveSlot;
 use sheafly_engine::clipboard;
 use sheafly_engine::document::now_millis;
 use sheafly_engine::evm::ProjectMetrics;
-use sheafly_engine::mspdi::{read_mspdi, write_mspdi};
+use sheafly_engine::mspdi::{read_mspdi_with_report, write_mspdi};
 use sheafly_engine::network::{self, NetworkLayout, NetworkOptions};
 use sheafly_engine::store;
 use sheafly_engine::{Command, Document, EngineError, Lang, Snapshot};
@@ -649,14 +649,24 @@ async fn import_mspdi(app: tauri::AppHandle, state: State<'_, AppState>) -> Resu
         return Ok(lock(&state).snapshot());
     };
     let xml = fs::read_to_string(&path).map_err(read_failed(&state))?;
-    let project = read_mspdi(&xml).map_err(engine_message(&state))?;
-    let mut doc = lock(&state);
-    doc.replace_project(project, None)
-        .map_err(engine_message(&state))?;
-    doc.dirty = true;
+    let (project, report) = read_mspdi_with_report(&xml).map_err(engine_message(&state))?;
+    let snapshot = {
+        let mut doc = lock(&state);
+        doc.replace_project(project, None)
+            .map_err(engine_message(&state))?;
+        doc.dirty = true;
+        doc.snapshot()
+    };
     clear_autosave(&state);
     mark_edited(&state);
-    Ok(doc.snapshot())
+    // The engine reads some things differently from Project; say which.
+    if let Some(message) = report.message(lang(&state)) {
+        alert(&app, message)
+            .title(i18n::text(lang(&state)).import_mspdi_title)
+            .kind(MessageDialogKind::Warning)
+            .show(|_| {});
+    }
+    Ok(snapshot)
 }
 
 /// A native two-button question on the main window. True for the first button.

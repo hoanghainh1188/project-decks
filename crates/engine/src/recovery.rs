@@ -193,7 +193,7 @@ fn moved_message(moved: &[MovedTask], lang: Lang) -> String {
     lines.join("\n")
 }
 
-fn span((start, finish): (i64, i64), lang: Lang) -> String {
+pub(crate) fn span((start, finish): (i64, i64), lang: Lang) -> String {
     format!("{}–{}", day(start, lang), day(finish, lang))
 }
 

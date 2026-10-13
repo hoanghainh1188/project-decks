@@ -10,6 +10,7 @@ use crate::model::{
     ResourceKind, Task, TaskType,
 };
 use crate::mspdi_cost;
+use crate::mspdi_report::{ImportNote, ImportReport};
 use crate::mspdi_workweeks::{self, WorkWeekBuilder};
 use crate::mspdi_progress::{self, FileProgress, TaskProgress, TimephasedActual};
 use crate::schedule::schedule;
@@ -165,6 +166,13 @@ fn splits_from_periods(cal: &Calendar, periods: &[Period]) -> Vec<Split> {
 }
 
 pub fn read_mspdi(xml: &str) -> Result<Project, EngineError> {
+    read_mspdi_with_report(xml).map(|(project, _)| project)
+}
+
+/// Read MSPDI and say what the engine read differently from the file.
+pub fn read_mspdi_with_report(xml: &str) -> Result<(Project, ImportReport), EngineError> {
+    let mut notes: Vec<ImportNote> = Vec::new();
+    let mut file_dates: BTreeMap<u32, (i64, i64)> = BTreeMap::new();
     let mut reader = Reader::from_str(xml);
     reader.config_mut().trim_text(true);
     let mut stack: Vec<String> = Vec::new();
@@ -287,7 +295,10 @@ pub fn read_mspdi(xml: &str) -> Result<Project, EngineError> {
                     }
                     "WorkWeek" => {
                         if let (Some(cal), Some(item)) = (calendar.as_mut(), work_week.take()) {
-                            cal.work_weeks.extend(item.finish(&cal.week));
+                            match item.finish(&cal.week) {
+                                Some(week) => cal.work_weeks.push(week),
+                                None => cal.weeks_without_dates += 1,
+                            }
                         }
                     }
                     "Exception" => {
@@ -324,7 +335,7 @@ pub fn read_mspdi(xml: &str) -> Result<Project, EngineError> {
                     }
                     "Calendar" => {
                         if let Some(builder) = calendar.take() {
-                            project.calendars.push(builder.finish());
+                            project.calendars.push(builder.finish(&mut notes));
                         }
                     }
                     "PredecessorLink" => {
@@ -350,8 +361,12 @@ pub fn read_mspdi(xml: &str) -> Result<Project, EngineError> {
                                         actual_finish: builder.actual_finish,
                                         start: builder.start,
                                         percent: builder.percent,
+                                        percent_given: builder.percent_given,
                                     },
                                 );
+                                if let (Some(start), Some(finish)) = (builder.start, builder.finish) {
+                                    file_dates.insert(builder.uid, (start, finish));
+                                }
                                 let mut next_dep = project.next_dependency_uid;
                                 let (parsed, deps) = builder.into_task_and_links(&mut next_dep);
                                 project.next_dependency_uid = next_dep;
@@ -492,7 +507,9 @@ pub fn read_mspdi(xml: &str) -> Result<Project, EngineError> {
     }
     for task in &mut project.tasks {
         if let Some(file) = file_progress.get(&task.uid) {
-            file.apply(task, actuals.get(&task.uid).copied());
+            if let Some((file, used)) = file.apply(task, actuals.get(&task.uid).copied()) {
+                notes.push(ImportNote::PercentFromActuals { task: task.name.clone(), file, used });
+            }
         }
     }
     project.start = project.calendar().next_work_start(project.start);
@@ -500,7 +517,27 @@ pub fn read_mspdi(xml: &str) -> Result<Project, EngineError> {
     if keep_real_entries(&mut project) {
         schedule(&mut project)?;
     }
-    Ok(project)
+    // A minute either way is rounding in the file, not a move. Largest moves first.
+    let mut moved: Vec<(i64, ImportNote)> = project
+        .tasks
+        .iter()
+        .filter(|task| !task.summary)
+        .filter_map(|task| {
+            let &(start, finish) = file_dates.get(&task.uid)?;
+            let shift = (task.start - start).abs().max((task.finish - finish).abs());
+            (shift > 60_000).then(|| {
+                let note = ImportNote::Moved {
+                    task: task.name.clone(),
+                    before: (start, finish),
+                    after: (task.start, task.finish),
+                };
+                (shift, note)
+            })
+        })
+        .collect();
+    moved.sort_by_key(|(shift, _)| std::cmp::Reverse(*shift));
+    notes.extend(moved.into_iter().map(|(_, note)| note));
+    Ok((project, ImportReport { notes }))
 }
 
 /// The elements being read when a text node arrives; at most a few are open at once.
@@ -665,6 +702,7 @@ fn apply_text(name: &str, parent: Option<&str>, text: &str, project: &mut Projec
         (Some("Task"), "PercentComplete") => {
             if let Some(task) = task {
                 task.percent = value.parse().unwrap_or(0.0);
+                task.percent_given = true;
             }
         }
         (Some("Task"), "ActualStart") => {
@@ -1170,10 +1208,11 @@ struct CalendarBuilder {
     week: [Vec<TimeRange>; 7],
     exceptions: BTreeMap<String, Vec<TimeRange>>,
     work_weeks: Vec<WorkWeek>,
+    weeks_without_dates: usize,
 }
 
 impl CalendarBuilder {
-    fn finish(self) -> Calendar {
+    fn finish(self, notes: &mut Vec<ImportNote>) -> Calendar {
         let mut calendar = Calendar {
             id: if self.id == 0 { 1 } else { self.id },
             name: if self.name.is_empty() {
@@ -1185,7 +1224,10 @@ impl CalendarBuilder {
             exceptions: self.exceptions,
             work_weeks: Vec::new(),
         };
-        mspdi_workweeks::add_all(&mut calendar, self.work_weeks);
+        for _ in 0..self.weeks_without_dates {
+            notes.push(ImportNote::WorkWeekWithoutDates { calendar: calendar.name.clone() });
+        }
+        mspdi_workweeks::add_all(&mut calendar, self.work_weeks, notes);
         calendar
     }
 }
@@ -1228,6 +1270,7 @@ struct TaskBuilder {
     task_type: TaskType,
     effort_driven: bool,
     percent: f64,
+    percent_given: bool,
     actual_start: Option<i64>,
     actual_finish: Option<i64>,
     remaining_duration: Option<i64>,
