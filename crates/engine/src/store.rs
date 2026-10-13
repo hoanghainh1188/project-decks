@@ -22,10 +22,10 @@ use crate::recovery::{self, Damage, OpenReport, Recovery};
 /// Version 4 added `Command::ApplyLeveling` (phase 16). Version 5 added `MoveSegment`,
 /// `PasteTasks` and `FillDown` (phase 17). Version 6 added `SetEditableActualCosts` and
 /// `SetTaskActualCost`, and version 7 `SetCalendarWorkWeek` and `ClearCalendarWorkWeek`
-/// (phase 15); version 8 `SetAssignmentActualCost`; version 9 `SetCalendarBase` and the base of
-/// `CreateCalendar`. No older command makes a work week, so none of them schedules
-/// differently.
-pub const FORMAT_VERSION: u32 = 9;
+/// (phase 15); version 8 `SetAssignmentActualCost`; version 9 `SetCalendarBase` and the
+/// base of `CreateCalendar`; version 10 `SetProjectCalendar`. None of them changes how
+/// older commands schedule.
+pub const FORMAT_VERSION: u32 = 10;
 
 /// Checkpoints a file keeps below the cursor, besides the one at the cursor. Each is
 /// a whole scheduled project (about 1 MB for 1,000 tasks), so only a few nearby ones.

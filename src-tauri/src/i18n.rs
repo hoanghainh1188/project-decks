@@ -279,6 +279,7 @@ pub const PROJECT_MENU: &[Entry] = &[
         "Project Information…",
         None,
     ),
+    item("working-time", "Lịch làm việc…", "Working Time…", None),
     item("baseline", "Đường cơ sở…", "Baseline…", None),
     Entry::Separator,
     item("level", "Cân bằng nguồn lực", "Level Resources", None),
