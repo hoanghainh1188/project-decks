@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- Handwritten to the public MSPDI schema (http://schemas.microsoft.com/project);
+     not exported from Microsoft Project. Each task disagrees with its own
+     PercentComplete on purpose: the actual dates and remaining amounts must win. -->
+<Project xmlns="http://schemas.microsoft.com/project">
+  <Name>Handwritten progress</Name>
+  <StartDate>2026-01-05T08:00:00</StartDate>
+  <Tasks>
+    <Task>
+      <UID>1</UID><ID>1</ID><Name>Finished</Name><OutlineLevel>1</OutlineLevel>
+      <Start>2026-01-05T08:00:00</Start><Finish>2026-01-06T17:00:00</Finish>
+      <Duration>PT16H0M0S</Duration>
+      <PercentComplete>50</PercentComplete>
+      <ActualStart>2026-01-05T08:00:00</ActualStart>
+      <ActualFinish>2026-01-06T17:00:00</ActualFinish>
+      <ActualDuration>PT16H0M0S</ActualDuration>
+      <RemainingDuration>PT0H0M0S</RemainingDuration>
+    </Task>
+    <Task>
+      <UID>2</UID><ID>2</ID><Name>Half by duration</Name><OutlineLevel>1</OutlineLevel>
+      <Start>2026-01-05T08:00:00</Start><Finish>2026-01-08T17:00:00</Finish>
+      <Duration>PT32H0M0S</Duration>
+      <PercentComplete>10</PercentComplete>
+      <ActualStart>2026-01-05T08:00:00</ActualStart>
+      <ActualDuration>PT16H0M0S</ActualDuration>
+      <RemainingDuration>PT16H0M0S</RemainingDuration>
+      <Resume>2026-01-07T08:00:00</Resume>
+      <Stop>2026-01-06T17:00:00</Stop>
+    </Task>
+    <Task>
+      <UID>3</UID><ID>3</ID><Name>Quarter by work</Name><OutlineLevel>1</OutlineLevel>
+      <Start>2026-01-05T08:00:00</Start><Finish>2026-01-06T17:00:00</Finish>
+      <Duration>PT16H0M0S</Duration>
+      <PercentComplete>0</PercentComplete>
+      <ActualWork>PT4H0M0S</ActualWork>
+      <RemainingWork>PT12H0M0S</RemainingWork>
+    </Task>
+    <Task>
+      <UID>4</UID><ID>4</ID><Name>With deadline</Name><OutlineLevel>1</OutlineLevel>
+      <Start>2026-01-05T08:00:00</Start><Finish>2026-01-09T17:00:00</Finish>
+      <Duration>PT40H0M0S</Duration>
+      <Deadline>2026-01-16T17:00:00</Deadline>
+    </Task>
+    <Task>
+      <UID>5</UID><ID>5</ID><Name>Timephased actual</Name><OutlineLevel>1</OutlineLevel>
+      <Start>2026-01-06T08:00:00</Start><Finish>2026-01-07T17:00:00</Finish>
+      <Duration>PT16H0M0S</Duration>
+      <PercentComplete>0</PercentComplete>
+      <RemainingWork>PT8H0M0S</RemainingWork>
+    </Task>
+  </Tasks>
+  <Resources>
+    <Resource><UID>1</UID><Name>An</Name><Type>1</Type><MaxUnits>1</MaxUnits></Resource>
+  </Resources>
+  <Assignments>
+    <Assignment>
+      <UID>1</UID><TaskUID>5</TaskUID><ResourceUID>1</ResourceUID>
+      <Units>1</Units><Work>PT16H0M0S</Work>
+      <TimephasedData>
+        <Type>2</Type><UID>1</UID>
+        <Start>2026-01-06T08:00:00</Start><Finish>2026-01-06T17:00:00</Finish>
+        <Unit>2</Unit><Value>PT8H0M0S</Value>
+      </TimephasedData>
+    </Assignment>
+  </Assignments>
+</Project>
