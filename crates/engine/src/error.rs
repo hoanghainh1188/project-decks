@@ -72,6 +72,13 @@ pub enum Invalid {
     NoSuchSplit,
     FirstSegment,
     NothingToPaste,
+    FieldName,
+    FieldNameTaken,
+    NoSuchField,
+    TooManyTextFields,
+    TooManyNumberFields,
+    ChoiceOptions,
+    FieldValue,
 }
 
 impl EngineError {
@@ -251,6 +258,31 @@ impl Invalid {
                 "The first segment moves with the whole task; drag the bar instead",
             ),
             Self::NothingToPaste => fixed("Không có gì để dán", "There is nothing to paste"),
+            Self::FieldName => fixed(
+                "Tên trường phải có từ 1 đến 50 ký tự",
+                "A field name must have 1 to 50 characters",
+            ),
+            Self::FieldNameTaken => fixed(
+                "Đã có trường cùng tên",
+                "There is already a field with that name",
+            ),
+            Self::NoSuchField => fixed("Không có trường này", "That field does not exist"),
+            Self::TooManyTextFields => fixed(
+                "Dự án đã có 30 trường chữ hoặc danh sách, mức tối đa Microsoft Project giữ được",
+                "The project already has 30 text or list fields, the most Microsoft Project can hold",
+            ),
+            Self::TooManyNumberFields => fixed(
+                "Dự án đã có 20 trường số, mức tối đa Microsoft Project giữ được",
+                "The project already has 20 number fields, the most Microsoft Project can hold",
+            ),
+            Self::ChoiceOptions => fixed(
+                "Danh sách cần ít nhất một lựa chọn, không trống, không trùng, tối đa 255 ký tự",
+                "A list needs at least one choice; none empty, repeated, or over 255 characters",
+            ),
+            Self::FieldValue => fixed(
+                "Giá trị không hợp với trường này",
+                "That value does not fit this field",
+            ),
         }
     }
 }
@@ -305,6 +337,13 @@ mod tests {
             NoSuchSplit,
             FirstSegment,
             NothingToPaste,
+            FieldName,
+            FieldNameTaken,
+            NoSuchField,
+            TooManyTextFields,
+            TooManyNumberFields,
+            ChoiceOptions,
+            FieldValue,
         ];
         for reason in all {
             let (vi, en) = (reason.message(Lang::Vi), reason.message(Lang::En));

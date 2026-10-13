@@ -22,6 +22,11 @@ pub enum ImportNote {
     ExceptionWithoutDates { calendar: String },
     /// The percent complete the file gave was replaced by the one its actuals give.
     PercentFromActuals { task: String, file: f64, used: f64 },
+    /// Values of a custom field of a kind Sheafly does not keep (cost, date, duration,
+    /// flag) were left out.
+    FieldSkipped { name: String, values: usize },
+    /// Values of a number field that were not numbers were left out.
+    FieldValuesUnread { name: String, values: usize },
     /// A task the engine schedules on other dates than the file gave.
     Moved {
         task: String,
@@ -67,8 +72,22 @@ impl ImportReport {
                 _ => None,
             })
             .collect();
+        let skipped: Vec<String> = self
+            .notes
+            .iter()
+            .filter_map(|note| match note {
+                ImportNote::FieldSkipped { name, values } => {
+                    Some(field_line(name, *values, false, lang))
+                }
+                ImportNote::FieldValuesUnread { name, values } => {
+                    Some(field_line(name, *values, true, lang))
+                }
+                _ => None,
+            })
+            .collect();
         let parts: Vec<String> = [
             section(&weeks, heading_weeks(lang), lang),
+            section(&skipped, heading_fields(lang), lang),
             section(&percents, heading_percents(percents.len(), lang), lang),
             section(&moved, heading_moved(moved.len(), lang), lang),
         ]
@@ -103,6 +122,33 @@ fn week_line(note: &ImportNote, lang: Lang) -> Option<String> {
         }
         _ => return None,
     })
+}
+
+/// One field's left-out values: of a kind Sheafly does not keep, or (`not_numbers`) text
+/// in a number field.
+fn field_line(name: &str, values: usize, not_numbers: bool, lang: Lang) -> String {
+    let one = values == 1;
+    match (lang, not_numbers) {
+        (Lang::Vi, false) => {
+            format!("• “{name}”: {values} giá trị (Sheafly chỉ giữ trường chữ, số và danh sách)")
+        }
+        (Lang::Vi, true) => format!("• “{name}”: {values} giá trị không phải số"),
+        (Lang::En, false) => format!(
+            "• “{name}”: {values} {} (Sheafly keeps only text, number, and list fields)",
+            if one { "value" } else { "values" }
+        ),
+        (Lang::En, true) => format!(
+            "• “{name}”: {values} {}",
+            if one { "value that is not a number" } else { "values that are not numbers" }
+        ),
+    }
+}
+
+fn heading_fields(lang: Lang) -> String {
+    match lang {
+        Lang::Vi => "Một số giá trị trường tùy chỉnh trong tệp đã bỏ:".into(),
+        Lang::En => "Some custom field values in the file were left out:".into(),
+    }
 }
 
 fn heading_weeks(lang: Lang) -> String {

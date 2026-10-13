@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- Handwritten in the shape Microsoft Project writes custom fields (not exported from
+     it): a text field with a value list, a number field, a plain text field whose alias
+     repeats the first one, a cost field Sheafly does not keep, and a Text5 value with no
+     declaration. -->
+<Project xmlns="http://schemas.microsoft.com/project">
+  <Name>Trường tùy chỉnh</Name>
+  <StartDate>2026-01-05T08:00:00</StartDate>
+  <ExtendedAttributes>
+    <ExtendedAttribute>
+      <FieldID>188743731</FieldID>
+      <FieldName>Text1</FieldName>
+      <CFType>7</CFType>
+      <ElemType>20</ElemType>
+      <Alias>Khách hàng</Alias>
+      <ValueList>
+        <Value>
+          <ID>1</ID>
+          <Value>ACME</Value>
+          <Description>Khách lớn</Description>
+        </Value>
+        <Value>
+          <ID>2</ID>
+          <Value>Globex</Value>
+        </Value>
+      </ValueList>
+    </ExtendedAttribute>
+    <ExtendedAttribute>
+      <FieldID>188743767</FieldID>
+      <FieldName>Number1</FieldName>
+      <CFType>5</CFType>
+      <Alias>Điểm</Alias>
+    </ExtendedAttribute>
+    <ExtendedAttribute>
+      <FieldID>188743734</FieldID>
+      <FieldName>Text2</FieldName>
+      <CFType>7</CFType>
+      <Alias>khách hàng</Alias>
+    </ExtendedAttribute>
+    <ExtendedAttribute>
+      <FieldID>188743786</FieldID>
+      <FieldName>Cost1</FieldName>
+      <CFType>0</CFType>
+      <Alias>Ngân sách</Alias>
+    </ExtendedAttribute>
+  </ExtendedAttributes>
+  <Tasks>
+    <Task>
+      <UID>1</UID>
+      <ID>1</ID>
+      <Name>Thiết kế</Name>
+      <OutlineLevel>1</OutlineLevel>
+      <Duration>PT8H0M0S</Duration>
+      <ExtendedAttribute>
+        <FieldID>188743731</FieldID>
+        <Value>ACME</Value>
+      </ExtendedAttribute>
+      <ExtendedAttribute>
+        <FieldID>188743767</FieldID>
+        <Value>12.5</Value>
+      </ExtendedAttribute>
+      <ExtendedAttribute>
+        <FieldID>188743786</FieldID>
+        <Value>1500</Value>
+      </ExtendedAttribute>
+      <ExtendedAttribute>
+        <FieldID>188743743</FieldID>
+        <Value>ghi chú &amp; thêm</Value>
+      </ExtendedAttribute>
+    </Task>
+    <Task>
+      <UID>2</UID>
+      <ID>2</ID>
+      <Name>Làm</Name>
+      <OutlineLevel>1</OutlineLevel>
+      <Duration>PT16H0M0S</Duration>
+      <ExtendedAttribute>
+        <FieldID>188743731</FieldID>
+        <Value>Initech</Value>
+      </ExtendedAttribute>
+      <ExtendedAttribute>
+        <FieldID>188743734</FieldID>
+        <Value>nội bộ</Value>
+      </ExtendedAttribute>
+      <ExtendedAttribute>
+        <FieldID>188743767</FieldID>
+        <Value>không phải số</Value>
+      </ExtendedAttribute>
+    </Task>
+  </Tasks>
+  <Resources>
+    <Resource>
+      <UID>1</UID>
+      <Name>An</Name>
+      <ExtendedAttribute>
+        <FieldID>205521019</FieldID>
+        <Value>99</Value>
+      </ExtendedAttribute>
+    </Resource>
+  </Resources>
+</Project>

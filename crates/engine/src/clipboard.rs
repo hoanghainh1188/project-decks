@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::command::{apply_one, subtree_end, Command};
 use crate::error::{EngineError, Invalid};
+use crate::fields::{self, FieldValue};
 use crate::model::{
     Accrual, Assignment, ConstraintType, DepKind, Dependency, Project, Task, TaskType,
 };
@@ -44,6 +45,10 @@ pub struct TaskCopy {
     pub fixed_cost_accrual: Accrual,
     pub splits: Vec<Split>,
     pub assignments: Vec<AssignmentCopy>,
+    /// Custom field values by field name: a paste into another project keeps those whose
+    /// field has the same name there and can hold the value.
+    #[serde(default)]
+    pub values: Vec<(String, FieldValue)>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -81,6 +86,8 @@ pub enum FillField {
     Predecessors,
     PercentComplete,
     Calendar,
+    /// A custom field, by id.
+    Field(u32),
 }
 
 /// Copy the tasks `uids` with their subtrees, in outline order.
@@ -163,6 +170,11 @@ fn task_copy(project: &Project, task: &Task, base: u32) -> TaskCopy {
                 units: assignment.units,
                 work: assignment.work,
             })
+            .collect(),
+        values: project
+            .fields
+            .iter()
+            .filter_map(|field| Some((field.name.clone(), task.values.get(&field.id)?.clone())))
             .collect(),
     }
 }
@@ -274,6 +286,15 @@ fn pasted_task(project: &Project, uid: u32, copy: &TaskCopy, level: u32) -> Task
     task.fixed_cost_accrual = copy.fixed_cost_accrual;
     task.splits = copy.splits.clone();
     split::normalize_task(&mut task);
+    for (name, value) in &copy.values {
+        let name = name.to_lowercase();
+        let field = project.fields.iter().find(|field| field.name.to_lowercase() == name);
+        if let Some(field) = field {
+            if let Some(value) = fields::converted(value.clone(), &field.kind) {
+                task.values.insert(field.id, value);
+            }
+        }
+    }
     task
 }
 
@@ -335,7 +356,8 @@ fn push_assignment(project: &mut Project, task_uid: u32, resource_uid: u32, copy
 }
 
 /// Copy `field` of `from_uid` to each task in `to_uids`, as the edit that field's cell makes.
-/// Summary tasks only take a name; the rest of their fields roll up from their tasks.
+/// Summary tasks only take a name or a custom field value; the rest of their fields roll
+/// up from their tasks.
 pub fn fill_down(
     project: &mut Project,
     from_uid: u32,
@@ -348,7 +370,8 @@ pub fn fill_down(
         .clone();
     for uid in to_uids {
         let target = project.task(*uid).ok_or(EngineError::TaskNotFound)?;
-        if *uid == from_uid || (target.summary && field != FillField::Name) {
+        let summary_takes = matches!(field, FillField::Name | FillField::Field(_));
+        if *uid == from_uid || (target.summary && !summary_takes) {
             continue;
         }
         let command = fill_command(&source, *uid, field);
@@ -382,6 +405,11 @@ fn fill_command(source: &Task, uid: u32, field: FillField) -> Command {
         FillField::Calendar => Command::SetTaskCalendar {
             uid,
             calendar_id: source.calendar_id,
+        },
+        FillField::Field(field_id) => Command::SetFieldValue {
+            uid,
+            field_id,
+            value: source.values.get(&field_id).cloned(),
         },
     }
 }

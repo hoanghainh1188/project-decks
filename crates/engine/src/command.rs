@@ -4,6 +4,7 @@ use crate::calendar::{Calendar, TimeRange, WorkWeek};
 use crate::calendar_base;
 use crate::clipboard::{self, FillField, TaskClipboard};
 use crate::error::{EngineError, Invalid};
+use crate::fields::{self, FieldKind, FieldValue, OptionRename};
 use crate::level::level_project;
 use crate::model::{
     Accrual, Baseline, ConstraintType, DepKind, Dependency, Project, Resource, ResourceKind, Task,
@@ -297,6 +298,30 @@ pub enum Command {
         to_uids: Vec<u32>,
         field: FillField,
     },
+    /// Declare a custom task field; it gets the next free id.
+    AddField {
+        name: String,
+        kind: FieldKind,
+    },
+    /// Rename a custom field or change its kind or choices. `renamed_options` carries
+    /// choices renamed in place, so tasks keep them.
+    UpdateField {
+        id: u32,
+        name: String,
+        kind: FieldKind,
+        #[serde(default)]
+        renamed_options: Vec<OptionRename>,
+    },
+    /// Remove a custom field and its values.
+    DeleteField {
+        id: u32,
+    },
+    /// Set (or, with `None`, clear) one task's value of a custom field.
+    SetFieldValue {
+        uid: u32,
+        field_id: u32,
+        value: Option<FieldValue>,
+    },
 }
 
 /// One task's leveling delay, in working minutes.
@@ -370,7 +395,8 @@ fn edited_task(project: &Project, command: &Command) -> Option<u32> {
         | Command::SetDeadline { uid, .. }
         | Command::SplitTask { uid, .. }
         | Command::RemoveSplit { uid, .. }
-        | Command::MoveSegment { uid, .. } => Some(*uid),
+        | Command::MoveSegment { uid, .. }
+        | Command::SetFieldValue { uid, .. } => Some(*uid),
         // Before any progress these set the duration or work: that is an edit.
         Command::SetRemainingDuration { uid, .. } | Command::SetRemainingWork { uid, .. } => project
             .task(*uid)
@@ -924,6 +950,16 @@ fn apply_inner(project: &mut Project, command: &Command) -> Result<(), EngineErr
         }
         Command::FillDown { from_uid, to_uids, field } => {
             clipboard::fill_down(project, *from_uid, to_uids, *field)?
+        }
+        Command::AddField { name, kind } => {
+            fields::add_field(project, name, kind)?;
+        }
+        Command::UpdateField { id, name, kind, renamed_options } => {
+            fields::update_field(project, *id, name, kind, renamed_options)?
+        }
+        Command::DeleteField { id } => fields::delete_field(project, *id)?,
+        Command::SetFieldValue { uid, field_id, value } => {
+            fields::set_value(project, *uid, *field_id, value.as_ref())?
         }
     }
     Ok(())
