@@ -17,6 +17,7 @@ pub mod lang;
 pub mod level;
 pub mod model;
 pub mod mspdi;
+mod mspdi_cost;
 mod mspdi_progress;
 pub mod network;
 pub mod recovery;

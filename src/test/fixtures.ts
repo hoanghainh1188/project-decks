@@ -63,6 +63,7 @@ export function makeTask(overrides: Partial<Task> & { uid: number }): Task {
     cost: 0,
     actual_cost: 0,
     remaining_cost: 0,
+    manual_actual_cost: null,
     conflict: false,
     predecessors: "",
     baselines: [],
@@ -129,6 +130,7 @@ export function makeProject(overrides: Partial<Project> = {}): Project {
     next_resource_uid: 1,
     overallocations: [],
     usage: [],
+    editable_actual_costs: false,
     ...overrides,
   };
 }

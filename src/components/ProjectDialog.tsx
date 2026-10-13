@@ -71,6 +71,15 @@ export function ProjectDialog({
         value={project.status_date}
         onCommit={(date) => void send({ type: "set_status_date", date })}
       />
+      <label>{m.costsGroup}</label>
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={project.editable_actual_costs}
+          onChange={(event) => void send({ type: "set_editable_actual_costs", editable: event.target.checked })}
+        />
+        {m.editableActualCosts}
+      </label>
       {calendar && (
         <>
           <label>{m.editingCalendar}</label>

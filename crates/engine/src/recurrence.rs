@@ -500,7 +500,9 @@ pub fn regenerate(project: &mut Project, summary_uid: u32) -> Result<(), EngineE
 /// An occurrence with recorded progress took place: regenerating and deleting the
 /// series keep it, like an occurrence edited on its own.
 pub fn has_progress(task: &Task) -> bool {
-    task.actual_start.is_some() || task.percent_complete > 0.0
+    task.actual_start.is_some()
+        || task.percent_complete > 0.0
+        || task.manual_actual_cost.is_some()
 }
 
 /// Delete a series: the summary and its attached occurrences go, everything

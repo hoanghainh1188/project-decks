@@ -19,6 +19,7 @@ pub(crate) struct TaskProgress {
     pub deadline: Option<i64>,
     pub actual_duration: Option<i64>,
     pub actual_work: Option<i64>,
+    pub actual_cost: Option<f64>,
     pub remaining_work: Option<i64>,
 }
 
@@ -29,6 +30,9 @@ impl TaskProgress {
             "Deadline" => self.deadline = parse_iso(value),
             "ActualDuration" => self.actual_duration = parse_duration_iso(value),
             "ActualWork" => self.actual_work = parse_duration_iso(value),
+            "ActualCost" => {
+                self.actual_cost = value.parse().ok().filter(|cost: &f64| cost.is_finite());
+            }
             "RemainingWork" => self.remaining_work = parse_duration_iso(value),
             _ => return false,
         }

@@ -135,6 +135,10 @@ pub struct Task {
     /// Optional deadline instant. Not a constraint: scheduling never moves the task to meet it.
     #[serde(default)]
     pub deadline: Option<i64>,
+    /// Actual cost entered by hand. Used only while `Project::editable_actual_costs` is on;
+    /// otherwise the engine computes the actual cost from progress.
+    #[serde(default)]
+    pub manual_actual_cost: Option<f64>,
     /// Finish is past the status date (while incomplete), baseline 0, or the deadline.
     #[serde(default)]
     pub late: bool,
@@ -205,6 +209,7 @@ impl Task {
             predecessors: String::new(),
             baselines: Vec::new(),
             deadline: None,
+            manual_actual_cost: None,
             late: false,
             recurrence: None,
             series_uid: None,
@@ -345,6 +350,10 @@ pub struct Project {
     pub next_calendar_uid: u32,
     pub overallocations: Vec<Overallocation>,
     pub usage: Vec<UsageRow>,
+    /// Actual costs are entered by hand (MSPDI `EditableActualCosts`). Off by default:
+    /// the engine computes them from progress.
+    #[serde(default)]
+    pub editable_actual_costs: bool,
 }
 
 impl Project {
@@ -369,6 +378,7 @@ impl Project {
             next_calendar_uid: 2,
             overallocations: Vec::new(),
             usage: Vec::new(),
+            editable_actual_costs: false,
         }
     }
 

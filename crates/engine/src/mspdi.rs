@@ -9,6 +9,7 @@ use crate::model::{
     Accrual, Assignment, Baseline, ConstraintType, DepKind, Dependency, Project, Resource,
     ResourceKind, Task, TaskType,
 };
+use crate::mspdi_cost;
 use crate::mspdi_progress::{self, FileProgress, TaskProgress, TimephasedActual};
 use crate::schedule::schedule;
 use crate::split::Split;
@@ -25,6 +26,7 @@ pub fn write_mspdi(project: &Project) -> Result<String, EngineError> {
         el(&mut xml, "FinishDate", &format_iso(finish));
     }
     el(&mut xml, "CalendarUID", &project.calendar_id.to_string());
+    mspdi_cost::write_editable(&mut xml, project);
     if let Some(status) = project.status_date {
         el(&mut xml, "StatusDate", &format_iso(status));
     }
@@ -38,7 +40,7 @@ pub fn write_mspdi(project: &Project) -> Result<String, EngineError> {
     }
     xml.push_str("</Tasks>\n<Resources>\n");
     for resource in &project.resources {
-        write_resource(&mut xml, resource);
+        write_resource(&mut xml, project, resource);
     }
     xml.push_str("</Resources>\n<Assignments>\n");
     for assignment in &project.assignments {
@@ -464,6 +466,12 @@ pub fn read_mspdi(xml: &str) -> Result<Project, EngineError> {
     for (index, task_splits) in splits {
         project.tasks[index].splits = task_splits;
     }
+    if !project.editable_actual_costs {
+        // The file's actual costs are Project's own calculation, not entries.
+        for task in &mut project.tasks {
+            task.manual_actual_cost = None;
+        }
+    }
     for task in &mut project.tasks {
         if let Some(file) = file_progress.get(&task.uid) {
             file.apply(task, actuals.get(&task.uid).copied());
@@ -516,6 +524,9 @@ fn apply_text(name: &str, parent: Option<&str>, text: &str, project: &mut Projec
             }
         }
         (Some("Project"), "StatusDate") => project.status_date = parse_iso(value),
+        (Some("Project"), "EditableActualCosts") => {
+            project.editable_actual_costs = value == "1" || value.eq_ignore_ascii_case("true");
+        }
         (Some("Calendar"), "UID") => {
             if let Some(calendar) = calendar {
                 calendar.id = value.parse().unwrap_or(calendar.id);
@@ -914,6 +925,7 @@ fn write_task(xml: &mut String, project: &Project, task: &Task) {
         &format_duration_iso(task.remaining_duration),
     );
     mspdi_progress::write_task_progress(xml, task);
+    mspdi_cost::write_task_costs(xml, task);
     el(xml, "FixedCost", &format_number(task.fixed_cost));
     el(
         xml,
@@ -953,7 +965,7 @@ fn write_task(xml: &mut String, project: &Project, task: &Task) {
     xml.push_str("</Task>\n");
 }
 
-fn write_resource(xml: &mut String, resource: &Resource) {
+fn write_resource(xml: &mut String, project: &Project, resource: &Resource) {
     xml.push_str("<Resource>\n");
     el(xml, "UID", &resource.uid.to_string());
     el(xml, "Name", &escape(&resource.name));
@@ -970,6 +982,7 @@ fn write_resource(xml: &mut String, resource: &Resource) {
     el(xml, "StandardRate", &format_number(resource.standard_rate));
     el(xml, "OvertimeRate", &format_number(resource.overtime_rate));
     el(xml, "CostPerUse", &format_number(resource.cost_per_use));
+    mspdi_cost::write_resource_costs(xml, project, resource);
     if let Some(calendar_id) = resource.calendar_id {
         el(xml, "CalendarUID", &calendar_id.to_string());
     }
@@ -989,6 +1002,7 @@ fn write_assignment(xml: &mut String, project: &Project, assignment: &Assignment
         &format_duration_iso(assignment.overtime_work),
     );
     el(xml, "Cost", &format_number(assignment.cost));
+    mspdi_cost::write_assignment_costs(xml, assignment);
     if let Some(task) = project.task(assignment.task_uid) {
         write_timephased(xml, project, task, assignment.uid, assignment.work);
         mspdi_progress::write_actual_timephased(
@@ -1233,6 +1247,7 @@ impl TaskBuilder {
         task.fixed_cost_accrual = self.accrual;
         task.leveling_delay = self.leveling_delay;
         task.deadline = self.progress.deadline;
+        task.manual_actual_cost = self.progress.actual_cost;
         task.work = task.duration;
         task.baselines = self.baselines;
         let dependencies = self.links;

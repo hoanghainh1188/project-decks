@@ -259,6 +259,14 @@ fn accrued_over(calendar: &Calendar, accrual: Accrual, intervals: &[(i64, i64)],
 /// Actual cost of `task` incurred by `at`: its current actual cost spread over the
 /// progress windows with the task accrual.
 pub fn actual_cost_at(project: &Project, task: &Task, at: i64) -> f64 {
+    // A hand-entered cost on a task with no progress is booked on the status date.
+    if project.editable_actual_costs
+        && task.manual_actual_cost.is_some()
+        && task.percent_complete <= 0.0
+    {
+        let booked = project.status_date.unwrap_or(task.start);
+        return if at >= booked { task.actual_cost } else { 0.0 };
+    }
     let Some(intervals) = progress_intervals(project, task) else {
         return 0.0;
     };
