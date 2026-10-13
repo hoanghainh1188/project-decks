@@ -88,7 +88,7 @@ export function ProjectDialog({
           </button>
         ))}
       </div>
-      <div role="tabpanel" id="project-panel" aria-labelledby={`project-tab-${tab}`} tabIndex={0}>
+      <div className="dialog-tabpanel" role="tabpanel" id="project-panel" aria-labelledby={`project-tab-${tab}`} tabIndex={0}>
         {tab === "general" ? (
           <GeneralTab project={project} send={send} onOpenWorkingTime={onOpenWorkingTime} />
         ) : (
@@ -115,6 +115,7 @@ function GeneralTab({
       <label htmlFor="project-name">{m.name}</label>
       <input
         id="project-name"
+        className="full"
         // Shows the name again after undo or redo inside the dialog.
         key={project.name}
         defaultValue={project.name}
