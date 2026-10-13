@@ -638,7 +638,7 @@ button.dialog-close:hover:not(:disabled) { background: var(--surface-hover); col
 .range-row, .exception-form, .calendar-editor .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .dialog-body h2 { margin: 0 0 6px; font-size: 16px; }
 .dialog ul { margin: 0; padding-left: 18px; }
-.dialog li { display: flex; justify-content: space-between; gap: 8px; margin: 4px 0; }
+.dialog li { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 4px 0; }
 .row { display: flex; gap: 8px; margin-top: 8px; }
 .recurring-dialog .row { flex-wrap: wrap; align-items: center; margin-top: 0; }
 .recurring-dialog .check { display: flex; margin: 0; color: var(--text-secondary); }
@@ -691,3 +691,15 @@ button.dialog-close:hover:not(:disabled) { background: var(--surface-hover); col
 .dialog:focus { outline: none; }
 .charts-dialog .burndown-figure svg { width: 100%; height: auto; max-height: 46vh; }
 .charts-dialog .burndown-legend { font-size: 12px; }
+
+/* Thông tin dự án: tabs over a rule, and the statistics tables. */
+.dialog-tabs { border-bottom: 1px solid var(--border-strong); margin-bottom: 12px; }
+.statistics { border-collapse: collapse; margin: 0 0 12px; font-variant-numeric: tabular-nums; }
+.statistics th, .statistics td { padding: 4px 12px 4px 0; text-align: right; }
+.statistics th[scope="row"] { text-align: left; color: var(--text-muted); font-weight: 500; }
+.statistics thead th { color: var(--text-muted); font-weight: 500; border-bottom: 1px solid var(--border); }
+.dialog input.full { width: 100%; box-sizing: border-box; }
+/* Both tabs keep one height, so the dialog does not jump when switching. */
+.dialog-tabpanel { min-height: 300px; }
+.week-day-head { display: flex; align-items: baseline; gap: 8px; }
+.week-day-head .check { flex: none; white-space: nowrap; }

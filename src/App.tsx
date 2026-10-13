@@ -1,5 +1,4 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Check } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
@@ -21,14 +20,12 @@ import {
 import { appMessages } from "./App.i18n";
 import { linkAbove, resourceCommand } from "./appCommands";
 import { BaselineDialog } from "./components/BaselineDialog";
-import { Button } from "./components/Button";
-import { CalendarEditor } from "./components/CalendarEditor";
 import { EvmPanel } from "./components/EvmPanel";
 import { GanttChart } from "./components/GanttChart";
 import { Inspector } from "./components/inspector/Inspector";
-import { Modal } from "./components/Modal";
 import { NetworkDiagram } from "./components/NetworkDiagram";
 import { ProjectDialog } from "./components/ProjectDialog";
+import { WorkingTimeDialog } from "./components/WorkingTimeDialog";
 import { RecurringDialog, recurringCommand } from "./components/RecurringDialog";
 import { ResourceSheet } from "./components/ResourceSheet";
 import { SplitDialog } from "./components/SplitDialog";
@@ -79,7 +76,8 @@ export default function App() {
   // undo back to it. null while the dialog is closed.
   const [infoStart, setInfoStart] = useState<number | null>(null);
   const [baselineOpen, setBaselineOpen] = useState(false);
-  const [calendarEditId, setCalendarEditId] = useState<number | null>(null);
+  // The calendar Lịch làm việc opened on and the history cursor to roll back to.
+  const [workingTime, setWorkingTime] = useState<{ id: number; start: number } | null>(null);
   const [rowFilter, setRowFilter] = useState<FilterMode>("none");
   const [filterResource, setFilterResource] = useState<number | null>(null);
   const [rowGroup, setRowGroup] = useState<GroupMode>("none");
@@ -121,6 +119,7 @@ export default function App() {
 
   const { startFileDialog, openFileWhenFree, fileDialogBusy } = useFileDialog(run, setError);
 
+  const openWorkingTimeRef = useRef<(id: number) => Promise<void>>(async () => {});
   const createCalendar = useCallback(
     async (name: string, assign: (id: number) => Command | null, openEditor: boolean, baseId: number | null) => {
       const before = snap?.project.calendars.map((calendar) => calendar.id) ?? [];
@@ -130,7 +129,7 @@ export default function App() {
       if (!created) return null;
       const command = assign(created.id);
       if (command) await send(command);
-      if (openEditor) setCalendarEditId(created.id);
+      if (openEditor) void openWorkingTimeRef.current(created.id);
       return created.id;
     },
     [send, snap],
@@ -140,8 +139,20 @@ export default function App() {
   // dialog may still be in flight, and must count as before the dialog, not inside it.
   const openProjectInfo = useCallback(async () => {
     const state = await run(loadState);
+    // Statistics from an earlier opening would show as current until the new ones load.
+    setMetrics(null);
     setInfoStart(state ? state.history_cursor : (snap?.history_cursor ?? 0));
   }, [run, snap]);
+
+  // Lịch làm việc is a transaction like Thông tin dự án, from the same kind of cursor.
+  const openWorkingTime = useCallback(
+    async (id: number) => {
+      const state = await run(loadState);
+      setWorkingTime({ id, start: state ? state.history_cursor : (snap?.history_cursor ?? 0) });
+    },
+    [run, snap],
+  );
+  openWorkingTimeRef.current = openWorkingTime;
 
   // Undo every command applied since `cursor`. Queued edits (a field committed on
   // close) land first, because loadState waits for them.
@@ -197,7 +208,8 @@ export default function App() {
         task,
         view,
         fileDialogBusy,
-        infoStart,
+        // Undo stops where the open transaction began, in either dialog.
+        infoStart: infoStart ?? workingTime?.start ?? null,
         run,
         send,
         startFileDialog,
@@ -206,6 +218,7 @@ export default function App() {
         setScale,
         setEvmOpen,
         openProjectInfo: () => void openProjectInfo(),
+        openWorkingTime: () => void openWorkingTime(snap?.project.calendar_id ?? 1),
         openBaseline: () => setBaselineOpen(true),
         openRecurring: () => setSeriesDialog(0),
         openSplit: setSplitDialog,
@@ -220,7 +233,7 @@ export default function App() {
         setClipboard,
         fillField,
       }),
-    [run, send, startFileDialog, task, snap, view, fileDialogBusy, openProjectInfo, infoStart, setLang, changeTheme, selection, clipboard, fillField],
+    [run, send, startFileDialog, task, snap, view, fileDialogBusy, openProjectInfo, openWorkingTime, infoStart, workingTime, setLang, changeTheme, selection, clipboard, fillField],
   );
   menuRef.current = handleMenu;
 
@@ -296,9 +309,11 @@ export default function App() {
     setSelectionEnd(null);
   }, [project, selected]);
 
-  // EVM and burn-down numbers are computed by the engine; refresh them after every change.
+  // EVM, burn-down and project statistics are computed by the engine; refresh them after
+  // every change while a panel or Thông tin dự án shows them.
+  const infoOpen = infoStart != null;
   useEffect(() => {
-    if (!evmOpen || !snap || !inTauri()) return;
+    if ((!evmOpen && !infoOpen) || !snap || !inTauri()) return;
     let cancelled = false;
     loadMetrics()
       .then((next) => {
@@ -310,7 +325,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [evmOpen, snap]);
+  }, [evmOpen, infoOpen, snap]);
 
   useEffect(() => {
     if (!project || filterResource == null) return;
@@ -382,7 +397,6 @@ export default function App() {
     });
   };
   const splitTask = project?.tasks.find((item) => item.uid === splitDialog) ?? null;
-  const editingCalendar = project?.calendars.find((calendar) => calendar.id === calendarEditId) ?? null;
 
   function syncScroll(source: "sheet" | "gantt") {
     if (syncing.current) return;
@@ -501,7 +515,7 @@ export default function App() {
                 onAdd={(kind) => send({ type: "add_resource", name: m.newResource(project.next_resource_uid), kind })}
                 onChange={(resource) => send(resourceCommand(resource))}
                 onDelete={(uid) => send({ type: "delete_resource", uid })}
-                onEditCalendar={setCalendarEditId}
+                onEditCalendar={(id) => void openWorkingTime(id)}
                 onCreateCalendar={(resource) => {
                   const name = resource.name.trim() ? m.calendarFor(resource.name.trim()) : m.resourceCalendar;
                   // Based on the project calendar, so its holidays reach the resource.
@@ -532,7 +546,7 @@ export default function App() {
               send={send}
               onEditSeries={setSeriesDialog}
               onSplit={setSplitDialog}
-              onEditCalendar={setCalendarEditId}
+              onEditCalendar={(id) => void openWorkingTime(id)}
               onCreateCalendar={() => {
                 const name = task.name.trim() ? m.calendarFor(task.name.trim()) : m.taskCalendar;
                 void createCalendar(
@@ -558,6 +572,7 @@ export default function App() {
       {infoStart != null && project && (
         <ProjectDialog
           project={project}
+          statistics={metrics?.statistics ?? null}
           changed={(snap?.history_cursor ?? 0) !== infoStart}
           onSave={() => {
             commitFocusedField();
@@ -572,18 +587,33 @@ export default function App() {
             });
           }}
           send={send}
-          onCreateCalendar={() => createCalendar(m.newCalendar, () => null, false, null)}
+          onOpenWorkingTime={() => {
+            // Keep what was changed here, then edit working time in its own transaction.
+            commitFocusedField();
+            setInfoStart(null);
+            void openWorkingTime(project.calendar_id);
+          }}
         />
       )}
-      {editingCalendar && (
-        <Modal
-          title={m.editCalendar}
-          className="wide"
-          onClose={() => setCalendarEditId(null)}
-          footer={<Button variant="primary" Icon={Check} onClick={() => setCalendarEditId(null)}>{m.close}</Button>}
-        >
-          <CalendarEditor calendar={editingCalendar} calendars={project?.calendars ?? []} send={send} />
-        </Modal>
+      {workingTime && project && (
+        <WorkingTimeDialog
+          project={project}
+          initialId={workingTime.id}
+          changed={(snap?.history_cursor ?? 0) !== workingTime.start}
+          onSave={() => {
+            commitFocusedField();
+            setWorkingTime(null);
+          }}
+          onCancel={() => {
+            const start = workingTime.start;
+            void rollbackTo(start).then((state) => {
+              if (state && state.history_cursor <= start) setWorkingTime(null);
+              else setError(m.rollbackFailed);
+            });
+          }}
+          send={send}
+          onCreateCalendar={() => createCalendar(m.newCalendar, () => null, false, null)}
+        />
       )}
       {seriesDialog != null && project && (
         <RecurringDialog

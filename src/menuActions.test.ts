@@ -19,6 +19,7 @@ function context(overrides: Partial<MenuContext> = {}): MenuContext {
     setScale: vi.fn(),
     setEvmOpen: vi.fn(),
     openProjectInfo: vi.fn(),
+    openWorkingTime: vi.fn(),
     openBaseline: vi.fn(),
     openRecurring: vi.fn(),
     openSplit: vi.fn(),
@@ -127,5 +128,13 @@ describe("handleMenuAction", () => {
     const none = context({ task: null });
     handleMenuAction("delete", none);
     expect(none.send).not.toHaveBeenCalled();
+  });
+});
+
+describe("working time", () => {
+  it("opens Lịch làm việc from the menu", () => {
+    const ctx = context();
+    handleMenuAction("working-time", ctx);
+    expect(ctx.openWorkingTime).toHaveBeenCalled();
   });
 });

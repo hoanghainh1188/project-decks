@@ -498,7 +498,7 @@ fn summary_required_finish(project: &Project, graph: &Graph, index: usize) -> Op
 }
 
 /// The summary and occurrences of every background recurring series.
-fn background_tasks(project: &Project) -> Vec<bool> {
+pub(crate) fn background_tasks(project: &Project) -> Vec<bool> {
     let series: HashSet<u32> = project
         .tasks
         .iter()

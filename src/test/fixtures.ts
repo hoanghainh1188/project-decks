@@ -5,6 +5,7 @@ import type {
   EvmMetrics,
   Project,
   ProjectMetrics,
+  ProjectStatistics,
   Resource,
   SCurveReport,
   Snapshot,
@@ -180,6 +181,7 @@ export function makeMetrics(
     evm: { status_date: at(2026, 1, 15), has_baseline: true, metrics: makeEvm(), ...evm },
     burndown: emptyBurndown(burndown),
     s_curve: { status_date: null, baseline_finish: null, step: "day", points: [], ...sCurve },
+    statistics: makeStatistics(),
   };
 }
 
@@ -217,4 +219,21 @@ export function outlineProject(): Project {
     makeAssignment({ uid: 103, task_uid: 7, resource_uid: 11 }),
   ];
   return makeProject({ tasks, resources, assignments });
+}
+
+export function makeStatistics(overrides: Partial<ProjectStatistics> = {}): ProjectStatistics {
+  return {
+    start: MONDAY_8AM,
+    finish: MONDAY_8AM + 9 * HOUR_MS,
+    duration: 480,
+    work: 480,
+    actual_work: 0,
+    remaining_work: 480,
+    cost: 0,
+    actual_cost: 0,
+    remaining_cost: 0,
+    percent_complete: 0,
+    baseline: null,
+    ...overrides,
+  };
 }

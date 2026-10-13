@@ -27,6 +27,7 @@ pub mod recovery;
 pub mod recurrence;
 pub mod schedule;
 pub mod split;
+pub mod statistics;
 pub mod store;
 pub mod timeutil;
 pub mod tracking;

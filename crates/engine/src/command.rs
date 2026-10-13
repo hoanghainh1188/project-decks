@@ -102,6 +102,10 @@ pub enum Command {
         #[serde(default)]
         base_id: Option<u32>,
     },
+    /// Make another calendar the project calendar.
+    SetProjectCalendar {
+        calendar_id: u32,
+    },
     /// Base a calendar on another, or make it stand alone (`None`); it keeps its hours.
     SetCalendarBase {
         calendar_id: u32,
@@ -548,6 +552,15 @@ fn apply_inner(project: &mut Project, command: &Command) -> Result<(), EngineErr
                 calendar.base = Some(calendar_base::capture(&calendar, base));
             }
             project.calendars.push(calendar);
+        }
+        Command::SetProjectCalendar { calendar_id } => {
+            let calendar = project
+                .calendar_by_id(*calendar_id)
+                .ok_or_else(|| EngineError::from(Invalid::NoSuchCalendar))?;
+            if !calendar.has_working_time() {
+                return Err(EngineError::NoWorkingTime);
+            }
+            project.calendar_id = *calendar_id;
         }
         Command::SetCalendarBase { calendar_id, base_id } => {
             calendar_base::set_base(project, *calendar_id, *base_id)?;

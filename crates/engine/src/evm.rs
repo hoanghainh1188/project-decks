@@ -121,6 +121,9 @@ pub struct ProjectMetrics {
     pub evm: EvmReport,
     pub burndown: BurndownReport,
     pub s_curve: SCurveReport,
+    /// Totals for Project Information; older callers may lack them.
+    #[serde(default)]
+    pub statistics: crate::statistics::ProjectStatistics,
 }
 
 fn leaves(project: &Project) -> impl Iterator<Item = &Task> {
@@ -602,5 +605,6 @@ pub fn metrics(project: &Project, snapshots: &[BurndownSnapshot]) -> ProjectMetr
         evm: evm(project),
         burndown: burndown(project, snapshots),
         s_curve: s_curve(project),
+        statistics: crate::statistics::statistics(project),
     }
 }

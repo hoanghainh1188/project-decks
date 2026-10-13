@@ -25,7 +25,7 @@ export interface MenuContext {
   task: Task | null;
   view: ViewId;
   fileDialogBusy: boolean;
-  /** History cursor when Thông tin dự án opened; null while it is closed. */
+  /** History cursor when Thông tin dự án or Lịch làm việc opened; null while both are closed. */
   infoStart: number | null;
   run: (work: Work) => Promise<Snapshot | void>;
   send: (command: Command) => Promise<Snapshot | void>;
@@ -35,6 +35,8 @@ export interface MenuContext {
   setScale: (scale: Scale) => void;
   setEvmOpen: (open: boolean) => void;
   openProjectInfo: () => void;
+  /** Lịch làm việc, on the project calendar. */
+  openWorkingTime: () => void;
   openBaseline: () => void;
   openRecurring: () => void;
   openSplit: (uid: number) => void;
@@ -84,7 +86,7 @@ function documentAction(id: string, ctx: MenuContext): boolean {
       ctx.exportPdf();
       return true;
     case "undo":
-      // Inside Thông tin dự án, undo stops at the state the dialog opened with, so Hủy
+      // Inside Thông tin dự án or Lịch làm việc, undo stops at the state the dialog opened with, so Hủy
       // can still restore exactly that.
       if (!(ctx.infoStart != null && (ctx.snap?.history_cursor ?? 0) <= ctx.infoStart)) void ctx.run(undo);
       return true;
@@ -134,6 +136,9 @@ function viewAction(id: string, ctx: MenuContext): boolean {
       return true;
     case "project-info":
       ctx.openProjectInfo();
+      return true;
+    case "working-time":
+      ctx.openWorkingTime();
       return true;
     case "lang-vi":
     case "lang-en":

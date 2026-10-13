@@ -268,6 +268,7 @@ export type Command =
   | { type: "remove_holiday"; date: string }
   | { type: "create_calendar"; name: string; base_id: number | null }
   | { type: "set_calendar_base"; calendar_id: number; base_id: number | null }
+  | { type: "set_project_calendar"; calendar_id: number }
   | { type: "rename_calendar"; calendar_id: number; name: string }
   | { type: "set_calendar_week"; calendar_id: number; week: TimeRange[][] }
   | { type: "set_calendar_work_week"; calendar_id: number; name: string; from: string; to: string; week: TimeRange[][] }
@@ -464,9 +465,33 @@ export interface SCurveReport {
   points: SCurvePoint[];
 }
 
+export interface BaselineStatistics {
+  start: number;
+  finish: number;
+  duration: number;
+  work: number;
+  cost: number;
+}
+
+/** Totals for the Thống kê tab of Thông tin dự án, computed by the engine. */
+export interface ProjectStatistics {
+  start: number;
+  finish: number;
+  duration: number;
+  work: number;
+  actual_work: number;
+  remaining_work: number;
+  cost: number;
+  actual_cost: number;
+  remaining_cost: number;
+  percent_complete: number;
+  baseline: BaselineStatistics | null;
+}
+
 export interface ProjectMetrics {
   evm: EvmReport;
   burndown: BurndownReport;
   s_curve: SCurveReport;
+  statistics: ProjectStatistics;
 }
 export type Scale = "day" | "week" | "month";

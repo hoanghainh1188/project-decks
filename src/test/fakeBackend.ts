@@ -210,6 +210,9 @@ class FakeBackend {
         });
         return;
       }
+      case "set_project_calendar":
+        project.calendar_id = command.calendar_id;
+        return;
       case "set_calendar_base": {
         const calendar = project.calendars.find((item) => item.id === command.calendar_id);
         if (!calendar) throw `Không có lịch ${command.calendar_id}`;

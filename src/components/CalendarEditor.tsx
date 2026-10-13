@@ -311,15 +311,17 @@ function WeekPattern({
         const extra = suggestRange(ranges);
         return (
           <div className="week-day" key={index}>
-            <label className="check">
-              <input
-                type="checkbox"
-                checked={working}
-                onChange={(event) => setDay(index, event.target.checked ? DEFAULT_RANGES : [])}
-              />
-              {label}
-            </label>
-            {inherited?.[index] && <span className="meta">{m.fromBase}</span>}
+            <div className="week-day-head">
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={working}
+                  onChange={(event) => setDay(index, event.target.checked ? DEFAULT_RANGES : [])}
+                />
+                {label}
+              </label>
+              {inherited?.[index] && <span className="meta">{m.fromBase}</span>}
+            </div>
             {working && (
               <>
                 <RangeRows ranges={ranges} onChange={(next) => setDay(index, next)} />
