@@ -78,7 +78,7 @@ todos:
     content: "Pha 17: UX ngang MS Project (copy/paste, tách App.tsx, bàn phím, giao diện còn lại). PR A (dọn dẹp, tiêu đề, EVM, README), B (sơ đồ mạng), C (thanh công cụ, focus, bàn phím Gantt, EVM phóng to, tab, màu và biểu tượng), D (copy/paste, điền xuống, kéo từng đoạn) và E (token màu, giao diện tối, tách App.tsx, test còn thiếu) xong"
     status: completed
   - id: capacity-scheduling
-    content: "Pha 18: lập kế hoạch theo năng lực cho hàng trăm người, hàng ngàn task mỗi sprint (leveling nhanh, năng lực theo ngày, vai trò → người, nhập hàng loạt, xem trước đề xuất, dự báo khoảng ước lượng). P1 (leveling nhanh) xong; tiếp P2"
+    content: "Pha 18: lập kế hoạch theo năng lực cho hàng trăm người, hàng ngàn task (leveling nhanh, trường tùy chỉnh, khóa sắp xếp nhiều tầng, năng lực theo ngày, kỹ năng và quy tắc giao việc có gợi ý, chen ngang, nhập CSV/Excel, xem trước đề xuất, dự báo khoảng ước lượng). P1 (leveling nhanh) xong; tiếp P2"
     status: in_progress
 isProject: false
 ---
@@ -296,7 +296,7 @@ Theo đánh giá độc lập sau PR #23 (đối chiếu từng mục với code
 
 Trạng thái (13/10/2026): Pha 11–13 và 15–17 đã xong. Pha 14 đã làm phần gắn kiểu tệp, CSP, bản universal; còn ký số và notarize, cần tài khoản Apple Developer. Pha 15 còn đối chiếu với tệp xuất từ Project thật. Lịch nguồn lực vốn đã có giao diện từ Pha 6 (ghi "chưa có giao diện" trước đây là nhầm); sau Pha 15 thêm lịch gốc như Project (`calendar_base.rs`, `SetCalendarBase`, `FORMAT_VERSION` = 9): lịch nguồn lực và lịch task tạo mới dựa trên lịch dự án nên ngày lễ của dự án tự áp dụng, mỗi lịch chỉ lưu phần nó tự đặt. Đã thêm sau Pha 15: chi phí thực tế nhập theo assignment (PR #62) và báo cáo cảnh báo khi nhập MSPDI (PR #63, `mspdi_report.rs`: tuần làm việc bị bỏ, % bị thay bằng số theo ngày thực tế, công việc đổi ngày so với tệp quá một phút); chi phí thực tế theo ngày để backlog. Hộp thoại Thông tin dự án chia tab Chung / Thống kê (số liệu do engine tính, `statistics.rs`, so với đường cơ sở 0) và chọn được lịch dự án (`SetProjectCalendar`, `FORMAT_VERSION` = 10); sửa lịch chuyển sang hộp thoại "Lịch làm việc" riêng (menu Dự án), có Lưu/Hủy riêng như Project.
 
-Trạng thái (13/10/2026): Pha 18 (lập kế hoạch theo năng lực) đã nghiên cứu xong và có thiết kế; P1 (leveling nhanh: 5.000 task từ 46 s còn 40 ms) đã xong, P2 (mô hình năng lực) là việc tiếp theo.
+Trạng thái (13/10/2026): Pha 18 (lập kế hoạch theo năng lực) đã nghiên cứu xong và có thiết kế; P1 (leveling nhanh: 5.000 task từ 46 s còn 40 ms) đã xong; P2 theo mô hình chung (trường tùy chỉnh trước) là việc tiếp theo.
 
 Kiểm tra thủ công còn nợ trong `pnpm tauri dev` (các PR #28–#33 mới được kiểm bằng test, bench và ảnh chụp trình duyệt):
 
@@ -549,24 +549,26 @@ Kết quả đúng: không còn quá tải, không có giờ rảnh xen giữa c
   Thêm liên kết FS (tới 4.534 liên kết trên 5.000 task) vẫn khoảng 45 ms. `-- leveling` (500 task, 10 người): 308 ms → 10 ms, dài 101 ngày như trước. Một task ALAP trong dự án 3.000 task: 5,9 s (đường đầy đủ). Ít người: 2.000 task trên 3 người 145 ms, 5.000 task trên 10 người 283 ms (tải bận của một người dựng lại theo số khoảng của người đó). Chia pha (nhóm 50 task, pha nối FS): 5.000 task 347 ms, vì liên kết vào một nhóm lớn đưa cả nhóm vào hàng đợi.
 - Còn lại: (1) đường đầy đủ vẫn O(n²), nên một task ALAP làm cả dự án lớn chậm; có thể tính lại ALAP riêng thay vì cả dự án. (3) Tải bận của một người dựng lại toàn bộ khoảng sau mỗi task (`add_to_busy`) và dựng lại tất cả khi một task đã xếp bị dời (`busy_of`); nối thêm khoảng và dựng lại chỉ người bị ảnh hưởng sẽ bỏ phần bậc hai theo người. (2) Có từ trước: task có giờ làm mà nguồn lực không bao giờ làm đủ (lịch task là Thứ 2–Thứ 7, 7:00–16:00, lịch người là lịch chuẩn) để `earliest_fit` dò từng bước suốt 4 năm rồi mới bỏ, khoảng 100–200 ms mỗi task như vậy; `a_resource_that_never_works_when_the_task_does_is_left_overloaded_quickly` chỉ bao trường hợp hai lịch không trùng chút nào.
 
-**P2 — mô hình năng lực (M).**
+**Mô hình chung (13/10/2026, theo chủ dự án).** BE, FE, PG là cách một nhóm tổ chức việc, không phải khái niệm của Sheafly: phần mềm phải dùng được cho nhiều kiểu tổ chức (nhóm phần mềm: dự án × mảng; agency: khách hàng × kỹ năng; xưởng: đơn hàng × công đoạn × máy; nhóm dịch: ngôn ngữ × loại tài liệu). Vì vậy P2–P3 dựng các khối chung, và ví dụ ban đầu chỉ là một cấu hình: trường "PG" và "Mảng", quy tắc "PG = PG1 và Mảng = BE → An".
 
-- Năng lực theo khoảng ngày của nguồn lực (MSPDI `AvailabilityPeriods`: từ, đến, đơn vị), dùng trong vòng quét của `level.rs` như một sự kiện đổi khả năng.
-- Giới hạn giờ/ngày cho từng assignment, để một người làm song song có chủ ý (ví dụ 2 giờ/ngày hỗ trợ PG khác).
-- Thứ tự cân bằng "ưu tiên trước" (như "Priority, Standard" của Project) bên cạnh thứ tự hiện tại; lưu trong dự án.
-- Vai trò và bảng PG × vai trò → người (placeholder): task gán vai trò, engine giải ra assignment; đổi người phụ trách một PG là một lệnh.
-- Lệnh mới và trường mới: tăng `FORMAT_VERSION`, cập nhật `types.ts`, MSPDI (vai trò và placeholder không có chỗ trong MSPDI: xuất thành nguồn lực thật).
+**Quyết định của chủ dự án (13/10/2026).** (1) Dữ liệu vào bằng CSV/Excel trước; kết nối Jira, Asana… để pha sau. (2) Ưu tiên là khóa sắp xếp nhiều tầng. (3) Khi quy tắc trỏ tới một nhóm người cùng kỹ năng, engine **gợi ý** người, người dùng duyệt (không tự chọn). (4) Mặc định làm xong việc đang dở; task có cờ thì được chen ngang.
+
+**P2 — mô hình chung trong engine (L, tách 5 PR theo thứ tự).**
+
+1. **Trường tùy chỉnh.** Dự án khai báo trường (tên; kiểu chữ, số hoặc danh sách giá trị); task mang giá trị của từng trường. Lệnh thêm, đổi tên, xóa trường và đặt giá trị; cột trong bảng task, lọc và nhóm theo trường (`viewRows.ts`). MSPDI: `ExtendedAttribute` của dự án và của task, để đi qua lại với MS Project. Tăng `FORMAT_VERSION`.
+2. **Khóa sắp xếp nhiều tầng.** Dự án lưu danh sách tiêu chí (trường tùy chỉnh, ưu tiên, hạn chót, ngày bắt đầu, slack…), mỗi tiêu chí tăng hoặc giảm. Mặc định là thứ tự hiện nay (ngày bắt đầu, ưu tiên, slack trước cân bằng). Chỉ thay khóa của heap `Order` ở P1; task không dời được và task còn chờ tiền nhiệm vẫn đứng trước. Có test với bench `-- capacity`.
+3. **Năng lực theo khoảng ngày và giới hạn giờ/ngày của assignment.** Năng lực của nguồn lực theo khoảng ngày (MSPDI `AvailabilityPeriods`), là một sự kiện đổi khả năng trong vòng quét của `level.rs`. Giới hạn giờ/ngày trên assignment để một người làm song song có chủ ý (ví dụ 2 giờ/ngày hỗ trợ việc khác).
+4. **Kỹ năng, quy tắc giao việc và gợi ý.** Nguồn lực có danh sách kỹ năng; task ghi kỹ năng cần (một trường). Quy tắc giao việc là danh sách có thứ tự: điều kiện trên các trường (và), đích là một người hoặc một kỹ năng; quy tắc đầu tiên khớp được dùng. Với đích là kỹ năng, engine xếp hạng ứng viên theo ai làm xong sớm nhất với tải hiện tại (dùng `earliest_fit` của P1). Gợi ý không vào log; người dùng chấp nhận thì thành lệnh gán, nên replay vẫn tất định. Nguồn lực chung (generic) của MS Project gần với "kỹ năng" và được ánh xạ khi nhập/xuất MSPDI.
+5. **Cờ chen ngang.** Task có cờ được xếp trước việc đang dở có thứ tự thấp hơn; việc đang dở bị tách tại điểm đó, phần chưa làm dời ra sau (gần với `RescheduleUncompleted` của Pha 13). Mặc định tắt. Phức tạp nhất nên làm cuối.
 
 **P3 — nhập và xem (M–L).**
 
-- Nhập CSV/Excel (PG, vai trò hoặc PIC, tên, effort, ưu tiên, deadline) trong **một** lệnh: ở 5.000 task mỗi lần lập lịch 13 ms, thêm từng task bằng lệnh riêng sẽ mất gần một phút.
-- "Lập kế hoạch": xem trước phần khác biệt (task nào dời, ai quá tải), chấp nhận thì thành một lệnh `ApplyLeveling`, một lần hoàn tác.
-- Sprint là một lớp xem: danh sách task không vừa sprint, tải theo người theo ngày/tuần (heatmap).
+- **Nhập CSV/Excel** cho task và nguồn lực: hộp ánh xạ cột sang trường (tên, effort, ưu tiên, hạn chót, trường tùy chỉnh, kỹ năng hoặc người, "chờ task"), xem trước vài dòng và lỗi từng dòng. Cả lần nhập là **một** lệnh, nên một lần hoàn tác (ở 5.000 task mỗi lần lập lịch 13 ms; thêm từng task bằng lệnh riêng sẽ mất gần một phút). Đọc `.xlsx` cần một crate (`calamine`, MIT): chạy lại `scripts/third-party-licenses.mjs`.
+- **Lập kế hoạch: xem trước rồi duyệt.** Hiện task nào dời, ai được gợi ý, ai quá tải; chấp nhận thì thành một lệnh `ApplyLeveling` cùng các lệnh gán, một lần hoàn tác.
+- **Task không vừa một khoảng** (sprint hoặc mốc bất kỳ người dùng chọn, không gắn cứng với "sprint") và heatmap tải theo người theo ngày/tuần.
 - Đo bảng task và Gantt với 5.000 dòng trước khi làm (chưa kiểm tra ảo hóa).
 
 **P4 — dự báo (M, tùy chọn).** Effort dạng khoảng thấp–cao; Monte Carlo chạy nền trên bộ xếp của P1 (cần khoảng 50 ms một lần để 1.000 vòng còn dưới một phút), ra P50/P90 cho ngày kết thúc và cờ rủi ro theo deadline. Kết quả là trường dẫn xuất, không vào log lệnh; hạt giống cố định để cùng dữ liệu cho cùng số.
-
-**Câu hỏi mở.** Nguồn dữ liệu là nhập tay/CSV hay đồng bộ Jira (nhiều người cùng sửa đang nằm ngoài phạm vi); task ưu tiên cao vào giữa sprint có được chen ngang, tách task đang làm không; ưu tiên toàn cục hay theo PG; BE và FE có phụ thuộc nhau (FE chờ API) thường xuyên không.
 
 ### Tiếng Anh (sau v1.0.0) — đã xong
 
