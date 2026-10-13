@@ -26,6 +26,7 @@ mod mspdi_workweeks;
 pub mod network;
 pub mod recovery;
 pub mod recurrence;
+mod ripple;
 pub mod schedule;
 pub mod split;
 pub mod statistics;

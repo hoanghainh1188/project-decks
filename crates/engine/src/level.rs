@@ -10,13 +10,16 @@
 //! calendar boundaries, so the elementary stretches between boundaries have one load
 //! and one availability each.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::cmp::Reverse;
+use std::collections::{BTreeMap, BinaryHeap, HashMap};
 
 use chrono::NaiveDate;
 
 use crate::calendar::Calendar;
 use crate::error::EngineError;
-use crate::model::{ConstraintType, Overallocation, Project, Task};
+use crate::graph::Graph;
+use crate::model::{ConstraintType, Overallocation, Project, Resource, Task};
+use crate::ripple::Ripple;
 use crate::schedule::{prepare, publish_derived, schedule_dates};
 use crate::split;
 use crate::timeutil::{civil, compose, date_key};
@@ -201,15 +204,21 @@ fn stretches(
 
 /// Serial leveling, close to Project's. Tasks are placed one at a time: those leveling
 /// will not delay first, then tasks whose predecessors are placed, then earliest start,
-/// higher priority, less slack. Each goes to the first moment every one of its resources
-/// has room for it for its whole duration, next to the tasks already placed, and placing
-/// it reschedules the dates so its successors move before they are placed. Placed tasks
-/// do not move again, so no idle gap is left that a later choice could fill.
+/// higher priority, less total slack before leveling. Each goes to the first moment
+/// every one of its resources has room for it for its whole duration, next to the tasks
+/// already placed, and placing it reschedules the dates so its successors move before
+/// they are placed. Placed tasks do not move again, so no idle gap is left that a later
+/// choice could fill.
 ///
 /// Writes the result into `leveling_delay` and never splits a task (existing splits
 /// move with it). Tasks pinned by hand, by an actual start, or by a must-start/finish-on
 /// date, and tasks with priority 1000, stay where they are.
 pub fn level_project(project: &mut Project) -> Result<(), EngineError> {
+    level_with(project, true)
+}
+
+/// `level_project`, with the quick reschedule allowed or not; tests check both agree.
+pub(crate) fn level_with(project: &mut Project, quick: bool) -> Result<(), EngineError> {
     for task in &mut project.tasks {
         if movable(task) {
             task.leveling_delay = 0;
@@ -218,51 +227,80 @@ pub fn level_project(project: &mut Project) -> Result<(), EngineError> {
     // Leveling changes dates, not links or the outline, so the graph is built once.
     let graph = prepare(project)?;
     schedule_dates(project, &graph);
-    let predecessors = leaf_predecessors(project);
-    let mut placed: Vec<u32> = Vec::new();
-    let mut done: BTreeSet<u32> = BTreeSet::new();
+    let mut ripple = Ripple::new(project, &graph).filter(|_| quick);
+    let lookup = Lookup::new(project);
+    let mut order = Order::new(project, &graph);
+    let mut placed: Vec<usize> = Vec::new();
+    let mut is_placed = vec![false; project.tasks.len()];
     let mut busy: BTreeMap<u32, Busy> = BTreeMap::new();
-    let leaves = project.tasks.iter().filter(|task| !task.summary).count();
-    while done.len() < leaves {
-        let Some(uid) = next_to_place(project, &done, &predecessors) else {
-            break;
-        };
-        done.insert(uid);
-        let Some(task) = project.task(uid) else {
-            continue;
-        };
-        let resources = resources_of(project, uid);
-        let before = dates_of(project, &placed);
+    while let Some(index) = order.next(project) {
+        let mut before: HashMap<usize, (i64, i64)> = HashMap::new();
+        let resources = &lookup.units[index];
+        let task = &project.tasks[index];
         if levelable(task) && !resources.is_empty() {
-            let start = earliest_fit(project, task, &resources, &busy);
+            let start = earliest_fit(project, &lookup, task, resources, &busy);
             if start > task.start {
                 let delay = task.leveling_delay;
                 let bump = project
                     .task_calendar(task)
                     .working_between(task.start, start)
                     .max(1);
-                set_delay(project, uid, delay + bump);
-                schedule_dates(project, &graph);
+                project.tasks[index].leveling_delay = delay + bump;
+                reschedule(project, &graph, &mut ripple, index, &mut before);
                 // A constraint can hold the task where it was: keep the clash rather than
                 // a delay that does nothing.
-                if project.task(uid).is_some_and(|task| task.start < start) {
-                    set_delay(project, uid, delay);
-                    schedule_dates(project, &graph);
+                if project.tasks[index].start < start {
+                    project.tasks[index].leveling_delay = delay;
+                    reschedule(project, &graph, &mut ripple, index, &mut before);
                 }
             }
         }
         // A placed task can still move when a predecessor placed after it is delayed
         // (a summary link, say); keep the busy profile true to the current dates.
-        if dates_of(project, &placed) != before {
-            placed.push(uid);
-            busy = busy_of(project, &placed);
+        let moved = before.iter().any(|(&other, &dates)| {
+            is_placed[other] && dates != (project.tasks[other].start, project.tasks[other].finish)
+        });
+        placed.push(index);
+        is_placed[index] = true;
+        if moved {
+            busy = busy_of(project, &lookup, &placed);
         } else {
-            placed.push(uid);
-            add_to_busy(project, uid, &mut busy);
+            add_to_busy(project, &lookup, index, &mut busy);
         }
+        order.placed(project, index, before.keys().copied());
     }
+    // The quick reschedule leaves late dates, slack, and summaries behind.
+    schedule_dates(project, &graph);
     publish_derived(project, &graph);
     Ok(())
+}
+
+/// Reschedule after the leveling delay of the leaf at `index` changed: only it and the
+/// work after it when one pass settles the dates, else the whole project. `before`
+/// gains the earlier dates of every task that moved.
+fn reschedule(
+    project: &mut Project,
+    graph: &Graph,
+    ripple: &mut Option<Ripple>,
+    index: usize,
+    before: &mut HashMap<usize, (i64, i64)>,
+) {
+    if let Some(ripple) = ripple {
+        ripple.run(project, graph, index, before);
+        return;
+    }
+    let dates: Vec<(i64, i64)> = project
+        .tasks
+        .iter()
+        .map(|task| (task.start, task.finish))
+        .collect();
+    schedule_dates(project, graph);
+    for (position, old) in dates.into_iter().enumerate() {
+        let task = &project.tasks[position];
+        if (task.start, task.finish) != old {
+            before.entry(position).or_insert(old);
+        }
+    }
 }
 
 /// A task whose dates leveling may not touch: pinned by hand, by an actual start, or by
@@ -282,77 +320,139 @@ fn levelable(task: &Task) -> bool {
     movable(task) && task.priority < 1000
 }
 
-/// The next leaf to place. Tasks leveling will not delay come first: their place is
-/// fixed, so the others must fit around them. Then tasks whose leaf predecessors are
-/// all placed, so a predecessor delayed later cannot push a placed task. Then the
-/// earliest start, higher priority, less slack, lower uid.
-fn next_to_place(
-    project: &Project,
-    done: &BTreeSet<u32>,
-    predecessors: &BTreeMap<u32, Vec<u32>>,
-) -> Option<u32> {
-    project
-        .tasks
-        .iter()
-        .filter(|task| !task.summary && !done.contains(&task.uid))
-        .min_by_key(|task| {
-            let waiting = predecessors
-                .get(&task.uid)
-                .is_some_and(|preds| preds.iter().any(|pred| !done.contains(pred)));
-            (
-                levelable(task),
-                waiting,
-                task.start,
-                -task.priority,
-                task.total_slack,
-                task.uid,
-            )
-        })
-        .map(|task| task.uid)
+/// What decides which leaf is placed next, smallest first: tasks leveling will not
+/// delay come first, since their place is fixed and the others must fit around them;
+/// then tasks whose leaf predecessors are all placed, so a predecessor delayed later
+/// cannot push a placed task; then the earliest start, higher priority, less slack, and
+/// lower uid. Slack is the one before leveling: it follows the links, not the order
+/// leveling happens to place tasks in.
+type Key = (bool, bool, i64, i32, i64, u32);
+
+/// The leaves still to place, in a heap keyed by `Key`. A leaf whose key changes (its
+/// start moved, or its last predecessor was placed) is pushed again; the stale entry is
+/// skipped when it comes out.
+struct Order {
+    heap: BinaryHeap<Reverse<(Key, usize)>>,
+    key: Vec<Option<Key>>,
+    slack: Vec<i64>,
+    /// Links from leaf predecessors not placed yet.
+    waiting_on: Vec<usize>,
+    /// Leaf successors through links between leaves, once per link.
+    successors: Vec<Vec<usize>>,
 }
 
-/// Direct leaf predecessors of every task, from links between leaves.
-fn leaf_predecessors(project: &Project) -> BTreeMap<u32, Vec<u32>> {
-    let leaves: BTreeSet<u32> = project
-        .tasks
-        .iter()
-        .filter(|task| !task.summary)
-        .map(|task| task.uid)
-        .collect();
-    let mut map: BTreeMap<u32, Vec<u32>> = BTreeMap::new();
-    for dep in &project.dependencies {
-        if leaves.contains(&dep.predecessor_uid) && leaves.contains(&dep.successor_uid) {
-            map.entry(dep.successor_uid)
-                .or_default()
-                .push(dep.predecessor_uid);
+impl Order {
+    fn new(project: &Project, graph: &Graph) -> Self {
+        let count = project.tasks.len();
+        let mut waiting_on = vec![0; count];
+        let mut successors = vec![Vec::new(); count];
+        for dep in &project.dependencies {
+            let (Some(pred), Some(succ)) = (
+                graph.position(dep.predecessor_uid),
+                graph.position(dep.successor_uid),
+            ) else {
+                continue;
+            };
+            if !project.tasks[pred].summary && !project.tasks[succ].summary {
+                waiting_on[succ] += 1;
+                successors[pred].push(succ);
+            }
+        }
+        let mut order = Self {
+            heap: BinaryHeap::with_capacity(count),
+            key: vec![None; count],
+            // Read after the delays of movable tasks were cleared; a task leveling may
+            // not move keeps its delay, and the slack that comes with it.
+            slack: project.tasks.iter().map(|task| task.total_slack).collect(),
+            waiting_on,
+            successors,
+        };
+        for index in 0..count {
+            if !project.tasks[index].summary {
+                order.refresh(project, index);
+            }
+        }
+        order
+    }
+
+    fn refresh(&mut self, project: &Project, index: usize) {
+        let task = &project.tasks[index];
+        let key = (
+            levelable(task),
+            self.waiting_on[index] > 0,
+            task.start,
+            -task.priority,
+            self.slack[index],
+            task.uid,
+        );
+        self.key[index] = Some(key);
+        self.heap.push(Reverse((key, index)));
+    }
+
+    /// The next leaf to place, taken out of the order.
+    fn next(&mut self, project: &Project) -> Option<usize> {
+        while let Some(Reverse((key, index))) = self.heap.pop() {
+            if self.key[index] == Some(key) {
+                self.key[index] = None;
+                debug_assert!(!project.tasks[index].summary);
+                return Some(index);
+            }
+        }
+        None
+    }
+
+    /// Note that the leaf at `index` is placed and that the leaves in `moved` have new
+    /// dates.
+    fn placed(&mut self, project: &Project, index: usize, moved: impl Iterator<Item = usize>) {
+        let mut stale: Vec<usize> = moved.collect();
+        for position in 0..self.successors[index].len() {
+            let successor = self.successors[index][position];
+            self.waiting_on[successor] -= 1;
+            stale.push(successor);
+        }
+        for position in stale {
+            if self.key[position].is_some() {
+                self.refresh(project, position);
+            }
         }
     }
-    map
 }
 
-/// Units per resource the task needs, from its assignments.
-fn resources_of(project: &Project, uid: u32) -> Vec<(u32, f64)> {
-    let mut units: BTreeMap<u32, f64> = BTreeMap::new();
-    for assignment in project
-        .assignments
-        .iter()
-        .filter(|a| a.task_uid == uid && a.units > 0.0)
-    {
-        *units.entry(assignment.resource_uid).or_insert(0.0) += assignment.units;
+/// Lookups leveling repeats for every task, built once: assignments do not change.
+struct Lookup {
+    /// Units per resource for each task position, by resource uid.
+    units: Vec<Vec<(u32, f64)>>,
+    resource: HashMap<u32, usize>,
+}
+
+impl Lookup {
+    fn new(project: &Project) -> Self {
+        let position: HashMap<u32, usize> = project
+            .tasks
+            .iter()
+            .enumerate()
+            .map(|(index, task)| (task.uid, index))
+            .collect();
+        let mut by_task: Vec<BTreeMap<u32, f64>> = vec![BTreeMap::new(); project.tasks.len()];
+        for assignment in project.assignments.iter().filter(|a| a.units > 0.0) {
+            if let Some(&index) = position.get(&assignment.task_uid) {
+                *by_task[index].entry(assignment.resource_uid).or_insert(0.0) += assignment.units;
+            }
+        }
+        Self {
+            units: by_task.into_iter().map(|units| units.into_iter().collect()).collect(),
+            resource: project
+                .resources
+                .iter()
+                .enumerate()
+                .map(|(index, resource)| (resource.uid, index))
+                .collect(),
+        }
     }
-    units.into_iter().collect()
-}
 
-fn set_delay(project: &mut Project, uid: u32, minutes: i64) {
-    if let Some(task) = project.task_mut(uid) {
-        task.leveling_delay = minutes;
+    fn resource<'a>(&self, project: &'a Project, uid: u32) -> Option<&'a Resource> {
+        self.resource.get(&uid).map(|&index| &project.resources[index])
     }
-}
-
-fn dates_of(project: &Project, uids: &[u32]) -> Vec<(i64, i64)> {
-    uids.iter()
-        .filter_map(|uid| project.task(*uid).map(|task| (task.start, task.finish)))
-        .collect()
 }
 
 /// The work already placed on one resource, with its load swept along time.
@@ -365,20 +465,18 @@ struct Busy {
 }
 
 /// The busy profile of every resource from the placed tasks' current dates.
-fn busy_of(project: &Project, placed: &[u32]) -> BTreeMap<u32, Busy> {
+fn busy_of(project: &Project, lookup: &Lookup, placed: &[usize]) -> BTreeMap<u32, Busy> {
     let mut busy = BTreeMap::new();
-    for uid in placed {
-        add_to_busy(project, *uid, &mut busy);
+    for &index in placed {
+        add_to_busy(project, lookup, index, &mut busy);
     }
     busy
 }
 
-fn add_to_busy(project: &Project, uid: u32, busy: &mut BTreeMap<u32, Busy>) {
-    let Some(task) = project.task(uid) else {
-        return;
-    };
-    for (resource_uid, units) in resources_of(project, uid) {
-        let Some(resource) = project.resources.iter().find(|r| r.uid == resource_uid) else {
+fn add_to_busy(project: &Project, lookup: &Lookup, index: usize, busy: &mut BTreeMap<u32, Busy>) {
+    let task = &project.tasks[index];
+    for &(resource_uid, units) in &lookup.units[index] {
+        let Some(resource) = lookup.resource(project, resource_uid) else {
             continue;
         };
         let entry = busy.entry(resource_uid).or_default();
@@ -428,6 +526,7 @@ fn working_ranges(calendar: &Calendar, date: NaiveDate) -> Vec<(i64, i64)> {
 /// it has) cannot be fixed by waiting and is left out of the check.
 fn earliest_fit(
     project: &Project,
+    lookup: &Lookup,
     task: &Task,
     resources: &[(u32, f64)],
     busy: &BTreeMap<u32, Busy>,
@@ -452,7 +551,7 @@ fn earliest_fit(
         let clash = resources
             .iter()
             .filter_map(|(resource_uid, units)| {
-                let resource = project.resources.iter().find(|r| r.uid == *resource_uid)?;
+                let resource = lookup.resource(project, *resource_uid)?;
                 if *units > resource.max_units + EPSILON {
                     return None;
                 }

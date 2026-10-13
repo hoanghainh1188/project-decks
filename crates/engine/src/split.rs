@@ -132,30 +132,33 @@ pub fn working_within(cal: &Calendar, intervals: &[(i64, i64)], from: i64, to: i
 
 /// Recompute the derived segments of every leaf after its start and finish are final.
 pub fn publish_segments(project: &mut Project) {
-    let layouts: Vec<(usize, Vec<Segment>)> = project
+    let layouts: Vec<Vec<Segment>> = project
         .tasks
         .iter()
-        .enumerate()
-        .map(|(index, task)| {
-            if task.summary || task.splits.is_empty() {
-                return (index, Vec::new());
-            }
-            let cal = project.task_calendar(task);
-            let mut segments = layout(cal, task.start, task.duration.max(0), &task.splits);
-            // A manual task keeps the finish the user pinned; it bounds the last segment.
-            if task.manual {
-                if let Some(last) = segments.last_mut() {
-                    if task.finish > last.start {
-                        last.finish = task.finish;
-                    }
-                }
-            }
-            (index, segments)
-        })
+        .map(|task| segments_of(project, task))
         .collect();
-    for (index, segments) in layouts {
-        project.tasks[index].segments = segments;
+    for (task, segments) in project.tasks.iter_mut().zip(layouts) {
+        task.segments = segments;
     }
+}
+
+/// The derived segments of one task from its current start and finish: empty for a
+/// summary or a task with no splits.
+pub(crate) fn segments_of(project: &Project, task: &Task) -> Vec<Segment> {
+    if task.summary || task.splits.is_empty() {
+        return Vec::new();
+    }
+    let cal = project.task_calendar(task);
+    let mut segments = layout(cal, task.start, task.duration.max(0), &task.splits);
+    // A manual task keeps the finish the user pinned; it bounds the last segment.
+    if task.manual {
+        if let Some(last) = segments.last_mut() {
+            if task.finish > last.start {
+                last.finish = task.finish;
+            }
+        }
+    }
+    segments
 }
 
 fn outside_work() -> EngineError {

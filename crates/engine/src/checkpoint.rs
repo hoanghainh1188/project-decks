@@ -17,7 +17,10 @@ use crate::model::Project;
 /// Revision 4: overallocation by overlapping hours and the new leveling (phase 16).
 /// Revision 5: calendars may have work weeks (phase 15); a file with them schedules
 /// differently from an engine that ignores them.
-pub const ENGINE_REVISION: u32 = 5;
+/// Revision 6: leveling breaks a tie on start and priority by the slack before
+/// leveling, not the slack as leveling goes (phase 18). Only files that logged the old
+/// `LevelResources` replay the heuristic, so only they can level differently.
+pub const ENGINE_REVISION: u32 = 6;
 
 /// A new checkpoint every this many commands while editing or replaying.
 pub const INTERVAL: usize = 25;

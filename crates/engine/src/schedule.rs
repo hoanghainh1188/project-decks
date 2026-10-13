@@ -184,24 +184,28 @@ pub fn normalize_outline(project: &mut Project) {
 }
 
 /// Leaf dates by task position, filled as a pass reaches each leaf.
-type Dates = Vec<Option<(i64, i64)>>;
+pub(crate) type Dates = Vec<Option<(i64, i64)>>;
 
 fn forward(project: &mut Project, graph: &Graph, shift: &HashMap<u32, i64>) {
     let mut early: Dates = vec![None; project.tasks.len()];
     for &index in graph.order() {
         let (es, ef, conflict) = schedule_leaf(project, graph, index, &early, shift);
         early[index] = Some((es, ef));
-        let task = &mut project.tasks[index];
-        task.early_start = es;
-        task.early_finish = ef;
-        task.start = es;
-        task.finish = ef;
-        task.conflict = conflict;
-        if task.milestone {
-            task.duration = 0;
-        }
+        write_early(&mut project.tasks[index], es, ef, conflict);
     }
     rollup_partial(project);
+}
+
+/// What the forward pass writes on a leaf it has scheduled.
+pub(crate) fn write_early(task: &mut crate::model::Task, es: i64, ef: i64, conflict: bool) {
+    task.early_start = es;
+    task.early_finish = ef;
+    task.start = es;
+    task.finish = ef;
+    task.conflict = conflict;
+    if task.milestone {
+        task.duration = 0;
+    }
 }
 
 fn rollup_partial(project: &mut Project) {
@@ -240,7 +244,7 @@ fn rollup_partial(project: &mut Project) {
     }
 }
 
-fn schedule_leaf(
+pub(crate) fn schedule_leaf(
     project: &Project,
     graph: &Graph,
     index: usize,
