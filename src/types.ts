@@ -18,11 +18,21 @@ export interface TimeRange {
   end_minute: number;
 }
 
+/** Hours that replace the default week on every day of `[from, to]` ("YYYY-MM-DD"). */
+export interface WorkWeek {
+  name: string;
+  from: string;
+  to: string;
+  week: TimeRange[][];
+}
+
 export interface Calendar {
   id: number;
   name: string;
   week: TimeRange[][];
   exceptions: Record<string, TimeRange[]>;
+  /** Ordered by `from`, never overlapping. */
+  work_weeks: WorkWeek[];
 }
 
 export interface Baseline {
@@ -246,6 +256,8 @@ export type Command =
   | { type: "create_calendar"; name: string }
   | { type: "rename_calendar"; calendar_id: number; name: string }
   | { type: "set_calendar_week"; calendar_id: number; week: TimeRange[][] }
+  | { type: "set_calendar_work_week"; calendar_id: number; name: string; from: string; to: string; week: TimeRange[][] }
+  | { type: "clear_calendar_work_week"; calendar_id: number; from: string }
   | {
       type: "set_calendar_exceptions";
       calendar_id: number;

@@ -15,7 +15,9 @@ use crate::model::Project;
 /// Revision 2: actual dates drive the schedule (phase 13).
 /// Revision 3: regenerating a series keeps occurrences with progress (phase 13).
 /// Revision 4: overallocation by overlapping hours and the new leveling (phase 16).
-pub const ENGINE_REVISION: u32 = 4;
+/// Revision 5: calendars may have work weeks (phase 15); a file with them schedules
+/// differently from an engine that ignores them.
+pub const ENGINE_REVISION: u32 = 5;
 
 /// A new checkpoint every this many commands while editing or replaying.
 pub const INTERVAL: usize = 25;

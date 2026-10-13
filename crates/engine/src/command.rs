@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::calendar::{Calendar, TimeRange};
+use crate::calendar::{Calendar, TimeRange, WorkWeek};
 use crate::clipboard::{self, FillField, TaskClipboard};
 use crate::error::{EngineError, Invalid};
 use crate::level::level_project;
@@ -115,6 +115,19 @@ pub enum Command {
         calendar_id: u32,
         from: String,
         to: String,
+    },
+    /// Hours for every day in `[from, to]` that replace the default week (and are
+    /// replaced by exceptions). Replaces the work week that starts on `from`.
+    SetCalendarWorkWeek {
+        calendar_id: u32,
+        name: String,
+        from: String,
+        to: String,
+        week: Vec<Vec<TimeRange>>,
+    },
+    ClearCalendarWorkWeek {
+        calendar_id: u32,
+        from: String,
     },
     MoveTask {
         uid: u32,
@@ -552,6 +565,44 @@ fn apply_inner(project: &mut Project, command: &Command) -> Result<(), EngineErr
             }
             if !calendar.has_working_time() {
                 return Err(EngineError::NoWorkingTime);
+            }
+        }
+        Command::SetCalendarWorkWeek {
+            calendar_id,
+            name,
+            from,
+            to,
+            week,
+        } => {
+            if week.len() != 7 {
+                return Err(Invalid::WeekNeedsSevenDays.into());
+            }
+            let from = parse_date_key(from).ok_or_else(|| EngineError::from(Invalid::BadDate))?;
+            let to = parse_date_key(to).ok_or_else(|| EngineError::from(Invalid::BadDate))?;
+            let mut days: [Vec<TimeRange>; 7] = Default::default();
+            for (index, day) in week.iter().enumerate() {
+                days[index] = normalize_ranges(day)?;
+            }
+            let calendar = project
+                .calendar_mut_by_id(*calendar_id)
+                .ok_or_else(|| EngineError::from(Invalid::NoSuchCalendar))?;
+            calendar.set_work_week(WorkWeek {
+                name: name.trim().to_string(),
+                from,
+                to,
+                week: days,
+            })?;
+            if !calendar.has_working_time() {
+                return Err(EngineError::NoWorkingTime);
+            }
+        }
+        Command::ClearCalendarWorkWeek { calendar_id, from } => {
+            let from = parse_date_key(from).ok_or_else(|| EngineError::from(Invalid::BadDate))?;
+            let calendar = project
+                .calendar_mut_by_id(*calendar_id)
+                .ok_or_else(|| EngineError::from(Invalid::NoSuchCalendar))?;
+            if !calendar.remove_work_week(from) {
+                return Err(Invalid::NoSuchWorkWeek.into());
             }
         }
         Command::MoveTask { uid, start } => move_task(project, *uid, *start)?,

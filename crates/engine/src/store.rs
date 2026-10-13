@@ -21,9 +21,10 @@ use crate::recovery::{self, Damage, OpenReport, Recovery};
 /// `Command::RescheduleUncompleted` and the background flag on recurring series.
 /// Version 4 added `Command::ApplyLeveling` (phase 16). Version 5 added `MoveSegment`,
 /// `PasteTasks` and `FillDown` (phase 17). Version 6 added `SetEditableActualCosts` and
-/// `SetTaskActualCost` (phase 15). They do not change how older commands schedule,
-/// so `ENGINE_REVISION` stayed.
-pub const FORMAT_VERSION: u32 = 6;
+/// `SetTaskActualCost`, and version 7 `SetCalendarWorkWeek` and `ClearCalendarWorkWeek`
+/// (phase 15). No older command makes a work week, so none of them schedules
+/// differently.
+pub const FORMAT_VERSION: u32 = 7;
 
 /// Checkpoints a file keeps below the cursor, besides the one at the cursor. Each is
 /// a whole scheduled project (about 1 MB for 1,000 tasks), so only a few nearby ones.

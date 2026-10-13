@@ -198,6 +198,21 @@ class FakeBackend {
         }
         return;
       }
+      case "set_calendar_work_week": {
+        const calendar = project.calendars.find((item) => item.id === command.calendar_id);
+        if (!calendar) throw `Không có lịch ${command.calendar_id}`;
+        const week = { name: command.name, from: command.from, to: command.to, week: command.week };
+        calendar.work_weeks = [...calendar.work_weeks.filter((item) => item.from !== command.from), week].sort((a, b) =>
+          a.from.localeCompare(b.from),
+        );
+        return;
+      }
+      case "clear_calendar_work_week": {
+        const calendar = project.calendars.find((item) => item.id === command.calendar_id);
+        if (!calendar) throw `Không có lịch ${command.calendar_id}`;
+        calendar.work_weeks = calendar.work_weeks.filter((item) => item.from !== command.from);
+        return;
+      }
       case "set_editable_actual_costs":
         project.editable_actual_costs = command.editable;
         return;

@@ -44,6 +44,8 @@ pub enum Invalid {
     WeekNeedsSevenDays,
     BadDate,
     DateRangeTooLong,
+    WorkWeekOverlaps,
+    NoSuchWorkWeek,
     BadTimeRange,
     OverlappingTimeRanges,
     NotRecurring,
@@ -154,6 +156,14 @@ impl Invalid {
                 fixed("Tuần làm việc phải có 7 ngày", "A work week must have 7 days")
             }
             Self::BadDate => fixed("Ngày không hợp lệ", "Invalid date"),
+            Self::WorkWeekOverlaps => fixed(
+                "Tuần làm việc trùng ngày với một tuần làm việc khác",
+                "That work week overlaps another work week",
+            ),
+            Self::NoSuchWorkWeek => fixed(
+                "Không có tuần làm việc này",
+                "That work week does not exist",
+            ),
             Self::DateRangeTooLong => fixed("Khoảng ngày quá dài", "The date range is too long"),
             Self::BadTimeRange => fixed("Khoảng giờ không hợp lệ", "Invalid working time range"),
             Self::OverlappingTimeRanges => fixed(
@@ -257,6 +267,8 @@ mod tests {
             WeekNeedsSevenDays,
             BadDate,
             DateRangeTooLong,
+            WorkWeekOverlaps,
+            NoSuchWorkWeek,
             BadTimeRange,
             OverlappingTimeRanges,
             NotRecurring,

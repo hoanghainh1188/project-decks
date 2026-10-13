@@ -79,9 +79,13 @@ export function nextWorkingDay(calendar: Calendar | undefined, ms: number, step:
 }
 
 function works(calendar: Calendar, ms: number): boolean {
-  const exception = calendar.exceptions[isoDate(ms)];
+  const date = isoDate(ms);
+  const exception = calendar.exceptions[date];
   if (exception) return exception.length > 0;
+  // A work week covering the date replaces the default week. Dates are "YYYY-MM-DD",
+  // so they compare as text.
+  const pattern = calendar.work_weeks.find((item) => item.from <= date && date <= item.to)?.week ?? calendar.week;
   // Week index 0 is Monday; getUTCDay() counts from Sunday.
   const weekday = (new Date(ms).getUTCDay() + 6) % 7;
-  return (calendar.week[weekday] ?? []).length > 0;
+  return (pattern[weekday] ?? []).length > 0;
 }
