@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use quick_xml::events::Event;
 use quick_xml::Reader;
 
-use crate::calendar::{Calendar, TimeRange, WorkWeek};
+use crate::calendar::{Calendar, CalendarBase, TimeRange, WorkWeek};
 use crate::error::EngineError;
 use crate::model::{
     Accrual, Assignment, Baseline, ConstraintType, DepKind, Dependency, Project, Resource,
@@ -288,7 +288,10 @@ pub fn read_mspdi_with_report(xml: &str) -> Result<(Project, ImportReport), Engi
                                 let ranges = if day.working { day.ranges } else { Vec::new() };
                                 match work_week.as_mut() {
                                     Some(item) => item.week[index] = Some(ranges),
-                                    None => cal.week[index] = ranges,
+                                    None => {
+                                        cal.week[index] = ranges;
+                                        cal.listed[index] = true;
+                                    }
                                 }
                             }
                         }
@@ -432,6 +435,8 @@ pub fn read_mspdi_with_report(xml: &str) -> Result<(Project, ImportReport), Engi
     if project.calendar_by_id(project.calendar_id).is_none() {
         project.calendar_id = project.calendars[0].id;
     }
+    // Based calendars hold only their own part until merged with their base.
+    crate::calendar_base::refresh(&mut project);
     project.next_task_uid = project.tasks.iter().map(|task| task.uid).max().unwrap_or(0) + 1;
     project.next_resource_uid = project
         .resources
@@ -588,6 +593,11 @@ fn apply_text(name: &str, parent: Option<&str>, text: &str, project: &mut Projec
         (Some("Calendar"), "UID") => {
             if let Some(calendar) = calendar {
                 calendar.id = value.parse().unwrap_or(calendar.id);
+            }
+        }
+        (Some("Calendar"), "BaseCalendarUID") => {
+            if let Some(calendar) = calendar {
+                calendar.base_uid = value.parse().ok().filter(|uid| *uid != 0);
             }
         }
         (Some("Calendar"), "Name") => {
@@ -889,11 +899,24 @@ fn write_calendar(xml: &mut String, calendar: &Calendar) {
     xml.push_str("<Calendar>\n");
     el(xml, "UID", &calendar.id.to_string());
     el(xml, "Name", &escape(&calendar.name));
-    el(xml, "IsBaseCalendar", "1");
-    xml.push_str("<WeekDays>\n");
-    write_week_days(xml, &calendar.week);
+    // A based calendar writes only what it sets itself, as Project does.
+    let (exceptions, work_weeks) = match &calendar.base {
+        Some(own) => {
+            el(xml, "IsBaseCalendar", "0");
+            el(xml, "BaseCalendarUID", &own.id.to_string());
+            xml.push_str("<WeekDays>\n");
+            write_some_week_days(xml, &own.week);
+            (&own.exceptions, own.work_weeks.as_slice())
+        }
+        None => {
+            el(xml, "IsBaseCalendar", "1");
+            xml.push_str("<WeekDays>\n");
+            write_week_days(xml, &calendar.week);
+            (&calendar.exceptions, calendar.work_weeks.as_slice())
+        }
+    };
     xml.push_str("</WeekDays>\n<Exceptions>\n");
-    for (date, ranges) in &calendar.exceptions {
+    for (date, ranges) in exceptions {
         xml.push_str("<Exception>\n<EnteredByOccurrences>0</EnteredByOccurrences>\n<TimePeriod>\n");
         el(xml, "FromDate", &format!("{date}T00:00:00"));
         el(xml, "ToDate", &format!("{date}T23:59:00"));
@@ -913,13 +936,22 @@ fn write_calendar(xml: &mut String, calendar: &Calendar) {
         xml.push_str("</Exception>\n");
     }
     xml.push_str("</Exceptions>\n");
-    mspdi_workweeks::write_work_weeks(xml, calendar);
+    mspdi_workweeks::write_work_weeks(xml, work_weeks);
     xml.push_str("</Calendar>\n");
 }
 
 /// The seven `<WeekDay>` elements of a weekly pattern.
 pub(crate) fn write_week_days(xml: &mut String, week: &[Vec<TimeRange>; 7]) {
+    let days: [Option<Vec<TimeRange>>; 7] = week.clone().map(Some);
+    write_some_week_days(xml, &days);
+}
+
+/// `<WeekDay>` elements for the days that are set; the others are left out.
+fn write_some_week_days(xml: &mut String, week: &[Option<Vec<TimeRange>>; 7]) {
     for (index, ranges) in week.iter().enumerate() {
+        let Some(ranges) = ranges else {
+            continue;
+        };
         xml.push_str("<WeekDay>\n");
         el(xml, "DayType", &index_to_day_type(index).to_string());
         el(xml, "DayWorking", if ranges.is_empty() { "0" } else { "1" });
@@ -1209,6 +1241,9 @@ struct CalendarBuilder {
     exceptions: BTreeMap<String, Vec<TimeRange>>,
     work_weeks: Vec<WorkWeek>,
     weeks_without_dates: usize,
+    base_uid: Option<u32>,
+    /// Weekdays the file lists; a based calendar takes the others from its base.
+    listed: [bool; 7],
 }
 
 impl CalendarBuilder {
@@ -1223,11 +1258,27 @@ impl CalendarBuilder {
             week: self.week,
             exceptions: self.exceptions,
             work_weeks: Vec::new(),
+            base: None,
         };
         for _ in 0..self.weeks_without_dates {
             notes.push(ImportNote::WorkWeekWithoutDates { calendar: calendar.name.clone() });
         }
         mspdi_workweeks::add_all(&mut calendar, self.work_weeks, notes);
+        if let Some(base_id) = self.base_uid.filter(|id| *id != calendar.id) {
+            // Only its own part for now; `calendar_base::refresh` merges the base in.
+            let mut week: [Option<Vec<TimeRange>>; 7] = Default::default();
+            for (index, day) in week.iter_mut().enumerate() {
+                if self.listed[index] {
+                    *day = Some(calendar.week[index].clone());
+                }
+            }
+            calendar.base = Some(CalendarBase {
+                id: base_id,
+                week,
+                exceptions: calendar.exceptions.clone(),
+                work_weeks: calendar.work_weeks.clone(),
+            });
+        }
         calendar
     }
 }

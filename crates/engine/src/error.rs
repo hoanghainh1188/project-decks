@@ -46,6 +46,8 @@ pub enum Invalid {
     DateRangeTooLong,
     WorkWeekOverlaps,
     NoSuchWorkWeek,
+    CalendarBaseLoop,
+    InheritedFromBase,
     BadTimeRange,
     OverlappingTimeRanges,
     NotRecurring,
@@ -160,6 +162,14 @@ impl Invalid {
                 "Tuần làm việc trùng ngày với một tuần làm việc khác",
                 "That work week overlaps another work week",
             ),
+            Self::CalendarBaseLoop => fixed(
+                "Lịch không thể dựa trên chính nó hoặc trên lịch dựa trên nó",
+                "A calendar cannot be based on itself or on a calendar based on it",
+            ),
+            Self::InheritedFromBase => fixed(
+                "Mục này đến từ lịch gốc: hãy sửa ở lịch gốc, hoặc đặt giờ khác cho những ngày đó",
+                "This comes from the base calendar: change it there, or set other hours for those days",
+            ),
             Self::NoSuchWorkWeek => fixed(
                 "Không có tuần làm việc này",
                 "That work week does not exist",
@@ -269,6 +279,8 @@ mod tests {
             DateRangeTooLong,
             WorkWeekOverlaps,
             NoSuchWorkWeek,
+            CalendarBaseLoop,
+            InheritedFromBase,
             BadTimeRange,
             OverlappingTimeRanges,
             NotRecurring,

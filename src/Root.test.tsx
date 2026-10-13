@@ -6,6 +6,7 @@ import { setCurrentLang } from "./i18n";
 import { Root } from "./Root";
 import { applyTheme } from "./theme";
 import { fakeBackend } from "./test/fakeBackend";
+import { makeProject, makeResource, makeSnapshot } from "./test/fixtures";
 
 describe("Root", () => {
   beforeEach(() => {
@@ -134,6 +135,24 @@ describe("Root", () => {
     await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
     await act(async () => menu("view-gantt"));
     expect(await screen.findByRole("group", { name: /^Biểu đồ Gantt/ })).toBeInTheDocument();
+  });
+
+  it("bases a resource's new calendar on the project calendar", async () => {
+    vi.spyOn(navigator, "languages", "get").mockReturnValue(["vi-VN"]);
+    fakeBackend.reset(makeSnapshot(makeProject({ resources: [makeResource({ uid: 1, name: "An" })] })));
+    render(<Root />);
+    await screen.findByRole("button", { name: "Hoàn tác" });
+    const menu = await menuHandler();
+    await act(async () => menu("view-resources"));
+    await act(async () => (await screen.findByRole("button", { name: "Tạo lịch" })).click());
+    await waitFor(() =>
+      expect(fakeBackend.commands()).toContainEqual({ type: "create_calendar", name: "Lịch An", base_id: 1 }),
+    );
+    await waitFor(() =>
+      expect(fakeBackend.commands().some((command) => command.type === "update_resource" && command.calendar_id === 2)).toBe(
+        true,
+      ),
+    );
   });
 
   it("opens a file the app was launched with after the autosave offer", async () => {

@@ -203,3 +203,49 @@ describe("CalendarEditor editing a work week", () => {
     expect(send).toHaveBeenNthCalledWith(1, { type: "clear_calendar_work_week", calendar_id: 1, from: "2026-06-01" });
   });
 });
+
+describe("CalendarEditor base calendar", () => {
+  function based(): { project: Calendar; resource: Calendar; machine: Calendar } {
+    const project = { ...calendar(), id: 1, name: "Dự án" };
+    const resource: Calendar = {
+      ...standardCalendar(2, "An"),
+      exceptions: { "2026-01-01": [], "2026-01-02": [], "2026-01-03": [], "2026-02-02": [] },
+      base: {
+        id: 1,
+        week: [null, null, null, null, [{ start_minute: 480, end_minute: 720 }], null, null],
+        exceptions: { "2026-01-03": [], "2026-02-02": [] },
+        work_weeks: [],
+      },
+    };
+    const machine: Calendar = { ...standardCalendar(3, "Máy"), base: { ...resource.base!, id: 2 } };
+    return { project, resource, machine };
+  }
+
+  it("offers bases that do not loop back and changes the base", async () => {
+    const user = userEvent.setup();
+    const send = vi.fn(async () => undefined);
+    const { project, resource, machine } = based();
+    render(<CalendarEditor calendar={resource} calendars={[project, resource, machine]} send={send} />);
+    const select = screen.getByLabelText("Dựa trên lịch");
+    const options = within(select).getAllByRole("option").map((option) => option.textContent);
+    expect(options).toEqual(["Không (lịch độc lập)", "Dự án"]);
+    expect(select).toHaveValue("1");
+    await user.selectOptions(select, "");
+    expect(send).toHaveBeenCalledWith({ type: "set_calendar_base", calendar_id: 2, base_id: null });
+  });
+
+  it("marks inherited days and the base's exceptions, which it cannot remove", () => {
+    const { project, resource } = based();
+    render(<CalendarEditor calendar={resource} calendars={[project, resource]} send={vi.fn()} />);
+    // Six weekdays come from the base; Friday is An's own.
+    expect(screen.getAllByText("theo lịch gốc", { exact: true })).toHaveLength(6);
+    const holiday = screen.getByText(/01\/01\/2026 – 02\/01\/2026 · Nghỉ cả ngày · theo lịch gốc/).closest("li") as HTMLElement;
+    expect(within(holiday).queryByRole("button", { name: "Bỏ" })).not.toBeInTheDocument();
+    // 1–2 January come from the base, 3 January is An's own: two lines, not one.
+    expect(screen.getByText(/01\/01\/2026 – 02\/01\/2026/)).toBeInTheDocument();
+    const third = screen.getByText("03/01/2026 · Nghỉ cả ngày").closest("li") as HTMLElement;
+    expect(within(third).getByRole("button", { name: "Bỏ" })).toBeInTheDocument();
+    const own = screen.getByText("02/02/2026 · Nghỉ cả ngày").closest("li") as HTMLElement;
+    expect(within(own).getByRole("button", { name: "Bỏ" })).toBeInTheDocument();
+  });
+});

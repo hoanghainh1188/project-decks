@@ -26,13 +26,24 @@ export interface WorkWeek {
   week: TimeRange[][];
 }
 
+/** What a calendar based on calendar `id` sets itself; the rest comes from the base. */
+export interface CalendarBase {
+  id: number;
+  /** A weekday set on this calendar, or null to take the base's. */
+  week: (TimeRange[] | null)[];
+  exceptions: Record<string, TimeRange[]>;
+  work_weeks: WorkWeek[];
+}
+
 export interface Calendar {
   id: number;
   name: string;
+  /** The merged hours: for a based calendar, its own over its base's. */
   week: TimeRange[][];
   exceptions: Record<string, TimeRange[]>;
   /** Ordered by `from`, never overlapping. */
   work_weeks: WorkWeek[];
+  base: CalendarBase | null;
 }
 
 export interface Baseline {
@@ -255,7 +266,8 @@ export type Command =
   | { type: "set_task_calendar"; uid: number; calendar_id: number | null }
   | { type: "add_holiday"; date: string }
   | { type: "remove_holiday"; date: string }
-  | { type: "create_calendar"; name: string }
+  | { type: "create_calendar"; name: string; base_id: number | null }
+  | { type: "set_calendar_base"; calendar_id: number; base_id: number | null }
   | { type: "rename_calendar"; calendar_id: number; name: string }
   | { type: "set_calendar_week"; calendar_id: number; week: TimeRange[][] }
   | { type: "set_calendar_work_week"; calendar_id: number; name: string; from: string; to: string; week: TimeRange[][] }

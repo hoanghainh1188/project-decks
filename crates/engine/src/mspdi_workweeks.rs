@@ -69,12 +69,12 @@ pub(crate) fn add_all(calendar: &mut Calendar, work_weeks: Vec<WorkWeek>, notes:
     }
 }
 
-pub(crate) fn write_work_weeks(xml: &mut String, calendar: &Calendar) {
-    if calendar.work_weeks.is_empty() {
+pub(crate) fn write_work_weeks(xml: &mut String, work_weeks: &[WorkWeek]) {
+    if work_weeks.is_empty() {
         return;
     }
     xml.push_str("<WorkWeeks>\n");
-    for work_week in &calendar.work_weeks {
+    for work_week in work_weeks {
         xml.push_str("<WorkWeek>\n<TimePeriod>\n");
         el(xml, "FromDate", &format_iso(day_start(work_week.from)));
         el(xml, "ToDate", &format_iso(day_start(work_week.to) + 23 * 3_600_000 + 59 * 60_000));

@@ -23,6 +23,7 @@ pub(crate) fn prepare(project: &mut Project) -> Result<Graph, EngineError> {
     for task in &mut project.tasks {
         split::normalize_task(task);
     }
+    crate::calendar_base::refresh(project);
     if !project.calendar().has_working_time() {
         return Err(EngineError::NoWorkingTime);
     }
