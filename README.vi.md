@@ -13,13 +13,14 @@
 ## Tính năng
 
 - **Lập lịch:** đường găng (CPM) với liên kết FS/SS/FF/SF và độ trễ, ràng buộc (sớm nhất, muộn nhất, bắt đầu/kết thúc không sớm/muộn hơn, phải bắt đầu/kết thúc vào), hạn chót, task lên lịch tay, task tách, công việc lặp.
+- **Sửa nhanh:** sao chép và dán task (⌘C / ⌘V trên các dòng đang chọn, kèm task con, phân công và liên kết giữa chúng); Shift+bấm chọn một dải dòng, ⌘D điền giá trị của cột đang focus từ dòng đầu xuống các dòng dưới; kéo riêng một đoạn của task tách trên Gantt.
 - **Lịch:** tuần làm việc, ngày nghỉ và ngoại lệ; lịch dự án, lịch riêng cho task và cho nguồn lực.
 - **Nguồn lực:** người và máy, đơn vị tối đa, đơn giá, kiểu task (đơn vị/thời lượng/công cố định), phát hiện quá tải theo giờ trùng nhau, cân bằng nguồn lực.
 - **Theo dõi:** baseline 0–10, % hoàn thành, ngày bắt đầu/kết thúc thực tế điều khiển lịch như Project, dời phần chưa xong sau ngày trạng thái, cờ trễ hạn, chi phí.
 - **Báo cáo:** EVM (PV, EV, AC, SPI, CPI, EAC…), burn-down và đường cong S.
 - **Các view:** năm tab Gantt, Theo dõi, Nguồn lực, Sử dụng và Sơ đồ mạng; thang ngày/tuần/tháng, lọc, nhóm, tô sáng theo từng view; xuất PDF.
 - **Ngôn ngữ:** tiếng Việt và tiếng Anh, đổi trong menu Xem → Ngôn ngữ; lần đầu mở theo ngôn ngữ của máy. Tiếng Anh dùng ngày ISO và thuật ngữ của Microsoft Project.
-- **Giao diện:** thanh công cụ chia nhóm theo màu và có biểu tượng (lịch sử, tạo việc, sửa việc đang chọn, dự án, báo cáo); nút bị tắt cho biết lý do. Dùng được bằng bàn phím: chuyển tab bằng mũi tên, chọn và dời task trên Gantt (↑ ↓, Enter, Option+← →), hộp thoại đóng bằng Esc. Biểu đồ EVM xem phóng to được.
+- **Giao diện:** thanh công cụ chia nhóm theo màu và có biểu tượng (lịch sử, tạo việc, sửa việc đang chọn, dự án, báo cáo); nút bị tắt cho biết lý do. Dùng được bằng bàn phím: chuyển tab bằng mũi tên, chọn và dời task trên Gantt (↑ ↓, Enter, Option+← →), hộp thoại đóng bằng Esc. Có giao diện sáng và tối: Xem → Giao diện theo hệ thống, hoặc luôn sáng, luôn tối. Biểu đồ EVM xem phóng to được.
 - **Tệp:** định dạng `.sheafly` (SQLite; tệp `.pdproj` từ thời ProjectDesk vẫn mở bình thường) lưu cả lịch sử hoàn tác; bấm đúp tệp dự án là mở bằng Sheafly, Tệp → Mở gần đây liệt kê 10 tệp gần nhất; lưu an toàn, tự lưu và khôi phục sau khi app tắt đột ngột; mở được tệp hỏng một phần. Nhập/xuất MSPDI (`.xml`) để trao đổi với Microsoft Project; không đọc được tệp `.mpp`.
 
 ## Cài bản phát hành
@@ -69,7 +70,7 @@ cargo bench -p sheafly-engine --bench large_project -- leveling  # cân bằng 5
 
 - Không đọc tệp `.mpp`; dùng MSPDI (`.xml`) để trao đổi với Project.
 - Bản cài chưa ký số và chưa notarize.
-- Một người dùng, một cửa sổ; chưa có giao diện tối.
+- Một người dùng, một cửa sổ.
 - Chỉ có tiếng Việt và tiếng Anh.
 
 ## Giấy phép

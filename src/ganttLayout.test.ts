@@ -14,6 +14,8 @@ import {
   isoDate,
   pixelsPerDay,
   ROW,
+  segmentAt,
+  segmentPreview,
   timescaleBands,
 } from "./ganttLayout";
 import { at, DAY_MS, makeProject, makeTask, standardCalendar } from "./test/fixtures";
@@ -159,5 +161,33 @@ describe("timescale labels in English", () => {
     expect(dayLabel(monday, 28)).toBe("Mon 5");
     expect(dayLabelParts(sunday, 20)).toEqual({ weekday: "Sun", date: "11" });
     expect(dayLabelParts(monday, 14)).toEqual({ weekday: "", date: "5" });
+  });
+});
+
+describe("dragging one piece of a split bar", () => {
+  const split = makeTask({
+    uid: 1,
+    start: at(2026, 1, 5, 8),
+    finish: at(2026, 1, 8, 17),
+    segments: [
+      { start: at(2026, 1, 5, 8), finish: at(2026, 1, 5, 12) },
+      { start: at(2026, 1, 7, 8), finish: at(2026, 1, 8, 17) },
+    ],
+  });
+  const origin = at(2026, 1, 5, 0);
+
+  it("finds the piece under the pointer and none in the gap", () => {
+    expect(segmentAt(split, 10, origin, 24)).toBe(0);
+    expect(segmentAt(split, 36, origin, 24)).toBeNull();
+    expect(segmentAt(split, 60, origin, 24)).toBe(1);
+    expect(segmentAt(makeTask({ uid: 2 }), 10, origin, 24)).toBeNull();
+  });
+
+  it("moves the dragged piece and the ones after it, not the ones before", () => {
+    const pieces = segmentPreview(split, 1, at(2026, 1, 8, 8));
+    expect(pieces).toEqual([
+      { start: at(2026, 1, 5, 8), finish: at(2026, 1, 5, 12) },
+      { start: at(2026, 1, 8, 8), finish: at(2026, 1, 9, 17) },
+    ]);
   });
 });

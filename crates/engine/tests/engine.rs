@@ -935,6 +935,7 @@ fn task_calendar_overrides_project_calendar() {
     let task = doc.project.tasks[0].uid;
     doc.apply(Command::CreateCalendar {
         name: "Nghỉ thứ Hai".into(),
+        base_id: None,
     })
     .unwrap();
     let calendar_id = doc.project.calendars.last().unwrap().id;

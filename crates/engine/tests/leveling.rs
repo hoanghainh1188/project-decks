@@ -142,6 +142,7 @@ fn work_on_a_day_off_of_the_resource_is_overallocated() {
     let mut doc = doc_with(&[DAY], &["An"]);
     doc.apply(Command::CreateCalendar {
         name: "Lịch của An".into(),
+        base_id: None,
     })
     .unwrap();
     let calendar_id = doc.project.calendars.last().unwrap().id;
@@ -359,6 +360,7 @@ fn a_resource_that_never_works_when_the_task_does_is_left_overloaded_quickly() {
     let mut doc = doc_with(&[DAY, DAY], &["Bình"]);
     doc.apply(Command::CreateCalendar {
         name: "Ca đêm".into(),
+        base_id: None,
     })
     .unwrap();
     let calendar_id = doc.project.calendars.last().unwrap().id;

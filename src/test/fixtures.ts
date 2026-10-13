@@ -5,6 +5,7 @@ import type {
   EvmMetrics,
   Project,
   ProjectMetrics,
+  ProjectStatistics,
   Resource,
   SCurveReport,
   Snapshot,
@@ -63,6 +64,7 @@ export function makeTask(overrides: Partial<Task> & { uid: number }): Task {
     cost: 0,
     actual_cost: 0,
     remaining_cost: 0,
+    manual_actual_cost: null,
     conflict: false,
     predecessors: "",
     baselines: [],
@@ -102,6 +104,7 @@ export function makeAssignment(
     remaining_work: 480,
     cost: 0,
     actual_cost: 0,
+    manual_actual_cost: null,
     ...overrides,
   };
 }
@@ -111,7 +114,7 @@ export function standardCalendar(id = 1, name = "Tiêu chuẩn"): Calendar {
     { start_minute: 8 * 60, end_minute: 12 * 60 },
     { start_minute: 13 * 60, end_minute: 17 * 60 },
   ];
-  return { id, name, week: [workday, workday, workday, workday, workday, [], []], exceptions: {} };
+  return { id, name, week: [workday, workday, workday, workday, workday, [], []], exceptions: {}, work_weeks: [], base: null };
 }
 
 export function makeProject(overrides: Partial<Project> = {}): Project {
@@ -129,6 +132,7 @@ export function makeProject(overrides: Partial<Project> = {}): Project {
     next_resource_uid: 1,
     overallocations: [],
     usage: [],
+    editable_actual_costs: false,
     ...overrides,
   };
 }
@@ -177,6 +181,7 @@ export function makeMetrics(
     evm: { status_date: at(2026, 1, 15), has_baseline: true, metrics: makeEvm(), ...evm },
     burndown: emptyBurndown(burndown),
     s_curve: { status_date: null, baseline_finish: null, step: "day", points: [], ...sCurve },
+    statistics: makeStatistics(),
   };
 }
 
@@ -214,4 +219,21 @@ export function outlineProject(): Project {
     makeAssignment({ uid: 103, task_uid: 7, resource_uid: 11 }),
   ];
   return makeProject({ tasks, resources, assignments });
+}
+
+export function makeStatistics(overrides: Partial<ProjectStatistics> = {}): ProjectStatistics {
+  return {
+    start: MONDAY_8AM,
+    finish: MONDAY_8AM + 9 * HOUR_MS,
+    duration: 480,
+    work: 480,
+    actual_work: 0,
+    remaining_work: 480,
+    cost: 0,
+    actual_cost: 0,
+    remaining_cost: 0,
+    percent_complete: 0,
+    baseline: null,
+    ...overrides,
+  };
 }

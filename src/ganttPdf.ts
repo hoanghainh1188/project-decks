@@ -20,6 +20,7 @@ import {
   splitPieces,
 } from "./ganttLayout";
 import { pick } from "./i18n";
+import { blend, clipRect, clipSegment, fitText, rgb, setDraw, setFill, setText, type Clip } from "./pdfDraw";
 import type { Project, Scale, Segment, Task } from "./types";
 import type { ViewRow } from "./viewRows";
 
@@ -44,19 +45,6 @@ export interface GanttPdfInput {
   tracking: boolean;
 }
 
-interface Rgb {
-  r: number;
-  g: number;
-  b: number;
-}
-
-interface Clip {
-  left: number;
-  top: number;
-  right: number;
-  bottom: number;
-}
-
 export function embeddedFont(): string {
   const comma = fontDataUrl.indexOf(",");
   return comma >= 0 ? fontDataUrl.slice(comma + 1) : fontDataUrl;
@@ -75,6 +63,54 @@ export function buildGanttPdf(input: GanttPdfInput): Uint8Array {
   return renderGanttPdf(input, embeddedFont());
 }
 
+/** How the rows and days of the chart are cut into A4 landscape pages. */
+export interface GanttPageGrid {
+  headerTop: number;
+  headMm: number;
+  bodyTop: number;
+  rowMm: number;
+  rowsPerPage: number;
+  ganttLeft: number;
+  dayMm: number;
+  daysPerPage: number;
+  rowPages: number;
+  dayPages: number;
+  pageCount: number;
+}
+
+/**
+ * Page layout for `rowCount` rows and `dayCount` days at `px` screen pixels per day:
+ * pages go down the rows first, then across the days.
+ */
+export function ganttPageGrid(rowCount: number, dayCount: number, px: number): GanttPageGrid {
+  const headerTop = MARGIN_TOP + TITLE_H;
+  const headMm = HEAD * PX_TO_MM;
+  const bodyTop = headerTop + headMm;
+  const bodyBottomLimit = PAGE_H - MARGIN_BOTTOM - FOOTER_H;
+  const bodyHeight = Math.max(headMm, bodyBottomLimit - bodyTop);
+  const rowMm = Math.min(ROW * PX_TO_MM, bodyHeight);
+  const rowsPerPage = Math.max(1, Math.floor(bodyHeight / rowMm));
+  const ganttLeft = MARGIN_X + SHEET_W;
+  const ganttWidth = PAGE_W - MARGIN_X - ganttLeft;
+  const dayMm = Math.min(px * PX_TO_MM, ganttWidth);
+  const daysPerPage = Math.max(1, Math.floor((ganttWidth + 1e-6) / dayMm));
+  const rowPages = Math.max(1, Math.ceil(rowCount / rowsPerPage));
+  const dayPages = Math.max(1, Math.ceil(dayCount / daysPerPage));
+  return {
+    headerTop,
+    headMm,
+    bodyTop,
+    rowMm,
+    rowsPerPage,
+    ganttLeft,
+    dayMm,
+    daysPerPage,
+    rowPages,
+    dayPages,
+    pageCount: rowPages * dayPages,
+  };
+}
+
 /** Draws the visible Gantt rows. `fontData` is the Be Vietnam Pro TTF as base64 or a binary string. */
 export function renderGanttPdf(input: GanttPdfInput, fontData: string): Uint8Array {
   const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4", compress: true });
@@ -86,21 +122,8 @@ export function renderGanttPdf(input: GanttPdfInput, fontData: string): Uint8Arr
 
   const timescale = buildTimescale(input.project);
   const px = pixelsPerDay(input.scale);
-  const headerTop = MARGIN_TOP + TITLE_H;
-  const headMm = HEAD * PX_TO_MM;
-  const bodyTop = headerTop + headMm;
-  const bodyBottomLimit = PAGE_H - MARGIN_BOTTOM - FOOTER_H;
-  const bodyHeight = Math.max(headMm, bodyBottomLimit - bodyTop);
-  const rowMm = Math.min(ROW * PX_TO_MM, bodyHeight);
-  const rowsPerPage = Math.max(1, Math.floor(bodyHeight / rowMm));
-  const ganttLeft = MARGIN_X + SHEET_W;
-  const ganttWidth = PAGE_W - MARGIN_X - ganttLeft;
-  const naturalDay = px * PX_TO_MM;
-  const dayMm = Math.min(naturalDay, ganttWidth);
-  const daysPerPage = Math.max(1, Math.floor((ganttWidth + 1e-6) / dayMm));
-  const rowPages = Math.max(1, Math.ceil(input.rows.length / rowsPerPage));
-  const dayPages = Math.max(1, Math.ceil(timescale.days.length / daysPerPage));
-  const pageCount = rowPages * dayPages;
+  const grid = ganttPageGrid(input.rows.length, timescale.days.length, px);
+  const { headerTop, headMm, bodyTop, rowMm, dayMm, ganttLeft, rowsPerPage, daysPerPage, rowPages, dayPages, pageCount } = grid;
   const holidays = holidayKeys(input.project);
 
   let pageNumber = 0;
@@ -515,104 +538,6 @@ function paintLinks(
   }
 }
 
-function clipRect(
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  clip: Clip,
-): { x: number; y: number; w: number; h: number } | null {
-  const right = Math.min(x + w, clip.right);
-  const bottom = Math.min(y + h, clip.bottom);
-  const left = Math.max(x, clip.left);
-  const top = Math.max(y, clip.top);
-  if (right - left <= 0 || bottom - top <= 0) return null;
-  return { x: left, y: top, w: right - left, h: bottom - top };
-}
-
-function clipSegment(
-  x1: number,
-  y1: number,
-  x2: number,
-  y2: number,
-  clip: Clip,
-): [number, number, number, number] | null {
-  const leftBit = 1;
-  const rightBit = 2;
-  const topBit = 4;
-  const bottomBit = 8;
-  const code = (x: number, y: number) => {
-    let bits = 0;
-    if (x < clip.left) bits |= leftBit;
-    else if (x > clip.right) bits |= rightBit;
-    if (y < clip.top) bits |= topBit;
-    else if (y > clip.bottom) bits |= bottomBit;
-    return bits;
-  };
-  let c1 = code(x1, y1);
-  let c2 = code(x2, y2);
-  for (let guard = 0; guard < 12; guard += 1) {
-    if ((c1 | c2) === 0) return [x1, y1, x2, y2];
-    if ((c1 & c2) !== 0) return null;
-    const out = c1 !== 0 ? c1 : c2;
-    let x = x1;
-    let y = y1;
-    if (out & (bottomBit | topBit)) {
-      if (y2 === y1) return null;
-      const edge = out & bottomBit ? clip.bottom : clip.top;
-      x = x1 + ((x2 - x1) * (edge - y1)) / (y2 - y1);
-      y = edge;
-    } else {
-      if (x2 === x1) return null;
-      const edge = out & rightBit ? clip.right : clip.left;
-      y = y1 + ((y2 - y1) * (edge - x1)) / (x2 - x1);
-      x = edge;
-    }
-    if (out === c1) {
-      x1 = x;
-      y1 = y;
-      c1 = code(x1, y1);
-    } else {
-      x2 = x;
-      y2 = y;
-      c2 = code(x2, y2);
-    }
-  }
-  return null;
-}
-
-function setText(doc: jsPDF, hex: string) {
-  const color = rgb(hex);
-  doc.setTextColor(color.r, color.g, color.b);
-}
-
-function setFill(doc: jsPDF, hex: string) {
-  const color = rgb(hex);
-  doc.setFillColor(color.r, color.g, color.b);
-}
-
-function setDraw(doc: jsPDF, hex: string) {
-  const color = rgb(hex);
-  doc.setDrawColor(color.r, color.g, color.b);
-}
-
-function rgb(hex: string): Rgb {
-  const value = hex.replace("#", "");
-  return {
-    r: Number.parseInt(value.slice(0, 2), 16),
-    g: Number.parseInt(value.slice(2, 4), 16),
-    b: Number.parseInt(value.slice(4, 6), 16),
-  };
-}
-
-function blend(fg: Rgb, bg: Rgb, alpha: number): Rgb {
-  return {
-    r: Math.round(fg.r * alpha + bg.r * (1 - alpha)),
-    g: Math.round(fg.g * alpha + bg.g * (1 - alpha)),
-    b: Math.round(fg.b * alpha + bg.b * (1 - alpha)),
-  };
-}
-
 function drawShrunk(
   doc: jsPDF,
   text: string,
@@ -628,13 +553,4 @@ function drawShrunk(
   doc.setFontSize(size);
   doc.text(text, x, y, options);
   doc.setFontSize(baseSize);
-}
-
-function fitText(doc: jsPDF, text: string, maxWidth: number): string {
-  if (maxWidth <= 0) return "";
-  if (doc.getTextWidth(text) <= maxWidth) return text;
-  const chars = Array.from(text);
-  let end = chars.length;
-  while (end > 0 && doc.getTextWidth(`${chars.slice(0, end).join("")}...`) > maxWidth) end -= 1;
-  return end === 0 ? "" : `${chars.slice(0, end).join("")}...`;
 }

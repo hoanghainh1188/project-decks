@@ -241,6 +241,39 @@ pub fn remove_split(
     Ok(())
 }
 
+/// Move segment `index` (1 or later) so it starts at `start`, by changing the gap before
+/// it; the later segments move with it. A gap that closes joins the two segments.
+pub fn move_segment(
+    project: &mut Project,
+    uid: u32,
+    index: u32,
+    start: i64,
+) -> Result<(), EngineError> {
+    let task = project.task(uid).ok_or(EngineError::TaskNotFound)?;
+    if index == 0 {
+        return Err(Invalid::FirstSegment.into());
+    }
+    let split_index = index as usize - 1;
+    if split_index >= task.splits.len() || task.segments.len() != task.splits.len() + 1 {
+        return Err(Invalid::NoSuchSplit.into());
+    }
+    let cal = project.task_calendar(task);
+    let before = task.segments[split_index].finish;
+    let gap = if start > before {
+        cal.working_between(before, cal.next_work_start(start)).max(0)
+    } else {
+        0
+    };
+    let task = project.task_mut(uid).ok_or(EngineError::TaskNotFound)?;
+    if gap > 0 {
+        task.splits[split_index].gap = gap;
+    } else {
+        task.splits.remove(split_index);
+    }
+    refresh_manual_finish(project, uid);
+    Ok(())
+}
+
 /// Duration for a new finish, keeping the gaps that still fit before it.
 /// Resizing changes the last segment; splits the new duration no longer reaches are dropped.
 pub fn resize_duration(task: &mut Task, working_span: i64) -> i64 {

@@ -28,6 +28,7 @@ function assignment(uid: number, taskUid: number, resourceUid: number, units: nu
     remaining_work: 0,
     cost: 0,
     actual_cost: 0,
+    manual_actual_cost: null,
   };
 }
 

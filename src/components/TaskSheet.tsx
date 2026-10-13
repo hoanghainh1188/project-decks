@@ -4,7 +4,7 @@ import { DateTimeField } from "./DateTimeField";
 import { formatDuration, formatInstant, parseDuration } from "../format";
 import { useMessages } from "../i18n";
 import { resourceNamesByTask } from "../resourceNames";
-import type { Assignment, Calendar, Resource, Task } from "../types";
+import type { Assignment, Calendar, FillField, Resource, Task } from "../types";
 import type { ViewRow } from "../viewRows";
 import { taskSheetMessages } from "./TaskSheet.i18n";
 
@@ -19,21 +19,23 @@ type SheetMessages = (typeof taskSheetMessages)["vi"];
 interface SheetColumn {
   label: string;
   width: number;
+  /** The field fill-down copies when this column's cell had focus last. */
+  fill?: FillField;
 }
 
 function sheetColumns(m: SheetMessages, tracking: boolean, nameWidth: number): SheetColumn[] {
   return [
     { label: m.id, width: 42 },
     { label: m.wbs, width: 72 },
-    { label: m.name, width: nameWidth },
-    { label: m.duration, width: 100 },
+    { label: m.name, width: nameWidth, fill: "name" },
+    { label: m.duration, width: 100, fill: "duration" },
     ...(tracking
       ? [
-          { label: m.percent, width: 52 },
+          { label: m.percent, width: 52, fill: "percent_complete" as const },
           { label: m.remaining, width: 84 },
         ]
       : []),
-    { label: m.start, width: 168 },
+    { label: m.start, width: 168, fill: "start" },
     { label: m.finish, width: 168 },
     ...(tracking
       ? [
@@ -41,10 +43,10 @@ function sheetColumns(m: SheetMessages, tracking: boolean, nameWidth: number): S
           { label: m.actualFinish, width: 168 },
           { label: m.remainingWork, width: 96 },
           { label: m.overtime, width: 84 },
-          { label: m.calendar, width: 120 },
+          { label: m.calendar, width: 120, fill: "calendar" as const },
         ]
       : []),
-    { label: m.predecessors, width: 120 },
+    { label: m.predecessors, width: 120, fill: "predecessors" },
     { label: m.resources, width: 160 },
     { label: m.slack, width: 80 },
   ];
@@ -61,9 +63,14 @@ interface Props {
   assignments: Assignment[];
   resources: Resource[];
   selected: number | null;
+  /** Rows of a Shift+click range (copy, paste and fill-down act on them); may be empty. */
+  selection?: ReadonlySet<number>;
   tracking: boolean;
   bodyRef: RefObject<HTMLDivElement | null>;
-  onSelect: (uid: number) => void;
+  /** `extend` is true for Shift+click, which selects every row from the selected one. */
+  onSelect: (uid: number, extend: boolean) => void;
+  /** The column of the focused cell, or null for one fill-down does not copy. */
+  onFillField?: (field: FillField | null) => void;
   onRename: (uid: number, name: string) => void;
   onDuration: (uid: number, minutes: number) => void;
   onStart: (uid: number, start: number) => void;
@@ -162,7 +169,7 @@ export function TaskSheet(props: Props) {
             return (
             <div
               key={row.key}
-              className={`sheet-row${task.uid === props.selected ? " selected" : ""}${task.critical ? " critical" : ""}${row.highlighted ? " highlighted" : ""}`}
+              className={`sheet-row${task.uid === props.selected ? " selected" : ""}${props.selection?.has(task.uid) && props.selection.size > 1 ? " in-selection" : ""}${task.critical ? " critical" : ""}${row.highlighted ? " highlighted" : ""}`}
               style={{
                 position: "absolute",
                 top,
@@ -171,7 +178,15 @@ export function TaskSheet(props: Props) {
                 height: ROW,
                 gridTemplateColumns: template,
               }}
-              onClick={() => props.onSelect(task.uid)}
+              onMouseDown={(event) => {
+                // Shift+click selects rows, not page text (which Cmd+C would then copy).
+                if (event.shiftKey) event.preventDefault();
+              }}
+              onClick={(event) => props.onSelect(task.uid, event.shiftKey)}
+              onFocus={(event) => {
+                const cell = Array.from(event.currentTarget.children).findIndex((child) => child.contains(event.target));
+                props.onFillField?.(columns[cell]?.fill ?? null);
+              }}
             >
               <span className="id">{task.id}</span>
               <span className="ro">{task.wbs}</span>

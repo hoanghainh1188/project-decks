@@ -8,5 +8,7 @@ export default defineConfig({
     include: ["src/**/*.test.{ts,tsx}"],
     setupFiles: ["src/test/setup.ts"],
     restoreMocks: true,
+    // theme.test.ts reads the colour tokens from tokens.css (`?raw`).
+    css: { include: [/tokens\.css/] },
   },
 });

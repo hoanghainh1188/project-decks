@@ -12,6 +12,10 @@ export function shortcutId(event: KeyboardEvent): string | null {
   if (key === "]") return "indent";
   if (key === "[") return "outdent";
   if (key === "backspace") return "delete";
+  if (key === "d" && !event.shiftKey && !event.altKey) return "fill-down";
+  // Option changes the key on macOS (Option+C is "ç"), so read the physical key.
+  if (event.altKey && event.code === "KeyC") return "copy-task";
+  if (event.altKey && event.code === "KeyV") return "paste-task";
   return null;
 }
 
@@ -63,7 +67,17 @@ export function hasUncommittedText(field: HTMLElement): boolean {
  * switch only relabels. Anything else (delete, indent, a view switch, opening a file,
  * another dialog) waits.
  */
-const MODAL_ACTIONS = new Set(["undo", "redo", "save", "save-as", "lang-vi", "lang-en"]);
+const MODAL_ACTIONS = new Set([
+  "undo",
+  "redo",
+  "save",
+  "save-as",
+  "lang-vi",
+  "lang-en",
+  "theme-system",
+  "theme-light",
+  "theme-dark",
+]);
 
 /**
  * Whether a menu or shortcut action should act on the project. While a text field has

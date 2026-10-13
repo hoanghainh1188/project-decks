@@ -159,6 +159,7 @@ fn capacity(people: u32, tasks: u32) {
             remaining_work: work,
             cost: 0.0,
             actual_cost: 0.0,
+            manual_actual_cost: None,
         });
     }
     project.next_task_uid = tasks + 1;

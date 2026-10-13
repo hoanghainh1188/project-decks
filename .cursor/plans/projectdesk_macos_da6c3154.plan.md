@@ -1,6 +1,6 @@
 ---
 name: Sheafly macOS
-overview: "Sheafly là ứng dụng desktop Tauri (Rust + React) quản lý dự án theo hướng Microsoft Project. Pha 1–13 và 16 đã xong. Sau pha 10 đã thêm: bản cài đa nền tảng (PR #17), test frontend (PR #18), phần còn lại của pha 9–10 (PR #19), sơ đồ mạng (PR #20), tách công việc (PR #21), CLAUDE.md (PR #22), an toàn dữ liệu (PR #23), giao diện cơ bản (Pha 11, PR #25), nền tệp và hiệu năng (Pha 12, PR #28–#30), theo dõi tiến độ (Pha 13, PR #31–#32) và sửa giao diện sau khi chụp màn hình dự án mẫu (PR #33). Việc tiếp theo là Pha 14, 15, 17 và Pha 18 (lập kế hoạch theo năng lực, đang thiết kế) ở mục Lộ trình; còn nợ vài bước kiểm tra thủ công trong app thật (xem đầu mục Lộ trình)."
+overview: "Sheafly là ứng dụng desktop Tauri (Rust + React) quản lý dự án theo hướng Microsoft Project. Pha 1–13 và 15–17 đã xong; Pha 14 xong phần không cần tài khoản Apple. Sau pha 10 đã thêm: bản cài đa nền tảng (PR #17), test frontend (PR #18), phần còn lại của pha 9–10 (PR #19), sơ đồ mạng (PR #20), tách công việc (PR #21), CLAUDE.md (PR #22), an toàn dữ liệu (PR #23), giao diện cơ bản (Pha 11, PR #25), nền tệp và hiệu năng (Pha 12, PR #28–#30), theo dõi tiến độ (Pha 13, PR #31–#32) và sửa giao diện sau khi chụp màn hình dự án mẫu (PR #33). Sau đó là Pha 14 (cài đặt), 15 và 17 (PR #34–#60: dọn dẹp, sơ đồ mạng, thanh công cụ, giao diện tối, copy/paste, MSPDI đầy đủ). Việc tiếp theo là ký số của Pha 14 (cần tài khoản Apple Developer) và phần còn lại của Pha 15, rồi Pha 18 (lập kế hoạch theo năng lực, đang thiết kế) ở mục Lộ trình; còn nợ vài bước kiểm tra thủ công trong app thật (xem đầu mục Lộ trình)."
 todos:
   - id: scaffold
     content: Tauri 2 + React + crate engine
@@ -66,17 +66,17 @@ todos:
     content: "Pha 13: theo dõi tiến độ (ngày thực tế điều khiển lịch, trễ hạn theo MS Project, dời phần chưa xong, AC/EV task tách, chuỗi lặp; PR #31 và phần 2)"
     status: completed
   - id: macos-release
-    content: "Pha 14: phát hành macOS (ký số, notarize, universal, kiểu tệp .sheafly, CSP)"
-    status: pending
+    content: "Pha 14: phát hành macOS. Đã xong: bản universal, kiểu tệp .sheafly, Mở gần đây, một bản chạy, CSP. Còn lại: ký số Developer ID, notarize, staple (cần tài khoản Apple Developer)"
+    status: in_progress
   - id: mspdi-complete
-    content: "Pha 15: MSPDI đầy đủ (Deadline, chi phí thực tế, WorkWeeks)"
-    status: pending
+    content: "Pha 15: MSPDI đầy đủ (Deadline, chi phí thực tế, WorkWeeks). Đã xong PR A–C (#58–#60); còn đối chiếu với tệp Project thật"
+    status: completed
   - id: leveling-hours
     content: "Pha 16: quá tải theo giờ trùng nhau, leveling tuần tự, lưu độ trễ vào log"
     status: completed
   - id: project-parity-ux
-    content: "Pha 17: UX ngang MS Project (copy/paste, tách App.tsx, bàn phím, giao diện còn lại). PR A (dọn dẹp, tiêu đề, EVM, README), B (sơ đồ mạng) và C (thanh công cụ, focus, bàn phím Gantt, EVM phóng to, tab, màu và biểu tượng) xong"
-    status: in_progress
+    content: "Pha 17: UX ngang MS Project (copy/paste, tách App.tsx, bàn phím, giao diện còn lại). PR A (dọn dẹp, tiêu đề, EVM, README), B (sơ đồ mạng), C (thanh công cụ, focus, bàn phím Gantt, EVM phóng to, tab, màu và biểu tượng), D (copy/paste, điền xuống, kéo từng đoạn) và E (token màu, giao diện tối, tách App.tsx, test còn thiếu) xong"
+    status: completed
   - id: capacity-scheduling
     content: "Pha 18: lập kế hoạch theo năng lực cho hàng trăm người, hàng ngàn task mỗi sprint (leveling nhanh, năng lực theo ngày, vai trò → người, nhập hàng loạt, xem trước đề xuất, dự báo khoảng ước lượng). Đang thiết kế; P1 trước"
     status: pending
@@ -294,7 +294,7 @@ Panel nhỏ cạnh Gantt, nhãn tiếng Việt và viết tắt trong ngoặc:
 
 Theo đánh giá độc lập sau PR #23 (đối chiếu từng mục với code) và kiểm tra giao diện trên một dự án mẫu 21 dòng. Pha 11 làm trước vì nhỏ và người dùng thấy ngay; Pha 12 là nền cho Pha 13 và 16. Pha 14 chạy song song khi có tài khoản Apple Developer.
 
-Trạng thái (12/10/2026): Pha 11–13 đã xong. Pha 15 và 16 đã đủ điều kiện (Pha 12–13 xong). Pha 14 cần tài khoản Apple Developer cho phần ký số và notarize; phần gắn kiểu tệp, CSP, bản universal làm được trước.
+Trạng thái (13/10/2026): Pha 11–13 và 15–17 đã xong. Pha 14 đã làm phần gắn kiểu tệp, CSP, bản universal; còn ký số và notarize, cần tài khoản Apple Developer. Pha 15 còn đối chiếu với tệp xuất từ Project thật. Lịch nguồn lực vốn đã có giao diện từ Pha 6 (ghi "chưa có giao diện" trước đây là nhầm); sau Pha 15 thêm lịch gốc như Project (`calendar_base.rs`, `SetCalendarBase`, `FORMAT_VERSION` = 9): lịch nguồn lực và lịch task tạo mới dựa trên lịch dự án nên ngày lễ của dự án tự áp dụng, mỗi lịch chỉ lưu phần nó tự đặt. Đã thêm sau Pha 15: chi phí thực tế nhập theo assignment (PR #62) và báo cáo cảnh báo khi nhập MSPDI (PR #63, `mspdi_report.rs`: tuần làm việc bị bỏ, % bị thay bằng số theo ngày thực tế, công việc đổi ngày so với tệp quá một phút); chi phí thực tế theo ngày để backlog. Hộp thoại Thông tin dự án chia tab Chung / Thống kê (số liệu do engine tính, `statistics.rs`, so với đường cơ sở 0) và chọn được lịch dự án (`SetProjectCalendar`, `FORMAT_VERSION` = 10); sửa lịch chuyển sang hộp thoại "Lịch làm việc" riêng (menu Dự án), có Lưu/Hủy riêng như Project.
 
 Trạng thái (13/10/2026): Pha 18 (lập kế hoạch theo năng lực) đã nghiên cứu xong và có thiết kế; P1 (leveling nhanh) là việc engine tiếp theo.
 
@@ -394,7 +394,7 @@ Chia 2 PR: (1) lõi lịch theo ngày thực tế, (2) lệnh dời phần chưa
 - Nhập tiến độ (%, ngày thực tế; còn lại khi đã có tiến độ) trên một lần của chuỗi lặp không tách nó khỏi chuỗi. Sửa còn lại khi chưa có tiến độ vẫn là sửa riêng. Sinh lại chuỗi giữ nguyên các lần đã có tiến độ; xóa chuỗi giữ chúng lại như các lần đã sửa riêng.
 - Chuỗi nền (`RecurrenceSpec::background`, ô "Chuỗi nền" trong hộp thoại công việc lặp): không tính vào mốc kết thúc khi tính ngược, không nằm trên đường găng, không làm nhóm chứa nó thành găng, và thanh trạng thái không lấy nó làm ngày kết thúc dự án (trừ khi chỉ còn nó).
 - `FORMAT_VERSION` = 3 (lệnh mới, trường mới), `ENGINE_REVISION` = 3 (sinh lại chuỗi đổi). `tests/progress.rs`: 10 test.
-- Chưa làm: đối chiếu một tệp MSPDI mẫu xuất từ Project (cần tệp thật); ghi/đọc tiến độ đầy đủ qua MSPDI thuộc Pha 15.
+- Chưa làm: đối chiếu một tệp MSPDI mẫu xuất từ Project (cần tệp thật); tiến độ đầy đủ qua MSPDI đã làm ở Pha 15 (PR A).
 
 - Ngày bắt đầu thực tế ghim start, bỏ qua phụ thuộc và ràng buộc; ngày kết thúc thực tế ghim finish. Phần còn lại nối liền sau phần đã làm.
 - Lệnh "Dời phần chưa xong sau ngày trạng thái" dùng `split.rs` để tạo khoảng nghỉ, nên tất định và hoàn tác được.
@@ -430,6 +430,20 @@ Rủi ro: cần tài khoản Apple Developer; CSP có thể làm hỏng xuất P
 - Đọc/ghi `Deadline`, chi phí thực tế, `WorkWeeks` của lịch, và tiến độ theo nghĩa mới của Pha 13.
 - Nghiệm thu: test xuất rồi nhập lại với tệp từ Project 2019/365.
 
+Hiện có (13/10/2026): `mspdi.rs` đọc/ghi task (ngày, thời lượng, ràng buộc, lịch, ưu tiên, ghi chú, %, `ActualStart`/`ActualFinish`, `RemainingDuration`, `OvertimeWork`, chi phí cố định, `LevelingDelay`), liên kết, baseline, nguồn lực, assignment kèm timephased, lịch (tuần chuẩn, ngoại lệ), `StatusDate`, task tách. Thiếu: `Deadline` (engine đã có `task.deadline`), chi phí và công thực tế, `WorkWeeks`, `Resume`/`Stop` và timephased công thực tế.
+
+Chia 3 PR:
+
+- **PR A — Deadline và tiến độ (S–M):** đọc/ghi `Deadline`; ghi `ActualDuration`, `ActualWork`, `RemainingWork`, `Resume`, `Stop`; khi đọc, ngày thực tế và phần còn lại trong tệp được ưu tiên hơn % (theo quy tắc Pha 13); ghi timephased công thực tế (`TimephasedData` type 2) cho task đã bắt đầu.
+  - **Đã xong (13/10/2026):** module mới `mspdi_progress.rs`; ghi `Deadline`, `ActualDuration`, `ActualWork`, `RemainingWork`, `Resume`/`Stop` (chỉ khi đang làm dở) và timephased type 2 cho từng đoạn đã làm của assignment; khi đọc, thứ tự ưu tiên: `ActualFinish` → thời lượng thực tế/còn lại (giữ `PercentComplete` nếu lệch dưới một phút do làm tròn) → công thực tế/còn lại → công thực tế theo thời gian, rồi mới tới `PercentComplete`; ngày bắt đầu thực tế lấy từ timephased nếu tệp không có `ActualStart`. Không thêm lệnh, không đổi `FORMAT_VERSION`/`ENGINE_REVISION` (chỉ đổi nhập/xuất). Test `tests/mspdi.rs` (7 test, xuất rồi nhập so từng trường) và fixture viết tay `tests/fixtures/progress.xml`. Còn thiếu: nhập MSPDI chưa có báo cáo cảnh báo, nên chỗ tệp mâu thuẫn với engine được xử lý im lặng; task không có nguồn lực không ghi timephased công thực tế (trừ task tách); type 1 vẫn ghi toàn bộ công chứ không chỉ phần còn lại như Project; chưa đối chiếu với tệp Project thật.
+- **PR B — chi phí thực tế (M):** ghi `Cost`, `ActualCost`, `RemainingCost` của task, assignment và nguồn lực (engine tính). Chủ dự án chọn có **nhập chi phí thực tế bằng tay** như tùy chọn của Project: thêm cờ dự án "Chi phí thực tế do engine tính" (mặc định bật) và lệnh đặt chi phí thực tế của task/assignment khi cờ tắt; lệnh mới nên tăng `FORMAT_VERSION`, và `ENGINE_REVISION` nếu số dẫn xuất đổi. EVM (AC, đường cong S) dùng số nhập tay khi có, phân bổ theo thời gian như Project (dồn vào ngày trạng thái hoặc theo công thực tế). Nhập MSPDI đọc `ActualCost` và cờ tương ứng (`AutoCalcActualCosts` hay tên trong schema) nếu có. Giao diện: ô chi phí thực tế trong nhóm Chi phí của panel thuộc tính, chỉ sửa được khi cờ tắt; cờ nằm trong Thông tin dự án.
+  - **Đã xong (13/10/2026):** `Project.editable_actual_costs` (mặc định tắt = engine tính; khớp `EditableActualCosts` của MSPDI, 1 = nhập tay), `Task.manual_actual_cost`, lệnh `SetEditableActualCosts` và `SetTaskActualCost` (`FORMAT_VERSION` = 6; `ENGINE_REVISION` giữ 4 vì số tính cho các lệnh cũ không đổi). `compute_costs` dùng số nhập tay khi cờ bật, phần nhân công chia cho các assignment; `evm::actual_cost_at` rải chi phí nhập tay theo tiến độ, hoặc dồn vào ngày trạng thái khi task chưa có tiến độ. MSPDI (`mspdi_cost.rs`) ghi `Cost`/`ActualCost`/`RemainingCost` của task, assignment, nguồn lực và `EditableActualCosts`; đọc `ActualCost` của task chỉ khi tệp bật cờ. Giao diện: ô "Chi phí thực tế" trong nhóm Chi phí của panel thuộc tính (chỉ sửa khi cờ bật, để trống = số tính), ô chọn trong Thông tin dự án. Test `tests/actual_cost.rs` và `tests/mspdi.rs`. Sau đó (PR riêng): nhập tay theo assignment (`SetAssignmentActualCost`, `FORMAT_VERSION` = 8): thay phần của assignment, tổng task = phần cố định + các assignment, trừ khi task có số riêng; nhập MSPDI chỉ giữ số khác số tính (`keep_real_entries`). Theo nguồn lực là tổng các assignment (như Project, không nhập riêng). Để backlog (quyết định 13/10/2026): nhập chi phí thực tế theo ngày. Ít người dùng (chủ yếu khi đồng bộ kế toán/chấm công), cỡ L (dữ liệu theo ngày trong model, lệnh mới, lưới trong view Sử dụng, AC của EVM và đường cong S, `TimephasedData` chi phí, quy tắc khi tổng lệch tổng theo ngày) và chưa có tệp Project thật để đối chiếu; làm khi có người cần đường cong S theo AC từng tuần hoặc có tệp MSPDI có dữ liệu này; cách hiểu `EditableActualCosts` dựa trên tên phần tử vì tài liệu Microsoft mô tả mơ hồ, cần đối chiếu với Project thật.
+- **PR C — WorkWeeks (M):** `Calendar` thêm các tuần làm việc theo khoảng ngày (7 ngày giờ làm mỗi tuần), ưu tiên: ngoại lệ > tuần theo khoảng > tuần chuẩn; lệnh `set_calendar_work_week`/`clear_calendar_work_week` (tăng `FORMAT_VERSION` và `ENGINE_REVISION`); MSPDI `<WorkWeeks><WorkWeek>` với `TimePeriod` và `WeekDays`; `CalendarEditor` có mục "Tuần làm việc khác"; chạy lại bench `large_project` để chắc không chậm.
+  - **Đã xong (13/10/2026):** `Calendar.work_weeks` (`WorkWeek { name, from, to, week }`, khoảng ngày gồm cả hai đầu, không chồng nhau, xếp theo `from`); ưu tiên ngoại lệ > tuần theo khoảng > tuần chuẩn (`ranges_on`/`week_for`). Lệnh `SetCalendarWorkWeek` (thay tuần có cùng `from`) và `ClearCalendarWorkWeek`; `FORMAT_VERSION` = 7, `ENGINE_REVISION` = 5. Có tuần theo khoảng thì `add_working` không nhảy cả tuần, còn `working_between` chia khoảng theo mép các tuần (`pattern_minutes`) nên chi phí theo số tuần riêng, không theo số ngày; bench `large_project` không đổi (16,6 s so với 16,8 s trước). MSPDI `<WorkWeeks>` đọc/ghi (`mspdi_workweeks.rs`), tuần chồng nhau trong tệp thì bỏ tuần sau. Giao diện: mục "Tuần làm việc khác" trong `CalendarEditor` (danh sách, Sửa, Bỏ, thêm với tuần bắt đầu là bản sao tuần chuẩn); phím Alt+mũi tên ở Gantt cũng theo tuần riêng. Test: `tests/work_weeks.rs`, các test trong `calendar.rs` (so với duyệt từng ngày), fixture viết tay `tests/fixtures/workweeks.xml`. Ngoại lệ ngày dạng `WeekDay` với `DayType` 0 đã đọc (13/10/2026, xem dưới); chưa đối chiếu với tệp Project thật. Việc đổi ngày bắt đầu dự án theo tuần riêng là có chủ ý: `schedule()` đẩy `project.start` tới giờ làm đầu tiên, và giá trị đó giữ nguyên khi gỡ tuần riêng (giống ngoại lệ ngày nghỉ).
+  - **Pha 15 xong** (PR A: #58, B: #59, C: #60).
+
+Nghiệm thu mỗi PR: test xuất rồi nhập lại trong `crates/engine/tests/mspdi.rs` (tệp mới), so từng trường; test giao diện cho phần mới. Chưa có tệp xuất từ Project thật: dùng một fixture XML viết tay theo schema MSPDI công khai (có đủ trường mới); khi có Project 2019/365 thì đối chiếu tệp thật (nợ từ Pha 5 và 13). Rủi ro: Project tính lại một số trường khi mở, nên chỉ kiểm được trọn vẹn bằng Project thật.
+
 ### Pha 16 — leveling (M–L, cần Pha 12) — đã xong
 
 **Kết quả.** `level.rs` viết lại:
@@ -451,7 +465,7 @@ Dự kiến ban đầu:
 - Nghiệm thu: hai task cùng ngày nhưng khác giờ không bị báo quá tải; bench 500 task dưới 1 giây.
 - Ví dụ thấy khi chụp dự án mẫu: An bị báo quá tải ngày 15/10 dù chỉ 0,8 + 7,2 = 8 giờ, vì hai task nối tiếp nhau trong cùng ngày.
 
-### Pha 17 — UX ngang MS Project (L, tách 2–3 PR) — đang làm
+### Pha 17 — UX ngang MS Project (L, tách 2–3 PR) — đã xong
 
 Chia 5 PR: (A) dọn dẹp và chỉnh nhỏ, (B) sơ đồ mạng, (C) thanh công cụ, focus và bàn phím, (D) copy/paste, điền xuống, kéo từng đoạn task tách, (E) token màu, giao diện tối, tách `App.tsx` và test còn thiếu.
 
@@ -463,10 +477,19 @@ Chia 5 PR: (A) dọn dẹp và chỉnh nhỏ, (B) sơ đồ mạng, (C) thanh c�
 
 **PR C2 — tab, màu và biểu tượng (sau góp ý khi chạy thử):** các view là tab thật (`role="tablist"`, ← → Home End chuyển tab, tab đang chọn nối liền vùng view bên dưới); Ngày/Tuần/Tháng thành một nút phân đoạn liền khối. Nút thanh công cụ có biểu tượng Lucide (`lucide-react`, ISC) và màu theo nhóm (token `--tone-*` trong `styles.css`): lịch sử xám, tạo việc xanh lá (nút chính tô đặc), sửa việc xanh dương, xóa đỏ, dự án tím, báo cáo cam; cửa sổ hẹp hơn 1200 px chỉ còn biểu tượng (chữ vẫn có cho trình đọc màn hình và chú thích). Khi hàng view quá hẹp, các điều khiển lên dòng trên, tab vẫn nằm sát view. Nút trong hộp thoại và bảng EVM dùng `Button.tsx` (chính / phụ / xóa, có biểu tượng); hàng nút cuối hộp thoại canh phải, nút chính ở cuối như macOS. Hộp "Giới thiệu Sheafly" có phiên bản, mô tả, bản quyền và ghi công; README thêm mục Giao diện. Hộp thoại có tiêu đề (kèm nút ✕) và hàng nút cuối cố định, chỉ phần giữa cuộn. "Thông tin dự án" thành giao dịch Lưu/Hủy: thay đổi áp dụng ngay để xem trước trên lịch, Lưu giữ lại, Hủy (✕, Esc) hoàn tác về đúng trạng thái lúc mở (`Snapshot.history_cursor`, `undoTo.ts`); trong lúc mở, ⌘Z không lùi quá điểm đó. Các bước đã hủy nằm trong danh sách làm lại; nếu trước khi mở có danh sách làm lại cũ, thay đổi trong hộp thoại thay thế nó (như mọi chỉnh sửa khác). Hoàn tác lỗi giữa chừng thì hộp thoại không đóng và báo lỗi.
 
-- Copy/paste và điền xuống (fill-down) task.
-- Tách `App.tsx` tiếp (PR #25 đã giảm còn 730 dòng); thêm test cho `GanttChart`, `ganttPdf`, `networkPdf`, `App`, `ResourceSheet`, `CalendarEditor`, `SplitDialog`, `TaskUsage`.
+**PR E — token màu, giao diện tối, tách `App.tsx`, test:** mọi màu là token CSS trong `src/tokens.css` theo nghĩa (nền `--surface*`, chữ `--text*`, viền `--border*`, lưới `--grid`, cuối tuần `--weekend`, thanh Gantt `--bar-*`, biểu đồ `--chart-*`, nhóm thanh công cụ `--tone-*`…); sáng ở `:root`, tối ở `:root[data-theme="dark"]`. Xem → Giao diện: Theo hệ thống / Sáng / Tối, lưu trong `settings.json` như ngôn ngữ (`get_theme`/`set_theme`), thanh tiêu đề cửa sổ theo cùng (`set_theme` của Tauri); Root áp dụng lựa chọn đã lưu trước khi vẽ lần đầu; đổi giao diện được cả khi hộp thoại đang mở. Gantt (canvas) đọc màu qua `canvasPalette()` (`theme.ts`) và vẽ lại khi giao diện đổi; sơ đồ mạng và biểu đồ EVM (SVG) dùng `var(--…)` trong `style`. Xuất PDF vẫn sáng. `theme.test.ts` kiểm tra mọi token có ở cả hai giao diện và chữ đạt 4.5:1 trên nền nó nằm (WCAG AA); vì vậy `--text-muted` sáng đậm hơn một chút, `--text-faint` thay `#8e8e93` (chỉ 3.3:1), ngày đang chọn trong lịch dùng `--accent-strong`. `App.tsx` còn khoảng 560 dòng: `ProjectDialog`, `BaselineDialog`, `StatusBar` thành component riêng; `useFileDialog` (một hộp thoại tệp mỗi lúc, mở tệp hệ thống gửi khi rảnh); `menuActions.ts` (`handleMenuAction`, thuần, có test); `appCommands.ts`. PDF: `pdfDraw.ts` gom hàm vẽ dùng chung, `ganttPageGrid`, `networkPage`, `nodeFields` tách ra để test. Test mới: `GanttChart` (phím, hàng nhóm, vẽ lại theo giao diện), `ganttPdf`/`networkPdf`/`pdfDraw`, `menuActions`, `theme`, luồng App qua `Root.test.tsx` (giao diện đã lưu, đổi giao diện từ menu, đổi view), thêm ca cho `ResourceSheet`, `CalendarEditor`, `SplitDialog`. `styles.css` dưới 800 dòng nhờ tách `tokens.css`.
+
+**PR D — copy/paste, điền xuống, kéo từng đoạn — đã xong:** ba lệnh mới trong engine, `FORMAT_VERSION` lên 5 (bản cũ từ chối tệp có các lệnh này); `ENGINE_REVISION` giữ nguyên vì lịch của các lệnh cũ không đổi.
+- *Copy/paste* (`clipboard.rs`): `copy_tasks` (lệnh Tauri chỉ đọc) lấy các dòng đang chọn kèm task con thành `TaskClipboard` chứa chính dữ liệu (không phải UID), nên `PasteTasks` replay được dù task gốc đã sửa hay xóa. Sao chép: tên, cấp tương đối, thời lượng, công, ngày của task lên lịch tay, ghi chú, ưu tiên, lịch, ràng buộc, hạn chót, kiểu task, chi phí cố định, điểm tách, phân công (nguồn lực, đơn vị, công) và liên kết giữa các task được chép. Không chép: tiến độ và số thực tế, baseline, độ trễ cân bằng, chuỗi lặp (chép chuỗi ra task thường). Dán đặt sau task chọn cuối cùng và cây con của nó (sau cả chuỗi nếu là một lần lặp), cùng cấp; nguồn lực và lịch khớp theo UID và tên, rồi theo tên (dán sang dự án khác); không có thì bỏ, công của task trừ đi phần đó.
+- *Phím và menu:* Sửa có Cắt/Sao chép/Dán/Chọn tất cả của hệ thống, nên ô nhập vẫn chép/dán chữ (trước đây macOS thiếu các mục này). Ngoài ô nhập, không bôi đen chữ và không có hộp thoại, ⌘C/⌘V thành sao chép/dán task qua sự kiện `copy`/`paste` của trang (văn bản thường nhận tên các task). Thêm mục Sao chép công việc (⌘⌥C), Dán công việc (⌘⌥V), Điền xuống (⌘D); bật/tắt và lý do ở `toolbarState.ts`. Bộ nhớ tạm nằm trong app (không ghi JSON task vào clipboard hệ thống); dán ngoài ô nhập luôn dán task đã chép.
+- *Điền xuống:* bảng chưa có chọn nhiều dòng nên làm bản nhỏ nhất: Shift+bấm chọn dải dòng từ dòng đang chọn (theo thứ tự trên màn hình, kể cả khi lọc/nhóm), ⌘D chép giá trị của cột có ô focus gần nhất (Tên, Thời lượng, Bắt đầu, Tiền nhiệm, %, Lịch) từ dòng đầu xuống. Ô cột khác (ID, Kết thúc, Trễ…) tắt lệnh. `FillDown` áp lệnh sửa của chính ô đó cho từng dòng trong một bước hoàn tác; summary chỉ nhận tên; một dòng lỗi (ví dụ tiền nhiệm thành vòng lặp) làm cả lệnh lỗi.
+- *Kéo từng đoạn:* kéo đoạn thứ hai trở đi của task tách trên Gantt gửi `MoveSegment { uid, index, start }`: engine đổi khoảng ngắt ngay trước đoạn (theo phút làm việc trên lịch task), các đoạn sau đi theo; kéo chạm đoạn trước thì nối lại. Đoạn đầu vẫn dời cả task.
+- Còn lại: Shift+↑↓ để mở rộng dải bằng bàn phím; dán từ Excel; chọn dải ở sơ đồ mạng.
+
+- Copy/paste và điền xuống (fill-down) task. (PR D)
+- Tách `App.tsx` tiếp (PR #25 đã giảm còn 730 dòng); thêm test cho `GanttChart`, `ganttPdf`, `networkPdf`, `App`, `ResourceSheet`, `CalendarEditor`, `SplitDialog`, `TaskUsage`. (PR E; `TaskUsage` đã có test từ trước)
 - Gantt dùng được bằng bàn phím; nút có kiểu focus. (PR C; kéo/sửa bằng chuột vẫn như cũ)
-- Kéo riêng từng đoạn của task tách.
+- Kéo riêng từng đoạn của task tách. (PR D)
 - Sơ đồ mạng giữ liên kết gắn vào summary khi ẩn summary (chuyển xuống task con); các lần của chuỗi lặp không chen vào cột đầu cạnh việc chính (gom lại hoặc tùy chọn ẩn). (PR B: gom chuỗi thành một ô)
 - Thiết kế lại điều hướng và thanh công cụ theo luồng làm việc (PR C):
   - Menu macOS giữ các thao tác hệ thống và phím tắt (`Tệp`, `Sửa`, `Xem`, `Dự án`); thanh công cụ ưu tiên thao tác hằng ngày.
@@ -478,7 +501,7 @@ Chia 5 PR: (A) dọn dẹp và chỉnh nhỏ, (B) sơ đồ mạng, (C) thanh c�
 - Tiêu đề cửa sổ là tên dự án kèm dấu đã sửa; thanh trạng thái chỉ hiện tên tệp. (PR A)
 - Bớt biểu tượng lịch lặp lại ở mỗi dòng của bảng task. (PR A; tô quá tải chỉ ở ô có giờ và dấu phẩy thập phân ở view Sử dụng đã làm ở Pha 16.)
 - Bảng EVM: biểu đồ burn-down bị ép gần hết khi panel thuộc tính đang mở; cho bảng EVM chiếm đủ chiều cao hoặc thu panel lại khi mở EVM. (PR A: bảng EVM cao hết cửa sổ)
-- Màu thành token CSS rồi mới làm giao diện tối; xóa `src/App.css` thừa từ template (đã xóa ở PR A).
+- Màu thành token CSS rồi mới làm giao diện tối; xóa `src/App.css` thừa từ template (đã xóa ở PR A). (PR E)
 - Dọn 9 warning clippy của engine. (PR A)
 - Viết lại README: tính năng, cách cài bản phát hành, cách build; bỏ đường dẫn cứng. (PR A)
 
@@ -553,3 +576,5 @@ Tra nhãn hiệu sau v1.0.0: "PROJECTDESK" đã đăng ký cho phần mềm ở 
 ### Ngoài phạm vi
 
 Reader tệp nhị phân `.mpp` (xem pha 5), nhiều người dùng, server, công thức trường tùy chỉnh, ký số bản Windows/Linux, dựng lại chuỗi lặp khi nhập MSPDI. Ngôn ngữ ngoài tiếng Việt và tiếng Anh (ví dụ tiếng Nhật) chưa có; thêm một ngôn ngữ chỉ cần thêm cột trong các catalog và trong `src-tauri/src/i18n.rs`.
+
+- **Ngoại lệ lịch `DayType` 0 trong MSPDI (đã xong, 13/10/2026):** theo schema công khai, `WeekDay/DayType` 0 là *ngoại lệ* (1–7 là Chủ nhật–Thứ bảy); Project 2003 và vài công cụ khác ghi ngày nghỉ/ngày đổi giờ ở đây, kèm `TimePeriod`, `DayWorking`, `WorkingTimes`, thay cho hoặc cùng với `<Exceptions>`. Ghi chú Pha 15 PR C gọi nhầm là "Thời gian làm việc mặc định"; đã sửa. `mspdi_calendar_days.rs` có `add_exception` dùng chung cho cả hai nơi (trần 3.660 ngày như cũ). Lịch dựa trên lịch khác giữ ngoại lệ này là phần riêng của nó. Mục không có `FromDate` thì bỏ và báo bằng `ImportNote::ExceptionWithoutDates`. Một `WeekDay` trong `<WorkWeek>` vẫn vào tuần theo khoảng. Không thêm `Command`, không đổi `FORMAT_VERSION` hay `ENGINE_REVISION`. Xuất vẫn chỉ ghi `<Exceptions>`. Test: `tests/mspdi_calendar_days.rs`, fixture viết tay `tests/fixtures/daytype0.xml` (không xuất từ Project).

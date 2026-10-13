@@ -65,4 +65,14 @@ describe("nextWorkingDay", () => {
     const calendar = { ...project.calendars[0], exceptions: { "2026-01-12": [] } };
     expect(nextWorkingDay(calendar, at(2026, 1, 9, 8), 1)).toBe(at(2026, 1, 13, 8));
   });
+
+  it("follows a work week that covers the date", () => {
+    const base = project.calendars[0];
+    const half = [{ start_minute: 9 * 60, end_minute: 13 * 60 }];
+    // Mondays and Tuesdays only, 12–25 January.
+    const week = [half, half, [], [], [], [], []];
+    const calendar = { ...base, work_weeks: [{ name: "Ngắn", from: "2026-01-12", to: "2026-01-25", week }] };
+    expect(nextWorkingDay(calendar, at(2026, 1, 13, 8), 1)).toBe(at(2026, 1, 19, 8));
+    expect(nextWorkingDay(calendar, at(2026, 1, 20, 8), 1)).toBe(at(2026, 1, 26, 8));
+  });
 });

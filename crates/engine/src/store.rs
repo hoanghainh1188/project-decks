@@ -19,8 +19,13 @@ use crate::recovery::{self, Damage, OpenReport, Recovery};
 /// schedule and remaining-duration/work edits keep progress (phase 13), so an older app
 /// would replay the same commands to other dates. Version 3 added
 /// `Command::RescheduleUncompleted` and the background flag on recurring series.
-/// Version 4 added `Command::ApplyLeveling` (phase 16).
-pub const FORMAT_VERSION: u32 = 4;
+/// Version 4 added `Command::ApplyLeveling` (phase 16). Version 5 added `MoveSegment`,
+/// `PasteTasks` and `FillDown` (phase 17). Version 6 added `SetEditableActualCosts` and
+/// `SetTaskActualCost`, and version 7 `SetCalendarWorkWeek` and `ClearCalendarWorkWeek`
+/// (phase 15); version 8 `SetAssignmentActualCost`; version 9 `SetCalendarBase` and the
+/// base of `CreateCalendar`; version 10 `SetProjectCalendar`. None of them changes how
+/// older commands schedule.
+pub const FORMAT_VERSION: u32 = 10;
 
 /// Checkpoints a file keeps below the cursor, besides the one at the cursor. Each is
 /// a whole scheduled project (about 1 MB for 1,000 tasks), so only a few nearby ones.

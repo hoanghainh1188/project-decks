@@ -23,13 +23,8 @@ pub(crate) fn prepare(project: &mut Project) -> Result<Graph, EngineError> {
     for task in &mut project.tasks {
         split::normalize_task(task);
     }
-    if project.calendar().week.iter().all(|d| d.is_empty())
-        && project
-            .calendar()
-            .exceptions
-            .values()
-            .all(|ranges| ranges.is_empty())
-    {
+    crate::calendar_base::refresh(project);
+    if !project.calendar().has_working_time() {
         return Err(EngineError::NoWorkingTime);
     }
     Graph::build(project)
@@ -503,7 +498,7 @@ fn summary_required_finish(project: &Project, graph: &Graph, index: usize) -> Op
 }
 
 /// The summary and occurrences of every background recurring series.
-fn background_tasks(project: &Project) -> Vec<bool> {
+pub(crate) fn background_tasks(project: &Project) -> Vec<bool> {
     let series: HashSet<u32> = project
         .tasks
         .iter()

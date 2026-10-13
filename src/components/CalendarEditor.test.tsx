@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -62,5 +62,190 @@ describe("CalendarEditor", () => {
       </I18nProvider>,
     );
     expect(screen.getByText("No nonworking days or exceptions yet.")).toBeInTheDocument();
+  });
+
+  it("renames the calendar, and keeps the old name when the field is emptied", async () => {
+    const user = userEvent.setup();
+    const send = vi.fn(async () => undefined);
+    render(<CalendarEditor calendar={calendar()} send={send} />);
+    const name = screen.getByLabelText("Tên lịch");
+    await user.clear(name);
+    await user.tab();
+    expect(name).toHaveValue("Tiêu chuẩn");
+    expect(send).not.toHaveBeenCalled();
+    await user.type(name, " ca đêm");
+    await user.tab();
+    expect(send).toHaveBeenCalledExactlyOnceWith({ type: "rename_calendar", calendar_id: 1, name: "Tiêu chuẩn ca đêm" });
+  });
+
+  it("turns weekdays on and off as a whole week", async () => {
+    const user = userEvent.setup();
+    const send = vi.fn(async () => undefined);
+    const base = calendar();
+    render(<CalendarEditor calendar={base} send={send} />);
+    await user.click(screen.getByLabelText("Thứ Hai"));
+    expect(send).toHaveBeenLastCalledWith({
+      type: "set_calendar_week",
+      calendar_id: 1,
+      week: [[], ...base.week.slice(1)],
+    });
+    await user.click(screen.getByLabelText("Thứ Bảy"));
+    const week = (send.mock.lastCall as unknown as [{ week: Calendar["week"] }])[0].week;
+    expect(week[5]).toEqual(base.week[0]);
+    expect(week[0]).toEqual(base.week[0]);
+  });
+
+  it("adds a nonworking day and removes an exception", async () => {
+    const user = userEvent.setup();
+    const send = vi.fn(async () => ({}) as never);
+    render(
+      <I18nProvider lang="en">
+        <CalendarEditor calendar={calendar()} send={send} />
+      </I18nProvider>,
+    );
+    await user.type(screen.getByLabelText("Date"), "2026-01-15");
+    await user.tab();
+    await user.click(screen.getByRole("button", { name: "Add exception" }));
+    expect(send).toHaveBeenCalledWith({
+      type: "set_calendar_exceptions",
+      calendar_id: 1,
+      from: "2026-01-15",
+      to: "2026-01-15",
+      ranges: [],
+    });
+    const holiday = screen.getByText("2026-01-01 – 2026-01-02 · Nonworking all day").closest("li") as HTMLElement;
+    await user.click(within(holiday).getByRole("button", { name: "Remove" }));
+    expect(send).toHaveBeenLastCalledWith({
+      type: "clear_calendar_exceptions",
+      calendar_id: 1,
+      from: "2026-01-01",
+      to: "2026-01-02",
+    });
+  });
+});
+
+describe("CalendarEditor work weeks", () => {
+  it("lists the other work weeks and removes one", async () => {
+    const user = userEvent.setup();
+    const send = vi.fn(async () => undefined);
+    const base = {
+      ...calendar(),
+      work_weeks: [{ name: "Giờ hè", from: "2026-06-01", to: "2026-08-31", week: calendar().week }],
+    };
+    render(<CalendarEditor calendar={base} send={send} />);
+    const item = screen.getByText(/Giờ hè/).closest("li") as HTMLElement;
+    await user.click(within(item).getByRole("button", { name: "Bỏ" }));
+    expect(send).toHaveBeenCalledWith({ type: "clear_calendar_work_week", calendar_id: 1, from: "2026-06-01" });
+  });
+
+  it("adds a work week that starts as a copy of the default week", async () => {
+    const user = userEvent.setup();
+    const send = vi.fn(async () => ({}) as never);
+    const base = calendar();
+    render(<CalendarEditor calendar={base} send={send} />);
+    expect(screen.getByText("Chưa có tuần làm việc khác.")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Thêm tuần làm việc" }));
+    const form = screen.getByRole("group", { name: "Thêm tuần làm việc" });
+    await user.type(within(form).getByLabelText("Tên tuần"), "Giờ hè");
+    await user.type(within(form).getByLabelText("Từ ngày"), "2026-06-01");
+    await user.tab();
+    await user.type(within(form).getByLabelText("Đến ngày"), "2026-08-31");
+    await user.tab();
+    await user.click(within(form).getByLabelText("Thứ Sáu"));
+    await user.click(within(form).getByRole("button", { name: "Lưu tuần làm việc" }));
+    expect(send).toHaveBeenCalledWith({
+      type: "set_calendar_work_week",
+      calendar_id: 1,
+      name: "Giờ hè",
+      from: "2026-06-01",
+      to: "2026-08-31",
+      week: [...base.week.slice(0, 4), [], ...base.week.slice(5)],
+    });
+    expect(screen.queryByRole("group", { name: "Thêm tuần làm việc" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the form open when the engine refuses the work week", async () => {
+    const user = userEvent.setup();
+    const send = vi.fn(async () => undefined);
+    render(<CalendarEditor calendar={calendar()} send={send} />);
+    await user.click(screen.getByRole("button", { name: "Thêm tuần làm việc" }));
+    const form = screen.getByRole("group", { name: "Thêm tuần làm việc" });
+    await user.type(within(form).getByLabelText("Từ ngày"), "2026-06-01");
+    await user.tab();
+    await user.type(within(form).getByLabelText("Đến ngày"), "2026-08-31");
+    await user.tab();
+    await user.click(within(form).getByRole("button", { name: "Lưu tuần làm việc" }));
+    expect(screen.getByRole("group", { name: "Thêm tuần làm việc" })).toBeInTheDocument();
+  });
+});
+
+describe("CalendarEditor editing a work week", () => {
+  it("clears the old week first when its start date changes", async () => {
+    const user = userEvent.setup();
+    const send = vi.fn(async () => ({}) as never);
+    const base = {
+      ...calendar(),
+      work_weeks: [{ name: "Giờ hè", from: "2026-06-01", to: "2026-08-31", week: calendar().week }],
+    };
+    render(<CalendarEditor calendar={base} send={send} />);
+    const item = screen.getByText(/Giờ hè/).closest("li") as HTMLElement;
+    await user.click(within(item).getByRole("button", { name: "Sửa" }));
+    const form = screen.getByRole("group", { name: "Thêm tuần làm việc" });
+    const from = within(form).getByLabelText("Từ ngày");
+    await user.clear(from);
+    await user.type(from, "2026-05-25");
+    await user.tab();
+    await user.click(within(form).getByRole("button", { name: "Lưu tuần làm việc" }));
+    expect((send.mock.calls as unknown as [{ type: string }][]).map(([command]) => command.type)).toEqual([
+      "clear_calendar_work_week",
+      "set_calendar_work_week",
+    ]);
+    expect(send).toHaveBeenNthCalledWith(1, { type: "clear_calendar_work_week", calendar_id: 1, from: "2026-06-01" });
+  });
+});
+
+describe("CalendarEditor base calendar", () => {
+  function based(): { project: Calendar; resource: Calendar; machine: Calendar } {
+    const project = { ...calendar(), id: 1, name: "Dự án" };
+    const resource: Calendar = {
+      ...standardCalendar(2, "An"),
+      exceptions: { "2026-01-01": [], "2026-01-02": [], "2026-01-03": [], "2026-02-02": [] },
+      base: {
+        id: 1,
+        week: [null, null, null, null, [{ start_minute: 480, end_minute: 720 }], null, null],
+        exceptions: { "2026-01-03": [], "2026-02-02": [] },
+        work_weeks: [],
+      },
+    };
+    const machine: Calendar = { ...standardCalendar(3, "Máy"), base: { ...resource.base!, id: 2 } };
+    return { project, resource, machine };
+  }
+
+  it("offers bases that do not loop back and changes the base", async () => {
+    const user = userEvent.setup();
+    const send = vi.fn(async () => undefined);
+    const { project, resource, machine } = based();
+    render(<CalendarEditor calendar={resource} calendars={[project, resource, machine]} send={send} />);
+    const select = screen.getByLabelText("Dựa trên lịch");
+    const options = within(select).getAllByRole("option").map((option) => option.textContent);
+    expect(options).toEqual(["Không (lịch độc lập)", "Dự án"]);
+    expect(select).toHaveValue("1");
+    await user.selectOptions(select, "");
+    expect(send).toHaveBeenCalledWith({ type: "set_calendar_base", calendar_id: 2, base_id: null });
+  });
+
+  it("marks inherited days and the base's exceptions, which it cannot remove", () => {
+    const { project, resource } = based();
+    render(<CalendarEditor calendar={resource} calendars={[project, resource]} send={vi.fn()} />);
+    // Six weekdays come from the base; Friday is An's own.
+    expect(screen.getAllByText("theo lịch gốc", { exact: true })).toHaveLength(6);
+    const holiday = screen.getByText(/01\/01\/2026 – 02\/01\/2026 · Nghỉ cả ngày · theo lịch gốc/).closest("li") as HTMLElement;
+    expect(within(holiday).queryByRole("button", { name: "Bỏ" })).not.toBeInTheDocument();
+    // 1–2 January come from the base, 3 January is An's own: two lines, not one.
+    expect(screen.getByText(/01\/01\/2026 – 02\/01\/2026/)).toBeInTheDocument();
+    const third = screen.getByText("03/01/2026 · Nghỉ cả ngày").closest("li") as HTMLElement;
+    expect(within(third).getByRole("button", { name: "Bỏ" })).toBeInTheDocument();
+    const own = screen.getByText("02/02/2026 · Nghỉ cả ngày").closest("li") as HTMLElement;
+    expect(within(own).getByRole("button", { name: "Bỏ" })).toBeInTheDocument();
   });
 });

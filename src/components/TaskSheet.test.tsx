@@ -11,6 +11,7 @@ import { TaskSheet } from "./TaskSheet";
 
 const HANDLERS = [
   "onSelect",
+  "onFillField",
   "onRename",
   "onDuration",
   "onStart",
@@ -228,7 +229,27 @@ describe("TaskSheet editing", () => {
   it("selects a row on click", async () => {
     const { container, handlers, user } = renderSheet(flatRows());
     await user.click(rowOf(container, 7).children[0]);
-    expect(handlers.onSelect).toHaveBeenCalledWith(7);
+    expect(handlers.onSelect).toHaveBeenCalledWith(7, false);
+  });
+
+  it("extends the selection with Shift+click", async () => {
+    const { container, handlers, user } = renderSheet(flatRows());
+    await user.keyboard("{Shift>}");
+    await user.click(rowOf(container, 7).children[0]);
+    await user.keyboard("{/Shift}");
+    expect(handlers.onSelect).toHaveBeenCalledWith(7, true);
+  });
+
+  it("tells which column fill-down copies when a cell gets focus", async () => {
+    const { container, handlers, user } = renderSheet(flatRows());
+    await user.click(within(rowOf(container, 2)).getByDisplayValue("Phác thảo"));
+    expect(handlers.onFillField).toHaveBeenLastCalledWith("name");
+    const cells = rowOf(container, 2).querySelectorAll("input");
+    await user.click(cells[1]);
+    expect(handlers.onFillField).toHaveBeenLastCalledWith("duration");
+    // The ID column is read-only text; the WBS cell holds no field either.
+    rowOf(container, 2).children[1].dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+    expect(handlers.onFillField).toHaveBeenLastCalledWith(null);
   });
 
   it("renames on blur with trimmed text and ignores empty names", async () => {

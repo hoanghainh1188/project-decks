@@ -18,11 +18,32 @@ export interface TimeRange {
   end_minute: number;
 }
 
+/** Hours that replace the default week on every day of `[from, to]` ("YYYY-MM-DD"). */
+export interface WorkWeek {
+  name: string;
+  from: string;
+  to: string;
+  week: TimeRange[][];
+}
+
+/** What a calendar based on calendar `id` sets itself; the rest comes from the base. */
+export interface CalendarBase {
+  id: number;
+  /** A weekday set on this calendar, or null to take the base's. */
+  week: (TimeRange[] | null)[];
+  exceptions: Record<string, TimeRange[]>;
+  work_weeks: WorkWeek[];
+}
+
 export interface Calendar {
   id: number;
   name: string;
+  /** The merged hours: for a based calendar, its own over its base's. */
   week: TimeRange[][];
   exceptions: Record<string, TimeRange[]>;
+  /** Ordered by `from`, never overlapping. */
+  work_weeks: WorkWeek[];
+  base: CalendarBase | null;
 }
 
 export interface Baseline {
@@ -88,6 +109,8 @@ export interface Task {
   cost: number;
   actual_cost: number;
   remaining_cost: number;
+  /** Hand-entered actual cost; counts only while `Project.editable_actual_costs` is on. */
+  manual_actual_cost: number | null;
   conflict: boolean;
   predecessors: string;
   baselines: Baseline[];
@@ -169,6 +192,8 @@ export interface Assignment {
   remaining_work: number;
   cost: number;
   actual_cost: number;
+  /** Hand-entered actual cost; counts only while costs are editable and the task has no entry. */
+  manual_actual_cost: number | null;
 }
 
 export interface Overallocation {
@@ -206,6 +231,8 @@ export interface Project {
   next_resource_uid: number;
   overallocations: Overallocation[];
   usage: UsageRow[];
+  /** Actual costs are entered by hand instead of computed from progress. */
+  editable_actual_costs: boolean;
 }
 
 export interface Snapshot {
@@ -239,9 +266,13 @@ export type Command =
   | { type: "set_task_calendar"; uid: number; calendar_id: number | null }
   | { type: "add_holiday"; date: string }
   | { type: "remove_holiday"; date: string }
-  | { type: "create_calendar"; name: string }
+  | { type: "create_calendar"; name: string; base_id: number | null }
+  | { type: "set_calendar_base"; calendar_id: number; base_id: number | null }
+  | { type: "set_project_calendar"; calendar_id: number }
   | { type: "rename_calendar"; calendar_id: number; name: string }
   | { type: "set_calendar_week"; calendar_id: number; week: TimeRange[][] }
+  | { type: "set_calendar_work_week"; calendar_id: number; name: string; from: string; to: string; week: TimeRange[][] }
+  | { type: "clear_calendar_work_week"; calendar_id: number; from: string }
   | {
       type: "set_calendar_exceptions";
       calendar_id: number;
@@ -285,10 +316,51 @@ export type Command =
   | { type: "reschedule_uncompleted" }
   | { type: "set_leveling_delay"; uid: number; minutes: number }
   | { type: "set_deadline"; uid: number; date: number | null }
+  | { type: "set_editable_actual_costs"; editable: boolean }
+  | { type: "set_task_actual_cost"; uid: number; cost: number | null }
+  | { type: "set_assignment_actual_cost"; uid: number; cost: number | null }
   | { type: "create_recurring_task"; after_uid: number | null; spec: RecurrenceSpec }
   | { type: "update_recurring_task"; uid: number; spec: RecurrenceSpec }
   | { type: "split_task"; uid: number; at: number; gap: number }
-  | { type: "remove_split"; uid: number; index: number | null };
+  | { type: "remove_split"; uid: number; index: number | null }
+  | { type: "move_segment"; uid: number; index: number; start: number }
+  | { type: "paste_tasks"; after_uid: number | null; clipboard: TaskClipboard }
+  | { type: "fill_down"; from_uid: number; to_uids: number[]; field: FillField };
+
+/** Mirror of `clipboard::TaskCopy`: one copied task, its level relative to the copy. */
+export interface TaskCopy {
+  name: string;
+  level: number;
+  milestone: boolean;
+  manual: boolean;
+  duration: number;
+  work: number;
+  start: number;
+  finish: number;
+  notes: string;
+  priority: number;
+  calendar_id: number | null;
+  /** Matches the calendar by name when pasting into another project. */
+  calendar_name: string | null;
+  constraint_type: ConstraintType;
+  constraint_date: number | null;
+  deadline: number | null;
+  task_type: TaskType;
+  effort_driven: boolean;
+  fixed_cost: number;
+  fixed_cost_accrual: Accrual;
+  splits: Split[];
+  assignments: { resource_uid: number; resource_name: string; units: number; work: number }[];
+}
+
+/** Mirror of `clipboard::TaskClipboard`; links point at positions in `tasks`. */
+export interface TaskClipboard {
+  tasks: TaskCopy[];
+  links: { from: number; to: number; kind: DepKind; lag: number }[];
+}
+
+/** Mirror of `clipboard::FillField`: the columns fill-down copies. */
+export type FillField = "name" | "duration" | "start" | "predecessors" | "percent_complete" | "calendar";
 
 export type ViewId = "gantt" | "tracking" | "resources" | "usage" | "network";
 
@@ -393,9 +465,33 @@ export interface SCurveReport {
   points: SCurvePoint[];
 }
 
+export interface BaselineStatistics {
+  start: number;
+  finish: number;
+  duration: number;
+  work: number;
+  cost: number;
+}
+
+/** Totals for the Thống kê tab of Thông tin dự án, computed by the engine. */
+export interface ProjectStatistics {
+  start: number;
+  finish: number;
+  duration: number;
+  work: number;
+  actual_work: number;
+  remaining_work: number;
+  cost: number;
+  actual_cost: number;
+  remaining_cost: number;
+  percent_complete: number;
+  baseline: BaselineStatistics | null;
+}
+
 export interface ProjectMetrics {
   evm: EvmReport;
   burndown: BurndownReport;
   s_curve: SCurveReport;
+  statistics: ProjectStatistics;
 }
 export type Scale = "day" | "week" | "month";

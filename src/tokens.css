@@ -1,0 +1,182 @@
+/* Every colour of the interface is a token. Light is the default; Root sets data-theme="dark" on <html>
+   when the user chose Dark, or chose System and the system is dark (theme.ts).
+   Canvas drawings read the same tokens through canvasPalette() in theme.ts.
+   Text tokens keep 4.5:1 or more on the surfaces they sit on (theme.test.ts checks). */
+:root {
+  color-scheme: light;
+  /* Same stack as UI_FONT_FAMILY in uiFont.ts. Every rule that sets a font uses this:
+     -apple-system alone can render Vietnamese stacked marks apart in Chromium webviews. */
+  --font-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  color: var(--text);
+  background: var(--surface-app);
+  /* Matches HEAD in ganttLayout.ts: month band plus day band. */
+  --scale-head: 48px;
+
+  /* Surfaces, from the window behind everything to the hover wash. */
+  --surface: #ffffff;
+  --surface-app: #f4f4f6;
+  --surface-chrome: #ececee;
+  --surface-sunken: #f6f6f8;
+  --surface-muted: #fafafa;
+  --surface-hover: #f4f4f7;
+  --surface-active: #e9e9ee;
+  --surface-group: #ececf1;
+  --segmented-bg: #e2e2e7;
+  --tab-hover: #e0e0e5;
+  /* Text, strongest first. */
+  --text: #1d1d1f;
+  --text-secondary: #3a3a3c;
+  --text-tab: #55555e;
+  --text-muted: #67676c;
+  /* Weekend days, hints, days outside the month: still 4.5:1, also on the weekend shade. */
+  --text-faint: #6b6b71;
+  /* Lines. */
+  --border: #d0d0d5;
+  --border-strong: #cfcfd6;
+  --border-subtle: #e4e4e8;
+  --grid: #ececf0;
+  --grid-row: #f0f0f2;
+  --weekend: #f3f3f5;
+  --accent: #0a84ff;
+  /* Behind white text: #0a84ff is only 3.6:1 with white, this is 5.6:1 (WCAG AA). */
+  --accent-strong: #0066cc;
+  --on-accent: #ffffff;
+  /* Dialogs and popovers; menus and small raised controls. */
+  --shadow: rgba(0, 0, 0, 0.18);
+  --shadow-soft: rgba(0, 0, 0, 0.14);
+  --backdrop: rgba(0, 0, 0, 0.25);
+  /* Rows and states. */
+  --selected-row: #e8f2ff;
+  --selected-wash: rgba(10, 132, 255, 0.1);
+  --highlight-row: #fff6d0;
+  --highlight-selected: #fff1c2;
+  --highlight-mark: #e6b325;
+  /* Amber wash on the Gantt: lighter than the critical bar so both stay readable. */
+  --highlight-wash: rgba(255, 214, 64, 0.38);
+  --critical-text: #b42318;
+  --banner-bg: #fff4e5;
+  --banner-text: #8a4b08;
+  --over-bg: #ffd6d6;
+  --over-text: #9f1239;
+  /* Gantt and network bars. */
+  --bar-task: #2f6fad;
+  --bar-critical: #c23b3b;
+  --bar-manual: #2a9d8f;
+  --bar-summary: #1d1d1f;
+  --bar-baseline: #c5c5cb;
+  --bar-progress: rgba(0, 0, 0, 0.28);
+  --bar-knob: #ffffff;
+  --link: #6d6d72;
+  --label-halo: rgba(255, 255, 255, 0.9);
+  --network-bg: #fbfbfc;
+  --network-box: #ffffff;
+  --network-summary-box: #f3f3f6;
+  --network-highlight-box: #fff3c4;
+  /* EVM charts. */
+  --chart-bg: #fafafa;
+  --chart-frame: #e4e4e8;
+  --chart-grid: #ececf0;
+  --chart-ideal: #8e8e93;
+  --chart-planned: #2a9d8f;
+  --chart-actual: #0a84ff;
+  --chart-status: #c23b3b;
+  --chart-ev: #34a853;
+  --chart-ac: #e8890c;
+  --series-icon: #0a84ff;
+  --series-detached: #c77c02;
+  /* Toolbar groups: ink for icon, text and border; a light wash behind; on-tone over ink. */
+  --on-tone: #ffffff;
+  --tone-history: #4f4f5a;
+  --tone-history-bg: #f2f2f5;
+  --tone-create: #157347;
+  --tone-create-bg: #e3f4ea;
+  --tone-edit: #0b5fc0;
+  --tone-edit-bg: #e7f0fc;
+  --tone-danger: #b3261e;
+  --tone-danger-bg: #fdecea;
+  --tone-project: #6240b5;
+  --tone-project-bg: #efeafb;
+  --tone-report: #985800;
+  --tone-report-bg: #fdf1de;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --surface: #1f1f22;
+  --surface-app: #141416;
+  --surface-chrome: #2a2a2e;
+  --surface-sunken: #252529;
+  --surface-muted: #1a1a1d;
+  --surface-hover: #2e2e33;
+  --surface-active: #38383e;
+  --surface-group: #2d2d32;
+  --segmented-bg: #1b1b1e;
+  --tab-hover: #35353a;
+  --text: #f2f2f5;
+  --text-secondary: #d2d2d8;
+  --text-tab: #bdbdc5;
+  --text-muted: #a5a5ae;
+  --text-faint: #96969f;
+  --border: #4a4a52;
+  --border-strong: #3f3f46;
+  --border-subtle: #36363c;
+  --grid: #2e2e33;
+  --grid-row: #2a2a2f;
+  --weekend: #27272c;
+  --accent: #409cff;
+  --accent-strong: #0066cc;
+  --on-accent: #ffffff;
+  --shadow: rgba(0, 0, 0, 0.5);
+  --shadow-soft: rgba(0, 0, 0, 0.4);
+  --backdrop: rgba(0, 0, 0, 0.5);
+  --selected-row: #1b3350;
+  --selected-wash: rgba(64, 156, 255, 0.18);
+  --highlight-row: #3a3117;
+  --highlight-selected: #463b1a;
+  --highlight-mark: #d9a520;
+  --highlight-wash: rgba(230, 179, 37, 0.2);
+  --critical-text: #ff8a80;
+  --banner-bg: #3a2a12;
+  --banner-text: #ffcf8a;
+  --over-bg: #4a1d24;
+  --over-text: #ffb8c1;
+  --bar-task: #4a8fd6;
+  --bar-critical: #e5534b;
+  --bar-manual: #3bb3a3;
+  --bar-summary: #d2d2d8;
+  --bar-baseline: #5e5e66;
+  --bar-progress: rgba(0, 0, 0, 0.38);
+  --bar-knob: #1f1f22;
+  --link: #9a9aa3;
+  --label-halo: rgba(31, 31, 34, 0.9);
+  --network-bg: #19191c;
+  --network-box: #242428;
+  --network-summary-box: #2d2d32;
+  --network-highlight-box: #4a3e18;
+  --chart-bg: #1b1b1e;
+  --chart-frame: #3a3a40;
+  --chart-grid: #2e2e33;
+  --chart-ideal: #9a9aa3;
+  --chart-planned: #3bb3a3;
+  --chart-actual: #409cff;
+  --chart-status: #e5534b;
+  --chart-ev: #4cc06b;
+  --chart-ac: #f0a03c;
+  --series-icon: #409cff;
+  --series-detached: #e0a030;
+  --on-tone: #141416;
+  --tone-history: #c6c6ce;
+  --tone-history-bg: #2c2c31;
+  --tone-create: #63d293;
+  --tone-create-bg: #16301f;
+  --tone-edit: #70b2ff;
+  --tone-edit-bg: #152a42;
+  --tone-danger: #ff8a80;
+  --tone-danger-bg: #3d1b19;
+  --tone-project: #bba5ff;
+  --tone-project-bg: #2a2242;
+  --tone-report: #f2b660;
+  --tone-report-bg: #37290f;
+}

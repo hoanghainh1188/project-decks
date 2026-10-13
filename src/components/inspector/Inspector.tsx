@@ -318,7 +318,8 @@ function DurationInput({
   );
 }
 
-function CostGroup({ task, send }: Props) {
+function CostGroup({ project, task, send }: Props) {
+  const editable = project.editable_actual_costs && !task.summary;
   const m = useMessages(inspectorMessages);
   return (
     <fieldset className="inspector-group">
@@ -338,6 +339,26 @@ function CostGroup({ task, send }: Props) {
               accrual: task.fixed_cost_accrual,
             })
           }
+        />
+      </div>
+      <div>
+        <label title={m.actualCostTip}>{m.actualCost}</label>
+        <input
+          aria-label={m.actualCost}
+          className="narrow"
+          title={m.actualCostTip}
+          disabled={!editable}
+          defaultValue={editable ? (task.manual_actual_cost ?? "") : Math.round(task.actual_cost)}
+          key={`ac-${task.uid}-${editable}-${task.manual_actual_cost}-${task.actual_cost}`}
+          onBlur={(event) => {
+            const text = event.target.value.trim();
+            const cost = text === "" ? null : Number(text);
+            if (cost !== null && !Number.isFinite(cost)) {
+              event.target.value = String(task.manual_actual_cost ?? "");
+              return;
+            }
+            if (cost !== task.manual_actual_cost) send({ type: "set_task_actual_cost", uid: task.uid, cost });
+          }}
         />
       </div>
       <div>

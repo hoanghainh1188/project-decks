@@ -6,7 +6,9 @@
 
 pub mod autosave;
 pub mod calendar;
+pub mod calendar_base;
 pub mod checkpoint;
+pub mod clipboard;
 pub mod command;
 pub mod document;
 pub mod error;
@@ -16,11 +18,17 @@ pub mod lang;
 pub mod level;
 pub mod model;
 pub mod mspdi;
+mod mspdi_calendar_days;
+mod mspdi_cost;
+mod mspdi_progress;
+pub mod mspdi_report;
+mod mspdi_workweeks;
 pub mod network;
 pub mod recovery;
 pub mod recurrence;
 pub mod schedule;
 pub mod split;
+pub mod statistics;
 pub mod store;
 pub mod timeutil;
 pub mod tracking;

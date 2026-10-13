@@ -1,7 +1,7 @@
 import { canSplit } from "./components/inspector/SplitSection";
 import { commandReasons } from "./components/Toolbar.i18n";
 import { pick } from "./i18n";
-import type { Dependency, Snapshot, Task, ViewId } from "./types";
+import type { Dependency, FillField, Snapshot, Task, ViewId } from "./types";
 
 /** Whether a toolbar command can run now, and if not, why (shown as its tooltip). */
 export interface CommandState {
@@ -14,6 +14,12 @@ export interface ToolbarContext {
   task: Task | null;
   view: ViewId;
   fileDialogBusy: boolean;
+  /** Selected task rows in screen order (a Shift+click range); defaults to `task`. */
+  selection?: number[];
+  /** Whether tasks have been copied and can be pasted. */
+  hasClipboard?: boolean;
+  /** The column fill-down copies; null when the focused cell is not one it fills. */
+  fillField?: FillField | null;
 }
 
 export interface ToolbarStates {
@@ -29,6 +35,9 @@ export interface ToolbarStates {
   project: CommandState;
   evm: CommandState;
   exportPdf: CommandState;
+  copyTask: CommandState;
+  pasteTask: CommandState;
+  fillDown: CommandState;
 }
 
 const ON: CommandState = { enabled: true };
@@ -37,6 +46,7 @@ const off = (reason: string): CommandState => ({ enabled: false, reason });
 /** Views where the selected task is on screen, so task commands make sense there. */
 const TASK_VIEWS: ViewId[] = ["gantt", "tracking", "network"];
 const PDF_VIEWS: ViewId[] = ["gantt", "tracking", "network"];
+const SHEET_VIEWS: ViewId[] = ["gantt", "tracking"];
 
 /**
  * The task just before `task` in outline order, which the link commands pair it with.
@@ -61,7 +71,15 @@ export function linkFromAbove(snap: Snapshot | null, task: Task | null): Depende
 }
 
 /** Reasons come in the current interface language. */
-export function toolbarStates({ snap, task, view, fileDialogBusy }: ToolbarContext): ToolbarStates {
+export function toolbarStates({
+  snap,
+  task,
+  view,
+  fileDialogBusy,
+  selection,
+  hasClipboard = false,
+  fillField = null,
+}: ToolbarContext): ToolbarStates {
   const reasons = pick(commandReasons);
   if (!snap) {
     const none = off(reasons.noProject);
@@ -78,6 +96,9 @@ export function toolbarStates({ snap, task, view, fileDialogBusy }: ToolbarConte
       project: none,
       evm: none,
       exportPdf: none,
+      copyTask: none,
+      pasteTask: none,
+      fillDown: none,
     };
   }
   const tasks = snap.project.tasks;
@@ -120,6 +141,17 @@ export function toolbarStates({ snap, task, view, fileDialogBusy }: ToolbarConte
   const unlink = needsTask() ?? (existing ? ON : off(reasons.notLinked));
   const split =
     needsTask() ?? (canSplit(task) ? ON : off(reasons.cannotSplit));
+  const rows = selection ?? (task ? [task.uid] : []);
+  const fillDown = !SHEET_VIEWS.includes(view)
+    ? off(reasons.sheetView)
+    : (needsTask() ??
+      (rows.length < 2 ? off(reasons.oneRow) : fillField == null ? off(reasons.noColumn) : ON));
+  // Pasting with nothing selected appends at the end, as a new task does.
+  const pasteTask = !TASK_VIEWS.includes(view)
+    ? off(reasons.wrongView)
+    : hasClipboard
+      ? ON
+      : off(reasons.nothingCopied);
 
   return {
     undo: snap.can_undo ? ON : off(reasons.nothingToUndo),
@@ -138,5 +170,8 @@ export function toolbarStates({ snap, task, view, fileDialogBusy }: ToolbarConte
       : fileDialogBusy
         ? off(reasons.dialogOpen)
         : ON,
+    copyTask: needsTask() ?? ON,
+    pasteTask,
+    fillDown,
   };
 }

@@ -3,6 +3,8 @@
 
 use sheafly_engine::Lang;
 
+use crate::settings::Theme;
+
 /// Fixed text for one language.
 pub struct Text {
     // Menu bar
@@ -11,6 +13,7 @@ pub struct Text {
     pub menu_view: &'static str,
     pub menu_project: &'static str,
     pub menu_language: &'static str,
+    pub menu_theme: &'static str,
     pub menu_help: &'static str,
     pub open_recent: &'static str,
     pub recent_clear: &'static str,
@@ -49,6 +52,7 @@ pub static VI: Text = Text {
     menu_view: "Xem",
     menu_project: "Dự án",
     menu_language: "Ngôn ngữ",
+    menu_theme: "Giao diện",
     menu_help: "Trợ giúp",
     open_recent: "Mở gần đây",
     recent_clear: "Xóa danh sách",
@@ -92,6 +96,7 @@ pub static EN: Text = Text {
     menu_view: "View",
     menu_project: "Project",
     menu_language: "Language",
+    menu_theme: "Appearance",
     menu_help: "Help",
     open_recent: "Open Recent",
     recent_clear: "Clear Menu",
@@ -141,7 +146,27 @@ pub enum Entry {
         en: &'static str,
         accelerator: Option<&'static str>,
     },
+    /// A system item (Cut, Copy, Paste, Select All) that edits the focused text field.
+    /// The webview turns Copy and Paste outside a field into the page's `copy` and
+    /// `paste` events, which copy and paste the selected tasks.
+    Native {
+        kind: NativeItem,
+        vi: &'static str,
+        en: &'static str,
+    },
     Separator,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NativeItem {
+    Cut,
+    Copy,
+    Paste,
+    SelectAll,
+}
+
+const fn native(kind: NativeItem, vi: &'static str, en: &'static str) -> Entry {
+    Entry::Native { kind, vi, en }
 }
 
 const fn item(
@@ -196,6 +221,25 @@ pub const EDIT_MENU: &[Entry] = &[
     item("undo", "Hoàn tác", "Undo", Some("CmdOrCtrl+Z")),
     item("redo", "Làm lại", "Redo", Some("CmdOrCtrl+Shift+Z")),
     Entry::Separator,
+    native(NativeItem::Cut, "Cắt", "Cut"),
+    native(NativeItem::Copy, "Sao chép", "Copy"),
+    native(NativeItem::Paste, "Dán", "Paste"),
+    native(NativeItem::SelectAll, "Chọn tất cả", "Select All"),
+    Entry::Separator,
+    item(
+        "copy-task",
+        "Sao chép công việc",
+        "Copy Task",
+        Some("CmdOrCtrl+Alt+C"),
+    ),
+    item(
+        "paste-task",
+        "Dán công việc",
+        "Paste Task",
+        Some("CmdOrCtrl+Alt+V"),
+    ),
+    item("fill-down", "Điền xuống", "Fill Down", Some("CmdOrCtrl+D")),
+    Entry::Separator,
     item("indent", "Thụt vào", "Indent", Some("CmdOrCtrl+]")),
     item("outdent", "Thụt ra", "Outdent", Some("CmdOrCtrl+[")),
     item(
@@ -235,6 +279,7 @@ pub const PROJECT_MENU: &[Entry] = &[
         "Project Information…",
         None,
     ),
+    item("working-time", "Lịch làm việc…", "Working Time…", None),
     item("baseline", "Đường cơ sở…", "Baseline…", None),
     Entry::Separator,
     item("level", "Cân bằng nguồn lực", "Level Resources", None),
@@ -260,6 +305,13 @@ pub const PROJECT_MENU: &[Entry] = &[
 pub const LANGUAGES: [(&str, Lang, &str); 2] = [
     ("lang-vi", Lang::Vi, "Tiếng Việt"),
     ("lang-en", Lang::En, "English"),
+];
+
+/// The theme choices: menu id, theme, and the label in Vietnamese and English.
+pub const THEMES: [(&str, Theme, &str, &str); 3] = [
+    ("theme-system", Theme::System, "Theo hệ thống", "System"),
+    ("theme-light", Theme::Light, "Sáng", "Light"),
+    ("theme-dark", Theme::Dark, "Tối", "Dark"),
 ];
 
 /// "Save changes?" for the project called `name`.
@@ -334,6 +386,13 @@ pub fn compact_question(lang: Lang, folded: usize, kept: usize) -> String {
     }
 }
 
+pub fn unknown_theme(lang: Lang, code: &str) -> String {
+    match lang {
+        Lang::Vi => format!("Giao diện không được hỗ trợ: {code}"),
+        Lang::En => format!("Unsupported appearance: {code}"),
+    }
+}
+
 pub fn unknown_language(lang: Lang, code: &str) -> String {
     match lang {
         Lang::Vi => format!("Ngôn ngữ không được hỗ trợ: {code}"),
@@ -384,12 +443,19 @@ mod tests {
             assert!(!name.is_empty());
             assert!(ids.insert(id), "duplicate menu id {id}");
         }
+        for (id, _, vi, en) in THEMES {
+            assert!(!vi.is_empty() && !en.is_empty() && vi != en, "{id}");
+            assert!(ids.insert(id), "duplicate menu id {id}");
+        }
     }
 
     #[test]
     fn english_labels_are_translated() {
         // Every label is translated; the Vietnamese "Gantt" is "Gantt Chart" in English.
         for entry in all_entries() {
+            if let Entry::Native { vi, en, .. } = entry {
+                assert_ne!(vi, en);
+            }
             if let Entry::Item { id, vi, en, .. } = entry {
                 assert_ne!(vi, en, "{id} is not translated");
                 assert!(
@@ -404,7 +470,7 @@ mod tests {
     fn quit_keeps_its_accelerator() {
         let quit = match QUIT {
             Entry::Item { accelerator, .. } => accelerator,
-            Entry::Separator => None,
+            Entry::Native { .. } | Entry::Separator => None,
         };
         assert_eq!(quit, Some("CmdOrCtrl+Q"));
     }
@@ -421,6 +487,7 @@ mod tests {
             (VI.menu_file, EN.menu_file),
             (VI.menu_view, EN.menu_view),
             (VI.menu_language, EN.menu_language),
+            (VI.menu_theme, EN.menu_theme),
             (VI.save, EN.save),
             (VI.dont_save, EN.dont_save),
             (VI.cancel, EN.cancel),

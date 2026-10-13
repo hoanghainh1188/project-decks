@@ -67,8 +67,9 @@ describe("NetworkDiagram", () => {
 
   it("gives critical tasks a red border and milestones a hexagon", () => {
     const { node } = renderDiagram();
-    expect(node("Đào móng").querySelector("rect")).toHaveAttribute("stroke", "#c23b3b");
-    expect(node("Lắp điện").querySelector("rect")).toHaveAttribute("stroke", "#2f6fad");
+    // Colours are theme tokens, so they follow light and dark.
+    expect(node("Đào móng").querySelector("rect")?.getAttribute("style")).toContain("stroke: var(--bar-critical)");
+    expect(node("Lắp điện").querySelector("rect")?.getAttribute("style")).toContain("stroke: var(--bar-task)");
     expect(node("Bàn giao").querySelector("polygon")).toBeInTheDocument();
     expect(node("Bàn giao").textContent).toContain("Mốc");
   });
@@ -90,8 +91,8 @@ describe("NetworkDiagram", () => {
 
   it("outlines the shared selection and tints highlighted tasks", () => {
     const { node } = renderDiagram(2, new Set([1]));
-    expect(node("Lắp điện").querySelector('[stroke="#0a84ff"]')).toBeInTheDocument();
-    expect(node("Đào móng").querySelector('[fill="#fff3c4"]')).toBeInTheDocument();
+    expect(node("Lắp điện").querySelector('[style*="stroke: var(--accent)"]')).toBeInTheDocument();
+    expect(node("Đào móng").querySelector('[style*="fill: var(--network-highlight-box)"]')).toBeInTheDocument();
   });
 
   it("zooms with the toolbar buttons", () => {

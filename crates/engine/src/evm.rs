@@ -121,6 +121,9 @@ pub struct ProjectMetrics {
     pub evm: EvmReport,
     pub burndown: BurndownReport,
     pub s_curve: SCurveReport,
+    /// Totals for Project Information; older callers may lack them.
+    #[serde(default)]
+    pub statistics: crate::statistics::ProjectStatistics,
 }
 
 fn leaves(project: &Project) -> impl Iterator<Item = &Task> {
@@ -259,6 +262,16 @@ fn accrued_over(calendar: &Calendar, accrual: Accrual, intervals: &[(i64, i64)],
 /// Actual cost of `task` incurred by `at`: its current actual cost spread over the
 /// progress windows with the task accrual.
 pub fn actual_cost_at(project: &Project, task: &Task, at: i64) -> f64 {
+    // A hand-entered cost on a task with no progress is booked on the status date.
+    let entered = task.manual_actual_cost.is_some()
+        || project
+            .assignments
+            .iter()
+            .any(|assignment| assignment.task_uid == task.uid && assignment.manual_actual_cost.is_some());
+    if project.editable_actual_costs && entered && task.percent_complete <= 0.0 {
+        let booked = project.status_date.unwrap_or(task.start);
+        return if at >= booked { task.actual_cost } else { 0.0 };
+    }
     let Some(intervals) = progress_intervals(project, task) else {
         return 0.0;
     };
@@ -592,5 +605,6 @@ pub fn metrics(project: &Project, snapshots: &[BurndownSnapshot]) -> ProjectMetr
         evm: evm(project),
         burndown: burndown(project, snapshots),
         s_curve: s_curve(project),
+        statistics: crate::statistics::statistics(project),
     }
 }

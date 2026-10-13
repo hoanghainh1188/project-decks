@@ -3,17 +3,20 @@ use std::collections::BTreeMap;
 use quick_xml::events::Event;
 use quick_xml::Reader;
 
-use crate::calendar::{Calendar, TimeRange};
+use crate::calendar::{Calendar, CalendarBase, TimeRange, WorkWeek};
 use crate::error::EngineError;
 use crate::model::{
     Accrual, Assignment, Baseline, ConstraintType, DepKind, Dependency, Project, Resource,
     ResourceKind, Task, TaskType,
 };
+use crate::mspdi_calendar_days;
+use crate::mspdi_cost;
+use crate::mspdi_report::{ImportNote, ImportReport};
+use crate::mspdi_workweeks::{self, WorkWeekBuilder};
+use crate::mspdi_progress::{self, FileProgress, TaskProgress, TimephasedActual};
 use crate::schedule::schedule;
 use crate::split::Split;
-use crate::timeutil::{
-    format_duration_iso, format_iso, parse_duration_iso, parse_iso,
-};
+use crate::timeutil::{format_duration_iso, format_iso, parse_duration_iso, parse_iso};
 
 /// Write MSPDI XML for tasks, dependencies, calendars, resources, assignments, and baselines.
 pub fn write_mspdi(project: &Project) -> Result<String, EngineError> {
@@ -26,6 +29,7 @@ pub fn write_mspdi(project: &Project) -> Result<String, EngineError> {
         el(&mut xml, "FinishDate", &format_iso(finish));
     }
     el(&mut xml, "CalendarUID", &project.calendar_id.to_string());
+    mspdi_cost::write_editable(&mut xml, project);
     if let Some(status) = project.status_date {
         el(&mut xml, "StatusDate", &format_iso(status));
     }
@@ -39,7 +43,7 @@ pub fn write_mspdi(project: &Project) -> Result<String, EngineError> {
     }
     xml.push_str("</Tasks>\n<Resources>\n");
     for resource in &project.resources {
-        write_resource(&mut xml, resource);
+        write_resource(&mut xml, project, resource);
     }
     xml.push_str("</Resources>\n<Assignments>\n");
     for assignment in &project.assignments {
@@ -77,13 +81,20 @@ fn write_unassigned_splits(xml: &mut String, project: &Project) {
         el(xml, "Units", "1");
         el(xml, "Work", &format_duration_iso(task.work));
         write_timephased(xml, project, task, next_uid, task.work);
+        mspdi_progress::write_actual_timephased(xml, project, task, next_uid, task.actual_work);
         xml.push_str("</Assignment>\n");
         next_uid += 1;
     }
 }
 
 /// Planned work per segment (type 1), with a zero-work period for each gap.
-fn write_timephased(xml: &mut String, project: &Project, task: &Task, assignment_uid: u32, work: i64) {
+fn write_timephased(
+    xml: &mut String,
+    project: &Project,
+    task: &Task,
+    assignment_uid: u32,
+    work: i64,
+) {
     if task.segments.len() < 2 {
         return;
     }
@@ -122,9 +133,13 @@ fn write_period(xml: &mut String, assignment_uid: u32, start: i64, finish: i64, 
 }
 
 /// Rebuild splits from timephased work: gaps are working time with no work between pieces.
+/// Planned work (type 1) shapes the splits when present; actual work (type 2) only
+/// when there is no planned data, since a day with no actual work is not a split.
 fn splits_from_periods(cal: &Calendar, periods: &[Period]) -> Vec<Split> {
+    let planned = periods.iter().any(|period| period.kind == 1);
     let mut work: Vec<(i64, i64)> = periods
         .iter()
+        .filter(|period| !planned || period.kind == 1)
         .filter(|period| period.minutes > 0 && period.finish > period.start)
         .map(|period| (period.start, period.finish))
         .collect();
@@ -152,6 +167,13 @@ fn splits_from_periods(cal: &Calendar, periods: &[Period]) -> Vec<Split> {
 }
 
 pub fn read_mspdi(xml: &str) -> Result<Project, EngineError> {
+    read_mspdi_with_report(xml).map(|(project, _)| project)
+}
+
+/// Read MSPDI and say what the engine read differently from the file.
+pub fn read_mspdi_with_report(xml: &str) -> Result<(Project, ImportReport), EngineError> {
+    let mut notes: Vec<ImportNote> = Vec::new();
+    let mut file_dates: BTreeMap<u32, (i64, i64)> = BTreeMap::new();
     let mut reader = Reader::from_str(xml);
     reader.config_mut().trim_text(true);
     let mut stack: Vec<String> = Vec::new();
@@ -163,6 +185,7 @@ pub fn read_mspdi(xml: &str) -> Result<Project, EngineError> {
     let mut weekday: Option<WeekdayBuilder> = None;
     let mut working: Option<TimeRange> = None;
     let mut exception: Option<ExceptionBuilder> = None;
+    let mut work_week: Option<WorkWeekBuilder> = None;
     let mut task: Option<TaskBuilder> = None;
     let mut link: Option<LinkBuilder> = None;
     let mut baseline: Option<Baseline> = None;
@@ -170,6 +193,8 @@ pub fn read_mspdi(xml: &str) -> Result<Project, EngineError> {
     let mut assignment: Option<AssignmentBuilder> = None;
     let mut period: Option<Period> = None;
     let mut timephased: BTreeMap<u32, Vec<Period>> = BTreeMap::new();
+    let mut file_progress: BTreeMap<u32, FileProgress> = BTreeMap::new();
+    let mut actuals: BTreeMap<u32, TimephasedActual> = BTreeMap::new();
 
     loop {
         match reader.read_event() {
@@ -186,6 +211,7 @@ pub fn read_mspdi(xml: &str) -> Result<Project, EngineError> {
                         })
                     }
                     Some("Exception") => exception = Some(ExceptionBuilder::default()),
+                    Some("WorkWeek") => work_week = Some(WorkWeekBuilder::default()),
                     Some("Task") => task = Some(TaskBuilder::default()),
                     Some("PredecessorLink") => link = Some(LinkBuilder::default()),
                     Some("Baseline") => {
@@ -225,6 +251,9 @@ pub fn read_mspdi(xml: &str) -> Result<Project, EngineError> {
                         }
                     }
                 }
+                if let Some(item) = work_week.as_mut() {
+                    item.read(parent, &name, text.trim());
+                }
                 apply_text(
                     &name,
                     parent,
@@ -256,46 +285,51 @@ pub fn read_mspdi(xml: &str) -> Result<Project, EngineError> {
                     }
                     "WeekDay" => {
                         if let (Some(cal), Some(day)) = (calendar.as_mut(), weekday.take()) {
-                            if let Some(index) = day_type_index(day.day_type) {
-                                cal.week[index] = if day.working { day.ranges } else { Vec::new() };
-                            }
-                        }
-                    }
-                    "Exception" => {
-                        if let (Some(cal), Some(item)) = (calendar.as_mut(), exception.take()) {
-                            // A working exception with no hours is not a day off.
-                            let start_ms = item.from.as_deref().and_then(parse_iso);
-                            if !(item.working && item.ranges.is_empty()) {
-                                if let Some(start_ms) = start_ms {
-                                    let end_ms =
-                                        item.to.as_deref().and_then(parse_iso).unwrap_or(start_ms);
-                                    let ranges = if item.working {
-                                        item.ranges.clone()
-                                    } else {
-                                        Vec::new()
-                                    };
-                                    let mut date = crate::timeutil::civil(start_ms).0;
-                                    let end = crate::timeutil::civil(end_ms).0;
-                                    for _ in 0..3660 {
-                                        cal.exceptions.insert(
-                                            crate::timeutil::date_key(date),
-                                            ranges.clone(),
-                                        );
-                                        if date >= end {
-                                            break;
-                                        }
-                                        date = match date.succ_opt() {
-                                            Some(next) => next,
-                                            None => break,
-                                        };
+                            if day.day_type == Some(0) && work_week.is_none() {
+                                // DayType 0 is an exception, written like an `<Exception>`.
+                                if !mspdi_calendar_days::add_exception(
+                                    &mut cal.exceptions,
+                                    day.from.as_deref(),
+                                    day.to.as_deref(),
+                                    day.working,
+                                    &day.ranges,
+                                ) {
+                                    cal.exceptions_without_dates += 1;
+                                }
+                            } else if let Some(index) = day.day_type.and_then(day_type_index) {
+                                let ranges = if day.working { day.ranges } else { Vec::new() };
+                                match work_week.as_mut() {
+                                    Some(item) => item.week[index] = Some(ranges),
+                                    None => {
+                                        cal.week[index] = ranges;
+                                        cal.listed[index] = true;
                                     }
                                 }
                             }
                         }
                     }
+                    "WorkWeek" => {
+                        if let (Some(cal), Some(item)) = (calendar.as_mut(), work_week.take()) {
+                            match item.finish(&cal.week) {
+                                Some(week) => cal.work_weeks.push(week),
+                                None => cal.weeks_without_dates += 1,
+                            }
+                        }
+                    }
+                    "Exception" => {
+                        if let (Some(cal), Some(item)) = (calendar.as_mut(), exception.take()) {
+                            mspdi_calendar_days::add_exception(
+                                &mut cal.exceptions,
+                                item.from.as_deref(),
+                                item.to.as_deref(),
+                                item.working,
+                                &item.ranges,
+                            );
+                        }
+                    }
                     "Calendar" => {
                         if let Some(builder) = calendar.take() {
-                            project.calendars.push(builder.finish());
+                            project.calendars.push(builder.finish(&mut notes));
                         }
                     }
                     "PredecessorLink" => {
@@ -311,6 +345,22 @@ pub fn read_mspdi(xml: &str) -> Result<Project, EngineError> {
                     "Task" => {
                         if let Some(builder) = task.take() {
                             if !builder.is_null && builder.uid != 0 {
+                                file_progress.insert(
+                                    builder.uid,
+                                    FileProgress {
+                                        progress: builder.progress.clone(),
+                                        duration: builder.duration,
+                                        remaining_duration: builder.remaining_duration,
+                                        actual_start: builder.actual_start,
+                                        actual_finish: builder.actual_finish,
+                                        start: builder.start,
+                                        percent: builder.percent,
+                                        percent_given: builder.percent_given,
+                                    },
+                                );
+                                if let (Some(start), Some(finish)) = (builder.start, builder.finish) {
+                                    file_dates.insert(builder.uid, (start, finish));
+                                }
                                 let mut next_dep = project.next_dependency_uid;
                                 let (parsed, deps) = builder.into_task_and_links(&mut next_dep);
                                 project.next_dependency_uid = next_dep;
@@ -337,8 +387,17 @@ pub fn read_mspdi(xml: &str) -> Result<Project, EngineError> {
                     "Assignment" => {
                         if let Some(mut builder) = assignment.take() {
                             let periods = std::mem::take(&mut builder.periods);
+                            for item in periods.iter().filter(|item| item.kind == 2) {
+                                actuals
+                                    .entry(builder.task_uid)
+                                    .or_default()
+                                    .add(item.start, item.minutes);
+                            }
                             if builder.task_uid != 0 && !periods.is_empty() {
-                                timephased.entry(builder.task_uid).or_default().extend(periods);
+                                timephased
+                                    .entry(builder.task_uid)
+                                    .or_default()
+                                    .extend(periods);
                             }
                             if builder.task_uid != 0 && builder.resource_uid != 0 {
                                 project.assignments.push(builder.finish());
@@ -367,6 +426,8 @@ pub fn read_mspdi(xml: &str) -> Result<Project, EngineError> {
     if project.calendar_by_id(project.calendar_id).is_none() {
         project.calendar_id = project.calendars[0].id;
     }
+    // Based calendars hold only their own part until merged with their base.
+    crate::calendar_base::refresh(&mut project);
     project.next_task_uid = project.tasks.iter().map(|task| task.uid).max().unwrap_or(0) + 1;
     project.next_resource_uid = project
         .resources
@@ -389,7 +450,13 @@ pub fn read_mspdi(xml: &str) -> Result<Project, EngineError> {
         .max()
         .unwrap_or(0)
         + 1;
-    project.next_calendar_uid = project.calendars.iter().map(|calendar| calendar.id).max().unwrap_or(0) + 1;
+    project.next_calendar_uid = project
+        .calendars
+        .iter()
+        .map(|calendar| calendar.id)
+        .max()
+        .unwrap_or(0)
+        + 1;
     for task in &mut project.tasks {
         let work: i64 = project
             .assignments
@@ -416,15 +483,57 @@ pub fn read_mspdi(xml: &str) -> Result<Project, EngineError> {
         .enumerate()
         .filter_map(|(index, task)| {
             let periods = timephased.get(&task.uid)?;
-            Some((index, splits_from_periods(project.task_calendar(task), periods)))
+            Some((
+                index,
+                splits_from_periods(project.task_calendar(task), periods),
+            ))
         })
         .collect();
     for (index, task_splits) in splits {
         project.tasks[index].splits = task_splits;
     }
+    if !project.editable_actual_costs {
+        // The file's actual costs are Project's own calculation, not entries.
+        for task in &mut project.tasks {
+            task.manual_actual_cost = None;
+        }
+        for assignment in &mut project.assignments {
+            assignment.manual_actual_cost = None;
+        }
+    }
+    for task in &mut project.tasks {
+        if let Some(file) = file_progress.get(&task.uid) {
+            if let Some((file, used)) = file.apply(task, actuals.get(&task.uid).copied()) {
+                notes.push(ImportNote::PercentFromActuals { task: task.name.clone(), file, used });
+            }
+        }
+    }
     project.start = project.calendar().next_work_start(project.start);
     schedule(&mut project)?;
-    Ok(project)
+    if keep_real_entries(&mut project) {
+        schedule(&mut project)?;
+    }
+    // A minute either way is rounding in the file, not a move. Largest moves first.
+    let mut moved: Vec<(i64, ImportNote)> = project
+        .tasks
+        .iter()
+        .filter(|task| !task.summary)
+        .filter_map(|task| {
+            let &(start, finish) = file_dates.get(&task.uid)?;
+            let shift = (task.start - start).abs().max((task.finish - finish).abs());
+            (shift > 60_000).then(|| {
+                let note = ImportNote::Moved {
+                    task: task.name.clone(),
+                    before: (start, finish),
+                    after: (task.start, task.finish),
+                };
+                (shift, note)
+            })
+        })
+        .collect();
+    moved.sort_by_key(|(shift, _)| std::cmp::Reverse(*shift));
+    notes.extend(moved.into_iter().map(|(_, note)| note));
+    Ok((project, ImportReport { notes }))
 }
 
 /// The elements being read when a text node arrives; at most a few are open at once.
@@ -469,9 +578,17 @@ fn apply_text(name: &str, parent: Option<&str>, text: &str, project: &mut Projec
             }
         }
         (Some("Project"), "StatusDate") => project.status_date = parse_iso(value),
+        (Some("Project"), "EditableActualCosts") => {
+            project.editable_actual_costs = value == "1" || value.eq_ignore_ascii_case("true");
+        }
         (Some("Calendar"), "UID") => {
             if let Some(calendar) = calendar {
                 calendar.id = value.parse().unwrap_or(calendar.id);
+            }
+        }
+        (Some("Calendar"), "BaseCalendarUID") => {
+            if let Some(calendar) = calendar {
+                calendar.base_uid = value.parse().ok().filter(|uid| *uid != 0);
             }
         }
         (Some("Calendar"), "Name") => {
@@ -481,7 +598,7 @@ fn apply_text(name: &str, parent: Option<&str>, text: &str, project: &mut Projec
         }
         (Some("WeekDay"), "DayType") => {
             if let Some(day) = weekday {
-                day.day_type = value.parse().unwrap_or(0);
+                day.day_type = value.parse().ok();
             }
         }
         (Some("WeekDay"), "DayWorking") => {
@@ -507,11 +624,15 @@ fn apply_text(name: &str, parent: Option<&str>, text: &str, project: &mut Projec
         (Some("TimePeriod"), "FromDate") => {
             if let Some(item) = exception {
                 item.from = Some(value.to_string());
+            } else if let Some(day) = weekday {
+                day.from = Some(value.to_string());
             }
         }
         (Some("TimePeriod"), "ToDate") => {
             if let Some(item) = exception {
                 item.to = Some(value.to_string());
+            } else if let Some(day) = weekday {
+                day.to = Some(value.to_string());
             }
         }
         (Some("Task"), "UID") => {
@@ -586,6 +707,7 @@ fn apply_text(name: &str, parent: Option<&str>, text: &str, project: &mut Projec
         (Some("Task"), "PercentComplete") => {
             if let Some(task) = task {
                 task.percent = value.parse().unwrap_or(0.0);
+                task.percent_given = true;
             }
         }
         (Some("Task"), "ActualStart") => {
@@ -749,9 +871,19 @@ fn apply_text(name: &str, parent: Option<&str>, text: &str, project: &mut Projec
                 assignment.work = parse_duration_iso(value).unwrap_or(0);
             }
         }
+        (Some("Assignment"), "ActualCost") => {
+            if let Some(assignment) = assignment {
+                assignment.actual_cost = value.parse().ok().filter(|cost: &f64| cost.is_finite());
+            }
+        }
         (Some("Assignment"), "OvertimeWork") => {
             if let Some(assignment) = assignment {
                 assignment.overtime_work = parse_duration_iso(value).unwrap_or(0);
+            }
+        }
+        (Some("Task"), field) => {
+            if let Some(task) = task {
+                task.progress.read(field, value);
             }
         }
         _ => {}
@@ -762,28 +894,24 @@ fn write_calendar(xml: &mut String, calendar: &Calendar) {
     xml.push_str("<Calendar>\n");
     el(xml, "UID", &calendar.id.to_string());
     el(xml, "Name", &escape(&calendar.name));
-    el(xml, "IsBaseCalendar", "1");
-    xml.push_str("<WeekDays>\n");
-    for index in 0..7 {
-        let day_type = index_to_day_type(index);
-        xml.push_str("<WeekDay>\n");
-        el(xml, "DayType", &day_type.to_string());
-        let ranges = &calendar.week[index];
-        el(xml, "DayWorking", if ranges.is_empty() { "0" } else { "1" });
-        if !ranges.is_empty() {
-            xml.push_str("<WorkingTimes>\n");
-            for range in ranges {
-                xml.push_str("<WorkingTime>\n");
-                el(xml, "FromTime", &format_clock(range.start_minute));
-                el(xml, "ToTime", &format_clock(range.end_minute));
-                xml.push_str("</WorkingTime>\n");
-            }
-            xml.push_str("</WorkingTimes>\n");
+    // A based calendar writes only what it sets itself, as Project does.
+    let (exceptions, work_weeks) = match &calendar.base {
+        Some(own) => {
+            el(xml, "IsBaseCalendar", "0");
+            el(xml, "BaseCalendarUID", &own.id.to_string());
+            xml.push_str("<WeekDays>\n");
+            write_some_week_days(xml, &own.week);
+            (&own.exceptions, own.work_weeks.as_slice())
         }
-        xml.push_str("</WeekDay>\n");
-    }
+        None => {
+            el(xml, "IsBaseCalendar", "1");
+            xml.push_str("<WeekDays>\n");
+            write_week_days(xml, &calendar.week);
+            (&calendar.exceptions, calendar.work_weeks.as_slice())
+        }
+    };
     xml.push_str("</WeekDays>\n<Exceptions>\n");
-    for (date, ranges) in &calendar.exceptions {
+    for (date, ranges) in exceptions {
         xml.push_str("<Exception>\n<EnteredByOccurrences>0</EnteredByOccurrences>\n<TimePeriod>\n");
         el(xml, "FromDate", &format!("{date}T00:00:00"));
         el(xml, "ToDate", &format!("{date}T23:59:00"));
@@ -802,7 +930,42 @@ fn write_calendar(xml: &mut String, calendar: &Calendar) {
         }
         xml.push_str("</Exception>\n");
     }
-    xml.push_str("</Exceptions>\n</Calendar>\n");
+    xml.push_str("</Exceptions>\n");
+    mspdi_workweeks::write_work_weeks(xml, work_weeks);
+    xml.push_str("</Calendar>\n");
+}
+
+/// The seven `<WeekDay>` elements of a weekly pattern.
+pub(crate) fn write_week_days(xml: &mut String, week: &[Vec<TimeRange>; 7]) {
+    let days: [Option<Vec<TimeRange>>; 7] = week.clone().map(Some);
+    write_some_week_days(xml, &days);
+}
+
+/// `<WeekDay>` elements for the days that are set; the others are left out.
+fn write_some_week_days(xml: &mut String, week: &[Option<Vec<TimeRange>>; 7]) {
+    for (index, ranges) in week.iter().enumerate() {
+        let Some(ranges) = ranges else {
+            continue;
+        };
+        xml.push_str("<WeekDay>\n");
+        el(xml, "DayType", &index_to_day_type(index).to_string());
+        el(xml, "DayWorking", if ranges.is_empty() { "0" } else { "1" });
+        if !ranges.is_empty() {
+            xml.push_str("<WorkingTimes>\n");
+            for range in ranges {
+                xml.push_str("<WorkingTime>\n");
+                el(xml, "FromTime", &format_clock(range.start_minute));
+                el(xml, "ToTime", &format_clock(range.end_minute));
+                xml.push_str("</WorkingTime>\n");
+            }
+            xml.push_str("</WorkingTimes>\n");
+        }
+        xml.push_str("</WeekDay>\n");
+    }
+}
+
+pub(crate) fn escape_text(text: &str) -> String {
+    escape(text)
 }
 
 fn write_task(xml: &mut String, project: &Project, task: &Task) {
@@ -818,11 +981,16 @@ fn write_task(xml: &mut String, project: &Project, task: &Task) {
     el(xml, "Start", &format_iso(task.start));
     el(xml, "Finish", &format_iso(task.finish));
     el(xml, "Duration", &format_duration_iso(task.duration));
+    mspdi_progress::write_stop_resume(xml, project, task);
     el(xml, "Manual", if task.manual { "1" } else { "0" });
     el(xml, "Milestone", if task.milestone { "1" } else { "0" });
     el(xml, "Summary", if task.summary { "1" } else { "0" });
     el(xml, "Critical", if task.critical { "1" } else { "0" });
-    el(xml, "EffortDriven", if task.effort_driven { "1" } else { "0" });
+    el(
+        xml,
+        "EffortDriven",
+        if task.effort_driven { "1" } else { "0" },
+    );
     if task.recurrence.is_some() {
         el(xml, "Recurring", "1");
     }
@@ -836,10 +1004,15 @@ fn write_task(xml: &mut String, project: &Project, task: &Task) {
     if let Some(date) = task.constraint_date {
         el(xml, "ConstraintDate", &format_iso(date));
     }
+    mspdi_progress::write_deadline(xml, task);
     if let Some(calendar_id) = task.calendar_id {
         el(xml, "CalendarUID", &calendar_id.to_string());
     }
-    el(xml, "PercentComplete", &format_number(task.percent_complete));
+    el(
+        xml,
+        "PercentComplete",
+        &format_number(task.percent_complete),
+    );
     if let Some(start) = task.actual_start {
         el(xml, "ActualStart", &format_iso(start));
     }
@@ -851,6 +1024,8 @@ fn write_task(xml: &mut String, project: &Project, task: &Task) {
         "RemainingDuration",
         &format_duration_iso(task.remaining_duration),
     );
+    mspdi_progress::write_task_progress(xml, task);
+    mspdi_cost::write_task_costs(xml, task);
     el(xml, "FixedCost", &format_number(task.fixed_cost));
     el(
         xml,
@@ -861,7 +1036,11 @@ fn write_task(xml: &mut String, project: &Project, task: &Task) {
             Accrual::End => "3",
         },
     );
-    el(xml, "LevelingDelay", &(task.leveling_delay * 10).to_string());
+    el(
+        xml,
+        "LevelingDelay",
+        &(task.leveling_delay * 10).to_string(),
+    );
     for dep in project
         .dependencies
         .iter()
@@ -886,7 +1065,7 @@ fn write_task(xml: &mut String, project: &Project, task: &Task) {
     xml.push_str("</Task>\n");
 }
 
-fn write_resource(xml: &mut String, resource: &Resource) {
+fn write_resource(xml: &mut String, project: &Project, resource: &Resource) {
     xml.push_str("<Resource>\n");
     el(xml, "UID", &resource.uid.to_string());
     el(xml, "Name", &escape(&resource.name));
@@ -903,6 +1082,7 @@ fn write_resource(xml: &mut String, resource: &Resource) {
     el(xml, "StandardRate", &format_number(resource.standard_rate));
     el(xml, "OvertimeRate", &format_number(resource.overtime_rate));
     el(xml, "CostPerUse", &format_number(resource.cost_per_use));
+    mspdi_cost::write_resource_costs(xml, project, resource);
     if let Some(calendar_id) = resource.calendar_id {
         el(xml, "CalendarUID", &calendar_id.to_string());
     }
@@ -922,8 +1102,16 @@ fn write_assignment(xml: &mut String, project: &Project, assignment: &Assignment
         &format_duration_iso(assignment.overtime_work),
     );
     el(xml, "Cost", &format_number(assignment.cost));
+    mspdi_cost::write_assignment_costs(xml, assignment);
     if let Some(task) = project.task(assignment.task_uid) {
         write_timephased(xml, project, task, assignment.uid, assignment.work);
+        mspdi_progress::write_actual_timephased(
+            xml,
+            project,
+            task,
+            assignment.uid,
+            assignment.actual_work,
+        );
     }
     xml.push_str("</Assignment>\n");
 }
@@ -1046,11 +1234,18 @@ struct CalendarBuilder {
     name: String,
     week: [Vec<TimeRange>; 7],
     exceptions: BTreeMap<String, Vec<TimeRange>>,
+    work_weeks: Vec<WorkWeek>,
+    weeks_without_dates: usize,
+    /// `DayType` 0 entries with no usable `FromDate`.
+    exceptions_without_dates: usize,
+    base_uid: Option<u32>,
+    /// Weekdays the file lists; a based calendar takes the others from its base.
+    listed: [bool; 7],
 }
 
 impl CalendarBuilder {
-    fn finish(self) -> Calendar {
-        Calendar {
+    fn finish(self, notes: &mut Vec<ImportNote>) -> Calendar {
+        let mut calendar = Calendar {
             id: if self.id == 0 { 1 } else { self.id },
             name: if self.name.is_empty() {
                 "Chuẩn".into()
@@ -1059,15 +1254,44 @@ impl CalendarBuilder {
             },
             week: self.week,
             exceptions: self.exceptions,
+            work_weeks: Vec::new(),
+            base: None,
+        };
+        for _ in 0..self.weeks_without_dates {
+            notes.push(ImportNote::WorkWeekWithoutDates { calendar: calendar.name.clone() });
         }
+        for _ in 0..self.exceptions_without_dates {
+            notes.push(ImportNote::ExceptionWithoutDates { calendar: calendar.name.clone() });
+        }
+        mspdi_workweeks::add_all(&mut calendar, self.work_weeks, notes);
+        if let Some(base_id) = self.base_uid.filter(|id| *id != calendar.id) {
+            // Only its own part for now; `calendar_base::refresh` merges the base in.
+            let mut week: [Option<Vec<TimeRange>>; 7] = Default::default();
+            for (index, day) in week.iter_mut().enumerate() {
+                if self.listed[index] {
+                    *day = Some(calendar.week[index].clone());
+                }
+            }
+            calendar.base = Some(CalendarBase {
+                id: base_id,
+                week,
+                exceptions: calendar.exceptions.clone(),
+                work_weeks: calendar.work_weeks.clone(),
+            });
+        }
+        calendar
     }
 }
 
 #[derive(Default)]
 struct WeekdayBuilder {
-    day_type: u8,
+    /// `None` when the element is missing or not a number.
+    day_type: Option<u8>,
     working: bool,
     ranges: Vec<TimeRange>,
+    /// The `TimePeriod` of a `DayType` 0 exception.
+    from: Option<String>,
+    to: Option<String>,
 }
 
 #[derive(Default)]
@@ -1101,6 +1325,7 @@ struct TaskBuilder {
     task_type: TaskType,
     effort_driven: bool,
     percent: f64,
+    percent_given: bool,
     actual_start: Option<i64>,
     actual_finish: Option<i64>,
     remaining_duration: Option<i64>,
@@ -1110,6 +1335,7 @@ struct TaskBuilder {
     accrual: Accrual,
     leveling_delay: i64,
     is_null: bool,
+    progress: TaskProgress,
     links: Vec<LinkBuilder>,
     baselines: Vec<Baseline>,
 }
@@ -1127,7 +1353,11 @@ impl TaskBuilder {
         task.milestone = self.milestone || task.duration == 0;
         task.manual = self.manual;
         task.notes = self.notes;
-        task.priority = if self.priority == 0 { 500 } else { self.priority };
+        task.priority = if self.priority == 0 {
+            500
+        } else {
+            self.priority
+        };
         if let Some(constraint) = self.constraint {
             task.constraint_type = constraint;
         }
@@ -1137,9 +1367,12 @@ impl TaskBuilder {
         task.effort_driven = self.effort_driven || self.task_type == TaskType::FixedWork;
         task.percent_complete = self.percent;
         // Progress without actual dates started (and finished) where it was scheduled.
-        task.actual_start = self.actual_start.or(self.start.filter(|_| self.percent > 0.0));
-        task.actual_finish =
-            self.actual_finish.or(self.finish.filter(|_| self.percent >= 100.0));
+        task.actual_start = self
+            .actual_start
+            .or(self.start.filter(|_| self.percent > 0.0));
+        task.actual_finish = self
+            .actual_finish
+            .or(self.finish.filter(|_| self.percent >= 100.0));
         task.remaining_duration = self.remaining_duration.unwrap_or(task.duration);
         if let Some(start) = self.start {
             task.start = start;
@@ -1150,6 +1383,8 @@ impl TaskBuilder {
         task.fixed_cost = self.fixed_cost;
         task.fixed_cost_accrual = self.accrual;
         task.leveling_delay = self.leveling_delay;
+        task.deadline = self.progress.deadline;
+        task.manual_actual_cost = self.progress.actual_cost;
         task.work = task.duration;
         task.baselines = self.baselines;
         let dependencies = self.links;
@@ -1188,7 +1423,11 @@ impl ResourceBuilder {
                 self.name
             },
             kind,
-            max_units: if self.max_units <= 0.0 { 1.0 } else { self.max_units },
+            max_units: if self.max_units <= 0.0 {
+                1.0
+            } else {
+                self.max_units
+            },
             calendar_id: self.calendar_id,
             standard_rate: self.standard_rate,
             overtime_rate: self.overtime_rate,
@@ -1205,6 +1444,7 @@ struct AssignmentBuilder {
     units: f64,
     work: i64,
     overtime_work: i64,
+    actual_cost: Option<f64>,
     periods: Vec<Period>,
 }
 
@@ -1230,6 +1470,7 @@ impl AssignmentBuilder {
             remaining_work: self.work,
             cost: 0.0,
             actual_cost: 0.0,
+            manual_actual_cost: self.actual_cost,
         }
     }
 }
@@ -1264,3 +1505,33 @@ impl TaskBuilder {
     }
 }
 
+/// A file's actual cost is an entry only where it differs from what the engine computes:
+/// Project writes every actual cost, entered or not, and freezing the computed ones would
+/// stop them following progress. Assignments are compared with their computed share, and
+/// tasks with the total their assignment entries give. Returns whether entries remain,
+/// so the caller schedules again with them.
+fn keep_real_entries(project: &mut Project) -> bool {
+    let tasks: Vec<Option<f64>> = project.tasks.iter_mut().map(|task| task.manual_actual_cost.take()).collect();
+    let assignments: Vec<Option<f64>> = project
+        .assignments
+        .iter_mut()
+        .map(|assignment| assignment.manual_actual_cost.take())
+        .collect();
+    if tasks.iter().chain(&assignments).all(Option::is_none) {
+        return false;
+    }
+    let differs = |entry: Option<f64>, computed: f64| entry.filter(|cost| (cost - computed).abs() > 0.005);
+    // Costs as computed with no entries at all.
+    crate::work::publish_costs_and_usage(project);
+    let mut any = false;
+    for (assignment, entry) in project.assignments.iter_mut().zip(assignments) {
+        assignment.manual_actual_cost = differs(entry, assignment.actual_cost);
+        any |= assignment.manual_actual_cost.is_some();
+    }
+    crate::work::publish_costs_and_usage(project);
+    for (task, entry) in project.tasks.iter_mut().zip(tasks) {
+        task.manual_actual_cost = differs(entry, task.actual_cost);
+        any |= task.manual_actual_cost.is_some();
+    }
+    any
+}

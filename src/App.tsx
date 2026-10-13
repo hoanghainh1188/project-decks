@@ -1,64 +1,46 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { CalendarPlus, Check, Flag, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   applyCommand,
   checkAutosave,
-  compactHistory,
   errorMessage,
-  exportMspdi,
-  importMspdi,
   inTauri,
   loadMetrics,
   loadNetworkLayout,
   loadState,
-  newProject,
   onMenu,
   onOpenFile,
   openPending,
-  openProject,
-  openRecent,
   redo,
   savePdf,
-  saveProject,
-  saveProjectAs,
+  setTheme,
   undo,
 } from "./api";
 import { appMessages } from "./App.i18n";
-import { Button } from "./components/Button";
-import { CalendarEditor } from "./components/CalendarEditor";
-import { DateTimeField } from "./components/DateTimeField";
+import { linkAbove, resourceCommand } from "./appCommands";
+import { BaselineDialog } from "./components/BaselineDialog";
 import { EvmPanel } from "./components/EvmPanel";
 import { GanttChart } from "./components/GanttChart";
 import { Inspector } from "./components/inspector/Inspector";
-import { Modal } from "./components/Modal";
 import { NetworkDiagram } from "./components/NetworkDiagram";
+import { ProjectDialog } from "./components/ProjectDialog";
+import { WorkingTimeDialog } from "./components/WorkingTimeDialog";
 import { RecurringDialog, recurringCommand } from "./components/RecurringDialog";
 import { ResourceSheet } from "./components/ResourceSheet";
 import { SplitDialog } from "./components/SplitDialog";
+import { StatusBar } from "./components/StatusBar";
 import { TaskEditDialog } from "./components/TaskEditDialog";
 import { TaskSheet } from "./components/TaskSheet";
 import { TaskUsage } from "./components/TaskUsage";
 import { Toolbar } from "./components/Toolbar";
 import { VIEW_PANEL_ID, ViewBar, viewTabId } from "./components/ViewBar";
-import { formatInstant, normalizePredecessorText } from "./format";
+import { normalizePredecessorText } from "./format";
 import { pick, useLang, useMessages, useSetLang } from "./i18n";
 import { buildGanttPdf, pdfSuggestedName } from "./ganttPdf";
+import { handleMenuAction } from "./menuActions";
 import { buildNetworkPdf } from "./networkPdf";
-import type {
-  Command,
-  DepKind,
-  NetworkLayout,
-  Project,
-  ProjectMetrics,
-  Resource,
-  Scale,
-  Snapshot,
-  Task,
-  ViewId,
-} from "./types";
-import { projectFinish } from "./projectFinish";
+import type { Command, FillField, NetworkLayout, ProjectMetrics, Scale, Snapshot, TaskClipboard, ViewId } from "./types";
 import {
   commitFocusedField,
   isEditableTarget,
@@ -67,10 +49,14 @@ import {
   shouldRunAction,
   trackCommittedText,
 } from "./shortcuts";
-import { linkFromAbove, taskAbove, toolbarStates } from "./toolbarState";
+import { applyTheme, themeChoice, type ThemeChoice } from "./theme";
+import { linkFromAbove, toolbarStates } from "./toolbarState";
 import { undoTo } from "./undoTo";
+import { useFileDialog } from "./useFileDialog";
 import { buildViewRows, type FilterMode, type GroupMode, type HighlightMode } from "./viewRows";
-import { fileName, windowTitle } from "./windowTitle";
+import { windowTitle } from "./windowTitle";
+import { selectionRange } from "./taskSelection";
+import { useClipboardEvents } from "./useClipboardEvents";
 import "./styles.css";
 
 export default function App() {
@@ -81,12 +67,17 @@ export default function App() {
   const [view, setView] = useState<ViewId>("gantt");
   const [scale, setScale] = useState<Scale>("day");
   const [selected, setSelected] = useState<number | null>(null);
+  // The other end of a Shift+click range in the sheet; null when one row is selected.
+  const [selectionEnd, setSelectionEnd] = useState<number | null>(null);
+  const [clipboard, setClipboard] = useState<TaskClipboard | null>(null);
+  const [fillField, setFillField] = useState<FillField | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Thông tin dự án is a transaction: the history cursor when it opened, so Hủy can
   // undo back to it. null while the dialog is closed.
   const [infoStart, setInfoStart] = useState<number | null>(null);
   const [baselineOpen, setBaselineOpen] = useState(false);
-  const [calendarEditId, setCalendarEditId] = useState<number | null>(null);
+  // The calendar Lịch làm việc opened on and the history cursor to roll back to.
+  const [workingTime, setWorkingTime] = useState<{ id: number; start: number } | null>(null);
   const [rowFilter, setRowFilter] = useState<FilterMode>("none");
   const [filterResource, setFilterResource] = useState<number | null>(null);
   const [rowGroup, setRowGroup] = useState<GroupMode>("none");
@@ -105,8 +96,6 @@ export default function App() {
   const exportPdfRef = useRef<() => void>(() => {});
   const syncing = useRef(false);
   const lastAction = useRef(0);
-  const fileDialogBusyRef = useRef(false);
-  const [fileDialogBusy, setFileDialogBusy] = useState(false);
 
   // `null` from `work` means nothing happened (no queued file to open): the last error
   // stays on screen instead of being cleared by a call the user did not make.
@@ -128,51 +117,19 @@ export default function App() {
 
   const send = useCallback((command: Command) => run(() => applyCommand(command)), [run]);
 
-  // One native file chooser at a time. A second click is ignored so it cannot
-  // open another dialog while the first still owns the macOS run loop.
-  // A file the system asked to open while a dialog was up; opened when it closes.
-  const openWhenFreeRef = useRef(false);
+  const { startFileDialog, openFileWhenFree, fileDialogBusy } = useFileDialog(run, setError);
 
-  const startFileDialog = useCallback((work: () => Promise<Snapshot | void | null>) => {
-    if (fileDialogBusyRef.current) return;
-    if (!inTauri()) {
-      setError(pick(appMessages).needsTauri);
-      return;
-    }
-    fileDialogBusyRef.current = true;
-    setFileDialogBusy(true);
-    void (async () => {
-      try {
-        await run(work);
-      } finally {
-        fileDialogBusyRef.current = false;
-        setFileDialogBusy(false);
-        if (openWhenFreeRef.current) {
-          openWhenFreeRef.current = false;
-          openFileWhenFreeRef.current();
-        }
-      }
-    })();
-  }, [run]);
-
-  // Open a double-clicked project now, or as soon as the current dialog closes.
-  const openFileWhenFree = useCallback(() => {
-    if (fileDialogBusyRef.current) openWhenFreeRef.current = true;
-    else startFileDialog(openPending);
-  }, [startFileDialog]);
-  const openFileWhenFreeRef = useRef(openFileWhenFree);
-  openFileWhenFreeRef.current = openFileWhenFree;
-
+  const openWorkingTimeRef = useRef<(id: number) => Promise<void>>(async () => {});
   const createCalendar = useCallback(
-    async (name: string, assign: (id: number) => Command | null, openEditor: boolean) => {
+    async (name: string, assign: (id: number) => Command | null, openEditor: boolean, baseId: number | null) => {
       const before = snap?.project.calendars.map((calendar) => calendar.id) ?? [];
-      const result = await send({ type: "create_calendar", name });
+      const result = await send({ type: "create_calendar", name, base_id: baseId });
       if (!result) return null;
       const created = result.project.calendars.find((calendar) => !before.includes(calendar.id));
       if (!created) return null;
       const command = assign(created.id);
       if (command) await send(command);
-      if (openEditor) setCalendarEditId(created.id);
+      if (openEditor) void openWorkingTimeRef.current(created.id);
       return created.id;
     },
     [send, snap],
@@ -182,8 +139,20 @@ export default function App() {
   // dialog may still be in flight, and must count as before the dialog, not inside it.
   const openProjectInfo = useCallback(async () => {
     const state = await run(loadState);
+    // Statistics from an earlier opening would show as current until the new ones load.
+    setMetrics(null);
     setInfoStart(state ? state.history_cursor : (snap?.history_cursor ?? 0));
   }, [run, snap]);
+
+  // Lịch làm việc is a transaction like Thông tin dự án, from the same kind of cursor.
+  const openWorkingTime = useCallback(
+    async (id: number) => {
+      const state = await run(loadState);
+      setWorkingTime({ id, start: state ? state.history_cursor : (snap?.history_cursor ?? 0) });
+    },
+    [run, snap],
+  );
+  openWorkingTimeRef.current = openWorkingTime;
 
   // Undo every command applied since `cursor`. Queued edits (a field committed on
   // close) land first, because loadState waits for them.
@@ -194,64 +163,77 @@ export default function App() {
   );
 
   const menuRef = useRef<(id: string) => void>(() => {});
+  // Selecting one row ends a Shift+click range.
+  const selectOne = useCallback((uid: number) => {
+    setSelected(uid);
+    setSelectionEnd(null);
+  }, []);
 
   const project = snap?.project;
   const task = project?.tasks.find((item) => item.uid === selected) ?? null;
   const editTask = project?.tasks.find((item) => item.uid === editUid) ?? null;
+  const rows = useMemo(
+    () => (project ? buildViewRows(project, rowFilter, filterResource, rowGroup, rowHighlight) : []),
+    // Group headers ("Chưa gán" / "Unassigned") are text, so they follow the language.
+    [project, rowFilter, filterResource, rowGroup, rowHighlight, lang],
+  );
+  // Ranges exist only in the sheet; the network diagram selects one box.
+  const selection = useMemo(
+    () => {
+      const range = view === "network" ? (selected == null ? [] : [selected]) : selectionRange(rows, selected, selectionEnd);
+      // A deleted or undone task leaves the selection before the effect below replaces it.
+      return range.filter((uid) => project?.tasks.some((item) => item.uid === uid));
+    },
+    [rows, selected, selectionEnd, view, project],
+  );
+  const selectionSet = useMemo(() => new Set(selection), [selection]);
   const closeEdit = useCallback(() => setEditUid(null), []);
 
+  // The theme switches at once; if the backend cannot store it, the previous one comes
+  // back, so the screen, the menu check and settings.json agree.
+  const changeTheme = useCallback((theme: ThemeChoice) => {
+    const previous = themeChoice();
+    applyTheme(theme);
+    if (!inTauri()) return;
+    setTheme(theme).catch((err) => {
+      applyTheme(previous);
+      setError(errorMessage(err));
+    });
+  }, []);
+
   const handleMenu = useCallback(
-    (id: string) => {
-      if (id === "new") startFileDialog(newProject);
-      if (id === "open") startFileDialog(openProject);
-      if (id.startsWith("recent:")) startFileDialog(() => openRecent(Number(id.slice("recent:".length))));
-      if (id === "save" || id === "save-as") {
-        commitFocusedField();
-        startFileDialog(id === "save" ? saveProject : saveProjectAs);
-      }
-      if (id === "import-xml") startFileDialog(importMspdi);
-      if (id === "export-xml") startFileDialog(async () => {
-        await exportMspdi();
-      });
-      if (id === "export-pdf") exportPdfRef.current();
-      // Inside Thông tin dự án, undo stops at the state the dialog opened with, so
-      // Hủy can still restore exactly that.
-      if (id === "undo" && !(infoStart != null && (snap?.history_cursor ?? 0) <= infoStart)) void run(undo);
-      if (id === "redo") void run(redo);
-      if (id === "view-gantt") setView("gantt");
-      if (id === "view-tracking") setView("tracking");
-      if (id === "view-resources") setView("resources");
-      if (id === "view-usage") setView("usage");
-      if (id === "view-network") setView("network");
-      if (id === "view-evm") {
-        setView((current) => (current === "gantt" || current === "tracking" ? current : "gantt"));
-        setEvmOpen(true);
-      }
-      if (id === "scale-day") setScale("day");
-      if (id === "scale-week") setScale("week");
-      if (id === "scale-month") setScale("month");
-      if (id === "project-info") void openProjectInfo();
-      if (id === "lang-vi" || id === "lang-en") {
+    (id: string) =>
+      handleMenuAction(id, {
+        snap,
+        task,
+        view,
+        fileDialogBusy,
+        // Undo stops where the open transaction began, in either dialog.
+        infoStart: infoStart ?? workingTime?.start ?? null,
+        run,
+        send,
+        startFileDialog,
+        exportPdf: () => exportPdfRef.current(),
+        setView,
+        setScale,
+        setEvmOpen,
+        openProjectInfo: () => void openProjectInfo(),
+        openWorkingTime: () => void openWorkingTime(snap?.project.calendar_id ?? 1),
+        openBaseline: () => setBaselineOpen(true),
+        openRecurring: () => setSeriesDialog(0),
+        openSplit: setSplitDialog,
         // A new, untouched project is renamed in the new language by the backend.
-        void setLang(id === "lang-vi" ? "vi" : "en")
-          .then(() => run(loadState))
-          .catch((err) => setError(errorMessage(err)));
-      }
-      if (id === "baseline") setBaselineOpen(true);
-      if (id === "level") void send({ type: "level_resources" });
-      if (id === "clear-level") void send({ type: "clear_leveling" });
-      if (id === "reschedule-uncompleted") void send({ type: "reschedule_uncompleted" });
-      if (id === "compact-history") startFileDialog(compactHistory);
-      if (id === "recurring") setSeriesDialog(0);
-      if (!task) return;
-      // Shortcuts follow the same rules as the toolbar buttons.
-      const states = toolbarStates({ snap, task, view, fileDialogBusy });
-      if (id === "split-task" && states.split.enabled) setSplitDialog(task.uid);
-      if (id === "indent" && states.indent.enabled) void send({ type: "indent", uid: task.uid });
-      if (id === "outdent" && states.outdent.enabled) void send({ type: "outdent", uid: task.uid });
-      if (id === "delete" && states.remove.enabled) void send({ type: "delete_task", uid: task.uid });
-    },
-    [run, send, startFileDialog, task, snap, view, fileDialogBusy, openProjectInfo, infoStart, setLang],
+        changeLang: (next) =>
+          void setLang(next)
+            .then(() => run(loadState))
+            .catch((err) => setError(errorMessage(err))),
+        changeTheme,
+        selection,
+        clipboard,
+        setClipboard,
+        fillField,
+      }),
+    [run, send, startFileDialog, task, snap, view, fileDialogBusy, openProjectInfo, openWorkingTime, infoStart, workingTime, setLang, changeTheme, selection, clipboard, fillField],
   );
   menuRef.current = handleMenu;
 
@@ -269,6 +251,11 @@ export default function App() {
   );
 
   useEffect(() => trackCommittedText(document), []);
+
+  const dispatchFocused = useCallback((id: string) => dispatchAction(id, document.activeElement), [dispatchAction]);
+  useClipboardEvents(dispatchFocused, () =>
+    selection.map((uid) => project?.tasks.find((item) => item.uid === uid)?.name ?? "").join("\n"),
+  );
 
   const title = windowTitle(snap);
   useEffect(() => {
@@ -303,22 +290,30 @@ export default function App() {
       else stops.push(stop);
     };
     void onMenu((id) => dispatchAction(id, document.activeElement)).then(keep);
-    void onOpenFile(() => openFileWhenFreeRef.current()).then(keep);
+    void onOpenFile(openFileWhenFree).then(keep);
     return () => {
       cancelled = true;
       stops.forEach((stop) => stop());
     };
-  }, [run, dispatchAction, startFileDialog]);
+  }, [run, dispatchAction, startFileDialog, openFileWhenFree]);
+
+  // A range whose far end was deleted does not come back when an undo restores it.
+  useEffect(() => {
+    if (selectionEnd != null && !project?.tasks.some((item) => item.uid === selectionEnd)) setSelectionEnd(null);
+  }, [project, selectionEnd]);
 
   useEffect(() => {
     if (!project || project.tasks.length === 0) return;
     if (selected != null && project.tasks.some((item) => item.uid === selected)) return;
     setSelected(project.tasks[0].uid);
+    setSelectionEnd(null);
   }, [project, selected]);
 
-  // EVM and burn-down numbers are computed by the engine; refresh them after every change.
+  // EVM, burn-down and project statistics are computed by the engine; refresh them after
+  // every change while a panel or Thông tin dự án shows them.
+  const infoOpen = infoStart != null;
   useEffect(() => {
-    if (!evmOpen || !snap || !inTauri()) return;
+    if ((!evmOpen && !infoOpen) || !snap || !inTauri()) return;
     let cancelled = false;
     loadMetrics()
       .then((next) => {
@@ -330,7 +325,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [evmOpen, snap]);
+  }, [evmOpen, infoOpen, snap]);
 
   useEffect(() => {
     if (!project || filterResource == null) return;
@@ -349,15 +344,6 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [dispatchAction]);
 
-  const criticalCount = useMemo(
-    () => project?.tasks.filter((item) => item.critical && !item.summary).length ?? 0,
-    [project],
-  );
-  const rows = useMemo(
-    () => (project ? buildViewRows(project, rowFilter, filterResource, rowGroup, rowHighlight) : []),
-    // Group headers ("Chưa gán" / "Unassigned") are text, so they follow the language.
-    [project, rowFilter, filterResource, rowGroup, rowHighlight, lang],
-  );
   // The network diagram ignores grouping; filters choose the boxes and highlight tints them.
   const networkRows = useMemo(
     () => (project && view === "network" ? buildViewRows(project, rowFilter, filterResource, "none", rowHighlight) : []),
@@ -410,9 +396,7 @@ export default function App() {
       await savePdf(bytes, pdfSuggestedName(project.name));
     });
   };
-  const end = project ? projectFinish(project.tasks) : null;
   const splitTask = project?.tasks.find((item) => item.uid === splitDialog) ?? null;
-  const editingCalendar = project?.calendars.find((calendar) => calendar.id === calendarEditId) ?? null;
 
   function syncScroll(source: "sheet" | "gantt") {
     if (syncing.current) return;
@@ -427,7 +411,7 @@ export default function App() {
   return (
     <div className="app">
       <Toolbar
-        states={toolbarStates({ snap, task, view, fileDialogBusy })}
+        states={toolbarStates({ snap, task, view, fileDialogBusy, selection, hasClipboard: clipboard != null, fillField })}
         evmOpen={evmOpen}
         onUndo={() => void run(undo)}
         onRedo={() => void run(redo)}
@@ -484,9 +468,11 @@ export default function App() {
                   assignments={project.assignments}
                   resources={project.resources}
                   selected={selected}
+                  selection={selectionSet}
                   tracking={view === "tracking"}
                   bodyRef={sheetRef}
-                  onSelect={setSelected}
+                  onSelect={(uid, extend) => (extend && selected != null ? setSelectionEnd(uid) : selectOne(uid))}
+                  onFillField={setFillField}
                   onRename={(uid, name) => send({ type: "rename_task", uid, name })}
                   onDuration={(uid, minutes) => send({ type: "set_duration", uid, minutes })}
                   onStart={(uid, start) => send({ type: "move_task", uid, start })}
@@ -499,7 +485,7 @@ export default function App() {
                   onOvertime={(uid, minutes) => send({ type: "set_overtime_work", uid, minutes })}
                   onCalendar={(uid, calendarId) => send({ type: "set_task_calendar", uid, calendar_id: calendarId })}
                   onEditSeries={(uid) => {
-                    setSelected(uid);
+                    selectOne(uid);
                     setSeriesDialog(uid);
                   }}
                   onScroll={() => syncScroll("sheet")}
@@ -511,9 +497,10 @@ export default function App() {
                   selected={selected}
                   tracking={view === "tracking"}
                   bodyRef={ganttRef}
-                  onSelect={setSelected}
+                  onSelect={selectOne}
                   onMove={(uid, start) => send({ type: "move_task", uid, start })}
                   onResize={(uid, finish) => send({ type: "resize_task", uid, finish })}
+                  onMoveSegment={(uid, index, start) => send({ type: "move_segment", uid, index, start })}
                   onLink={(from, to) => send({ type: "add_dependency", predecessor_uid: from, successor_uid: to, kind: "fs", lag: 0 })}
                   onEdit={setEditUid}
                   onScroll={() => syncScroll("gantt")}
@@ -528,10 +515,11 @@ export default function App() {
                 onAdd={(kind) => send({ type: "add_resource", name: m.newResource(project.next_resource_uid), kind })}
                 onChange={(resource) => send(resourceCommand(resource))}
                 onDelete={(uid) => send({ type: "delete_resource", uid })}
-                onEditCalendar={setCalendarEditId}
+                onEditCalendar={(id) => void openWorkingTime(id)}
                 onCreateCalendar={(resource) => {
                   const name = resource.name.trim() ? m.calendarFor(resource.name.trim()) : m.resourceCalendar;
-                  void createCalendar(name, (id) => resourceCommand({ ...resource, calendar_id: id }), true);
+                  // Based on the project calendar, so its holidays reach the resource.
+                  void createCalendar(name, (id) => resourceCommand({ ...resource, calendar_id: id }), true, project.calendar_id);
                 }}
               />
             )}
@@ -542,9 +530,9 @@ export default function App() {
                 layout={networkLayout}
                 selected={selected}
                 highlighted={networkHighlighted}
-                onSelect={setSelected}
+                onSelect={selectOne}
                 onEdit={(uid) => {
-                  setSelected(uid);
+                  selectOne(uid);
                   setEditUid(uid);
                 }}
               />
@@ -558,10 +546,15 @@ export default function App() {
               send={send}
               onEditSeries={setSeriesDialog}
               onSplit={setSplitDialog}
-              onEditCalendar={setCalendarEditId}
+              onEditCalendar={(id) => void openWorkingTime(id)}
               onCreateCalendar={() => {
                 const name = task.name.trim() ? m.calendarFor(task.name.trim()) : m.taskCalendar;
-                void createCalendar(name, (id) => ({ type: "set_task_calendar", uid: task.uid, calendar_id: id }), true);
+                void createCalendar(
+                  name,
+                  (id) => ({ type: "set_task_calendar", uid: task.uid, calendar_id: id }),
+                  true,
+                  project.calendar_id,
+                );
               }}
             />
           )}
@@ -575,19 +568,11 @@ export default function App() {
           />
         )}
       </div>
-      <footer className="status">
-        <span>{snap?.dirty ? m.unsaved : m.saved}</span>
-        <span title={snap?.path ?? undefined}>{snap?.path ? fileName(snap.path) : m.noFile}</span>
-        <span>{m.taskCount(project?.tasks.length ?? 0)}</span>
-        <span>{m.criticalCount(criticalCount)}</span>
-        <span className="status-finish" title={m.finishTip}>
-          {end ? m.finishedBy(formatInstant(end.finish), end.driver) : ""}
-        </span>
-        <span>{m.overallocations(project ? project.overallocations.length : 0)}</span>
-      </footer>
+      <StatusBar snap={snap} />
       {infoStart != null && project && (
         <ProjectDialog
           project={project}
+          statistics={metrics?.statistics ?? null}
           changed={(snap?.history_cursor ?? 0) !== infoStart}
           onSave={() => {
             commitFocusedField();
@@ -602,18 +587,33 @@ export default function App() {
             });
           }}
           send={send}
-          onCreateCalendar={() => createCalendar(m.newCalendar, () => null, false)}
+          onOpenWorkingTime={() => {
+            // Keep what was changed here, then edit working time in its own transaction.
+            commitFocusedField();
+            setInfoStart(null);
+            void openWorkingTime(project.calendar_id);
+          }}
         />
       )}
-      {editingCalendar && (
-        <Modal
-          title={m.editCalendar}
-          className="wide"
-          onClose={() => setCalendarEditId(null)}
-          footer={<Button variant="primary" Icon={Check} onClick={() => setCalendarEditId(null)}>{m.close}</Button>}
-        >
-          <CalendarEditor calendar={editingCalendar} send={send} />
-        </Modal>
+      {workingTime && project && (
+        <WorkingTimeDialog
+          project={project}
+          initialId={workingTime.id}
+          changed={(snap?.history_cursor ?? 0) !== workingTime.start}
+          onSave={() => {
+            commitFocusedField();
+            setWorkingTime(null);
+          }}
+          onCancel={() => {
+            const start = workingTime.start;
+            void rollbackTo(start).then((state) => {
+              if (state && state.history_cursor <= start) setWorkingTime(null);
+              else setError(m.rollbackFailed);
+            });
+          }}
+          send={send}
+          onCreateCalendar={() => createCalendar(m.newCalendar, () => null, false, null)}
+        />
       )}
       {seriesDialog != null && project && (
         <RecurringDialog
@@ -642,152 +642,5 @@ export default function App() {
         />
       )}
     </div>
-  );
-}
-
-function linkAbove(
-  project: Project | undefined,
-  task: Task | null,
-  kind: DepKind,
-  send: (command: Command) => void,
-) {
-  const above = project ? taskAbove(project.tasks, task) : null;
-  if (!above || !task) return;
-  send({ type: "add_dependency", predecessor_uid: above.uid, successor_uid: task.uid, kind, lag: 0 });
-}
-
-function resourceCommand(resource: Resource): Command {
-  return {
-    type: "update_resource",
-    uid: resource.uid,
-    name: resource.name,
-    kind: resource.kind,
-    max_units: resource.max_units,
-    calendar_id: resource.calendar_id,
-    standard_rate: resource.standard_rate,
-    overtime_rate: resource.overtime_rate,
-    cost_per_use: resource.cost_per_use,
-  };
-}
-
-/**
- * Changes apply as they are made, so the Gantt previews them; Lưu keeps them and Hủy
- * (✕, Escape) undoes back to the state the dialog opened with.
- */
-function ProjectDialog({
-  project,
-  changed,
-  onSave,
-  onCancel,
-  send,
-  onCreateCalendar,
-}: {
-  project: Project;
-  changed: boolean;
-  onSave: () => void;
-  onCancel: () => void;
-  send: (command: Command) => Promise<Snapshot | void>;
-  onCreateCalendar: () => Promise<number | null>;
-}) {
-  const m = useMessages(appMessages);
-  const [editingId, setEditingId] = useState(project.calendar_id);
-  const calendar =
-    project.calendars.find((item) => item.id === editingId) ??
-    project.calendars.find((item) => item.id === project.calendar_id) ??
-    project.calendars[0];
-  return (
-    <Modal
-      title={m.projectInfo}
-      className="wide"
-      onClose={onCancel}
-      footer={
-        <>
-          <span className="meta dialog-foot-note">{changed ? m.previewing : ""}</span>
-          <Button Icon={X} onClick={onCancel}>{m.cancel}</Button>
-          <Button variant="primary" Icon={Check} onClick={onSave}>{m.save}</Button>
-        </>
-      }
-    >
-      <label>{m.name}</label>
-      <input
-        // Shows the name again after undo or redo inside the dialog.
-        key={project.name}
-        defaultValue={project.name}
-        onBlur={(event) => {
-          if (event.target.value !== project.name) void send({ type: "rename_project", name: event.target.value });
-        }}
-      />
-      <label>{m.startDate}</label>
-      <DateTimeField
-        ariaLabel={m.startDateLabel}
-        value={project.start}
-        onCommit={(start) => {
-          if (start != null) void send({ type: "set_project_start", start });
-        }}
-      />
-      <label>{m.statusDate}</label>
-      <DateTimeField
-        optional
-        ariaLabel={m.statusDate}
-        value={project.status_date}
-        onCommit={(date) => void send({ type: "set_status_date", date })}
-      />
-      {calendar && (
-        <>
-          <label>{m.editingCalendar}</label>
-          <div className="row">
-            <select value={calendar.id} onChange={(event) => setEditingId(Number(event.target.value))}>
-              {project.calendars.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                  {item.id === project.calendar_id ? m.projectCalendarMark : ""}
-                </option>
-              ))}
-            </select>
-            <Button
-              Icon={CalendarPlus}
-              onClick={() => {
-                void onCreateCalendar().then((id) => {
-                  if (id != null) setEditingId(id);
-                });
-              }}
-            >
-              {m.newCalendarButton}
-            </Button>
-          </div>
-          <CalendarEditor calendar={calendar} send={send} />
-        </>
-      )}
-    </Modal>
-  );
-}
-
-function BaselineDialog({
-  onClose,
-  onSet,
-  onClear,
-}: {
-  onClose: () => void;
-  onSet: (number: number) => void;
-  onClear: (number: number) => void;
-}) {
-  const m = useMessages(appMessages);
-  const [number, setNumber] = useState(0);
-  return (
-    <Modal
-      title={m.baseline}
-      onClose={onClose}
-      footer={
-        <>
-          <Button variant="danger" Icon={Trash2} onClick={() => onClear(Math.min(10, Math.max(0, number)))}>{m.baselineDelete}</Button>
-          <span className="spacer" />
-          <Button Icon={X} onClick={onClose}>{m.close}</Button>
-          <Button variant="primary" Icon={Flag} onClick={() => onSet(Math.min(10, Math.max(0, number)))}>{m.baselineSet}</Button>
-        </>
-      }
-    >
-      <label>{m.baselineNumber}</label>
-      <input type="number" min={0} max={10} value={number} onChange={(event) => setNumber(Number(event.target.value))} />
-    </Modal>
   );
 }

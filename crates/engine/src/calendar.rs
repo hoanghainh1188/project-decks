@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use chrono::{Datelike, NaiveDate};
 use serde::{Deserialize, Serialize};
 
+use crate::error::Invalid;
 use crate::timeutil::{civil, compose, date_key, parse_date_key};
 
 /// A half-open working window `[start_minute, end_minute)` from local midnight.
@@ -21,14 +22,42 @@ impl TimeRange {
     }
 }
 
+/// A pattern of working hours that replaces the default week on every day of
+/// `[from, to]` (both inclusive), like a "work week" of Microsoft Project.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct WorkWeek {
+    pub name: String,
+    pub from: NaiveDate,
+    pub to: NaiveDate,
+    pub week: [Vec<TimeRange>; 7],
+}
+
 /// Week index 0 is Monday. Empty ranges mean a non-working day.
-/// Exception values replace the weekday pattern for that civil date.
+/// For a civil date the hours come from, in order of priority: its exception, the
+/// work week that covers it, the default week. Work weeks never overlap and are
+/// kept ordered by `from`.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Calendar {
     pub id: u32,
     pub name: String,
     pub week: [Vec<TimeRange>; 7],
     pub exceptions: BTreeMap<String, Vec<TimeRange>>,
+    #[serde(default)]
+    pub work_weeks: Vec<WorkWeek>,
+    /// Set when the calendar is based on another one; `week`, `exceptions` and
+    /// `work_weeks` then hold the merged result (see `calendar_base`).
+    #[serde(default)]
+    pub base: Option<CalendarBase>,
+}
+
+/// What a calendar based on calendar `id` sets itself.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CalendarBase {
+    pub id: u32,
+    /// Weekdays set on this calendar; `None` takes the base calendar's day.
+    pub week: [Option<Vec<TimeRange>>; 7],
+    pub exceptions: BTreeMap<String, Vec<TimeRange>>,
+    pub work_weeks: Vec<WorkWeek>,
 }
 
 impl Calendar {
@@ -46,6 +75,8 @@ impl Calendar {
             name: "Chuẩn".into(),
             week,
             exceptions: BTreeMap::new(),
+            work_weeks: Vec::new(),
+            base: None,
         }
     }
 
@@ -54,7 +85,42 @@ impl Calendar {
             return ranges;
         }
         let index = date.weekday().num_days_from_monday() as usize;
-        &self.week[index]
+        &self.week_for(date)[index]
+    }
+
+    /// The weekly pattern in force on `date`, ignoring exceptions.
+    pub fn week_for(&self, date: NaiveDate) -> &[Vec<TimeRange>; 7] {
+        self.work_weeks
+            .iter()
+            .find(|work_week| work_week.from <= date && date <= work_week.to)
+            .map_or(&self.week, |work_week| &work_week.week)
+    }
+
+    /// Add a work week, or replace the one that starts on the same day. Refuses an
+    /// inverted span and a span that overlaps another work week.
+    pub fn set_work_week(&mut self, work_week: WorkWeek) -> Result<(), Invalid> {
+        if work_week.to < work_week.from {
+            return Err(Invalid::BadDate);
+        }
+        let overlaps = |other: &WorkWeek| {
+            other.from != work_week.from
+                && other.from <= work_week.to
+                && work_week.from <= other.to
+        };
+        if self.work_weeks.iter().any(overlaps) {
+            return Err(Invalid::WorkWeekOverlaps);
+        }
+        self.work_weeks.retain(|other| other.from != work_week.from);
+        self.work_weeks.push(work_week);
+        self.work_weeks.sort_by_key(|work_week| work_week.from);
+        Ok(())
+    }
+
+    /// Remove the work week that starts on `from`; false when there is none.
+    pub fn remove_work_week(&mut self, from: NaiveDate) -> bool {
+        let before = self.work_weeks.len();
+        self.work_weeks.retain(|work_week| work_week.from != from);
+        self.work_weeks.len() != before
     }
 
     /// The scheduler asks for every civil day it walks, so the lookup must not allocate.
@@ -104,7 +170,12 @@ impl Calendar {
                 .iter()
                 .any(|range| range.start_minute < range.end_minute)
         };
-        self.week.iter().any(day_works) || self.exceptions.values().any(day_works)
+        self.week.iter().any(day_works)
+            || self.exceptions.values().any(day_works)
+            || self
+                .work_weeks
+                .iter()
+                .any(|work_week| work_week.week.iter().any(day_works))
     }
 
     pub fn is_working_instant(&self, ms: i64) -> bool {
@@ -191,6 +262,9 @@ impl Calendar {
     /// Working minutes of a week without exceptions, when every weekday's ranges are in
     /// order and apart, so consuming them one by one adds up to exactly this.
     fn plain_week_minutes(&self) -> Option<i64> {
+        if !self.work_weeks.is_empty() {
+            return None;
+        }
         let mut total = 0;
         for ranges in &self.week {
             let mut end = 0u16;
@@ -287,12 +361,19 @@ impl Calendar {
         if days <= 0 {
             return 0;
         }
-        let weekday_minutes: Vec<i64> = self.week.iter().map(|ranges| day_minutes(ranges)).collect();
-        let first = from.weekday().num_days_from_monday() as i64;
-        let mut total = days / 7 * weekday_minutes.iter().sum::<i64>();
-        for offset in 0..days % 7 {
-            total += weekday_minutes[((first + offset) % 7) as usize];
+        let mut total = 0;
+        let mut cursor = from;
+        for work_week in &self.work_weeks {
+            let low = work_week.from.max(cursor);
+            let high = work_week.to.succ_opt().unwrap_or(work_week.to).min(to);
+            if high <= low {
+                continue;
+            }
+            total += pattern_minutes(&self.week, cursor, low);
+            total += pattern_minutes(&work_week.week, low, high);
+            cursor = high;
         }
+        total += pattern_minutes(&self.week, cursor, to);
         if self.exceptions.is_empty() {
             return total;
         }
@@ -305,7 +386,7 @@ impl Calendar {
                 continue;
             }
             total += day_minutes(ranges)
-                - weekday_minutes[date.weekday().num_days_from_monday() as usize];
+                - day_minutes(&self.week_for(date)[date.weekday().num_days_from_monday() as usize]);
         }
         total
     }
@@ -416,6 +497,22 @@ fn minutes_within(ranges: &[TimeRange], from: u16, to: u16) -> i64 {
             i64::from(high.saturating_sub(low))
         })
         .sum()
+}
+
+/// Working minutes of the civil days in `[from, to)` under one weekly pattern, no
+/// exceptions: whole weeks by arithmetic, then the days left over.
+fn pattern_minutes(week: &[Vec<TimeRange>; 7], from: NaiveDate, to: NaiveDate) -> i64 {
+    let days = (to - from).num_days();
+    if days <= 0 {
+        return 0;
+    }
+    let weekday_minutes: Vec<i64> = week.iter().map(|ranges| day_minutes(ranges)).collect();
+    let first = from.weekday().num_days_from_monday() as i64;
+    let mut total = days / 7 * weekday_minutes.iter().sum::<i64>();
+    for offset in 0..days % 7 {
+        total += weekday_minutes[((first + offset) % 7) as usize];
+    }
+    total
 }
 
 fn day_minutes(ranges: &[TimeRange]) -> i64 {
@@ -575,6 +672,91 @@ mod tests {
         for _ in 0..2000 {
             let start = origin + next(400 * 1440) * 60_000;
             let minutes = 1 + next(200 * 480);
+            assert_eq!(cal.add_working(start, minutes), walk_add(&cal, start, minutes), "{start} + {minutes}");
+        }
+    }
+
+    fn summer_hours() -> WorkWeek {
+        // Mon–Thu 09:00–13:00 (four hours), no Fridays.
+        let mut week: [Vec<TimeRange>; 7] = Default::default();
+        for day in week.iter_mut().take(4) {
+            *day = vec![TimeRange::new(9 * 60, 13 * 60)];
+        }
+        WorkWeek {
+            name: "Mùa hè".into(),
+            from: NaiveDate::from_ymd_opt(2026, 1, 12).unwrap(),
+            to: NaiveDate::from_ymd_opt(2026, 2, 8).unwrap(),
+            week,
+        }
+    }
+
+    #[test]
+    fn a_work_week_replaces_the_default_week_and_an_exception_replaces_it() {
+        let mut cal = Calendar::standard();
+        cal.set_work_week(summer_hours()).unwrap();
+        let day = |d: u32, m: u32| NaiveDate::from_ymd_opt(2026, m, d).unwrap();
+        assert_eq!(cal.ranges_on(day(9, 1)).len(), 2, "before the work week");
+        assert_eq!(cal.ranges_on(day(12, 1)), &[TimeRange::new(9 * 60, 13 * 60)]);
+        assert!(cal.ranges_on(day(16, 1)).is_empty(), "Friday is off in the work week");
+        assert!(cal.ranges_on(day(8, 2)).is_empty(), "last day, a Sunday");
+        assert_eq!(cal.ranges_on(day(9, 2)).len(), 2, "after the work week");
+        cal.exceptions.insert(date_key(day(13, 1)), vec![TimeRange::new(10 * 60, 11 * 60)]);
+        assert_eq!(cal.ranges_on(day(13, 1)), &[TimeRange::new(10 * 60, 11 * 60)]);
+        // A day's work now takes the work week's four hours.
+        assert_eq!(cal.add_working(timestamp(2026, 1, 12, 9, 0), 240), timestamp(2026, 1, 12, 13, 0));
+        assert_eq!(cal.add_working(timestamp(2026, 1, 12, 9, 0), 480), timestamp(2026, 1, 14, 12, 0));
+    }
+
+    #[test]
+    fn work_weeks_stay_apart_and_ordered() {
+        let mut cal = Calendar::standard();
+        let mut later = summer_hours();
+        later.name = "Sau".into();
+        later.from = NaiveDate::from_ymd_opt(2026, 3, 2).unwrap();
+        later.to = NaiveDate::from_ymd_opt(2026, 3, 8).unwrap();
+        cal.set_work_week(later).unwrap();
+        cal.set_work_week(summer_hours()).unwrap();
+        assert_eq!(cal.work_weeks[0].name, "Mùa hè");
+        let mut overlapping = summer_hours();
+        overlapping.from = NaiveDate::from_ymd_opt(2026, 2, 8).unwrap();
+        overlapping.to = NaiveDate::from_ymd_opt(2026, 2, 20).unwrap();
+        assert_eq!(cal.set_work_week(overlapping), Err(Invalid::WorkWeekOverlaps));
+        let mut inverted = summer_hours();
+        inverted.to = NaiveDate::from_ymd_opt(2026, 1, 1).unwrap();
+        assert_eq!(cal.set_work_week(inverted), Err(Invalid::BadDate));
+        // The same start replaces.
+        let mut renamed = summer_hours();
+        renamed.name = "Mới".into();
+        cal.set_work_week(renamed).unwrap();
+        assert_eq!(cal.work_weeks.len(), 2);
+        assert_eq!(cal.work_weeks[0].name, "Mới");
+        assert!(cal.remove_work_week(NaiveDate::from_ymd_opt(2026, 1, 12).unwrap()));
+        assert!(!cal.remove_work_week(NaiveDate::from_ymd_opt(2026, 1, 12).unwrap()));
+    }
+
+    #[test]
+    fn working_time_and_add_working_with_work_weeks_match_a_day_walk() {
+        let mut cal = Calendar::standard();
+        cal.week[5] = vec![TimeRange::new(9 * 60, 11 * 60)];
+        cal.set_work_week(summer_hours()).unwrap();
+        let mut second = summer_hours();
+        second.from = NaiveDate::from_ymd_opt(2026, 4, 6).unwrap();
+        second.to = NaiveDate::from_ymd_opt(2026, 5, 31).unwrap();
+        cal.set_work_week(second).unwrap();
+        let base = NaiveDate::from_ymd_opt(2026, 1, 1).unwrap();
+        cal.set_day_off(base + chrono::Days::new(20));
+        cal.set_day_off(base + chrono::Days::new(100));
+        let mut seed: u64 = 3;
+        let mut next = |limit: i64| {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            ((seed >> 33) as i64).rem_euclid(limit)
+        };
+        let origin = timestamp(2026, 1, 1, 0, 0);
+        for _ in 0..2000 {
+            let start = origin + next(300 * 1440) * 60_000;
+            let end = start + next(150 * 1440) * 60_000;
+            assert_eq!(cal.working_between(start, end), walk_between(&cal, start, end), "{start} → {end}");
+            let minutes = 1 + next(90 * 480);
             assert_eq!(cal.add_working(start, minutes), walk_add(&cal, start, minutes), "{start} + {minutes}");
         }
     }

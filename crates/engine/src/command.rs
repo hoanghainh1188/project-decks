@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 
-use crate::calendar::{Calendar, TimeRange};
+use crate::calendar::{Calendar, TimeRange, WorkWeek};
+use crate::calendar_base;
+use crate::clipboard::{self, FillField, TaskClipboard};
 use crate::error::{EngineError, Invalid};
 use crate::level::level_project;
 use crate::model::{
@@ -95,6 +97,19 @@ pub enum Command {
     },
     CreateCalendar {
         name: String,
+        /// The new calendar is based on this one (older logs have none: a copy of the
+        /// standard calendar).
+        #[serde(default)]
+        base_id: Option<u32>,
+    },
+    /// Make another calendar the project calendar.
+    SetProjectCalendar {
+        calendar_id: u32,
+    },
+    /// Base a calendar on another, or make it stand alone (`None`); it keeps its hours.
+    SetCalendarBase {
+        calendar_id: u32,
+        base_id: Option<u32>,
     },
     RenameCalendar {
         calendar_id: u32,
@@ -114,6 +129,19 @@ pub enum Command {
         calendar_id: u32,
         from: String,
         to: String,
+    },
+    /// Hours for every day in `[from, to]` that replace the default week (and are
+    /// replaced by exceptions). Replaces the work week that starts on `from`.
+    SetCalendarWorkWeek {
+        calendar_id: u32,
+        name: String,
+        from: String,
+        to: String,
+        week: Vec<Vec<TimeRange>>,
+    },
+    ClearCalendarWorkWeek {
+        calendar_id: u32,
+        from: String,
     },
     MoveTask {
         uid: u32,
@@ -217,6 +245,22 @@ pub enum Command {
         uid: u32,
         date: Option<i64>,
     },
+    /// Turn hand-entered actual costs on or off for the whole project.
+    SetEditableActualCosts {
+        editable: bool,
+    },
+    /// Actual cost entered by hand for a task; it counts only while the project's
+    /// actual costs are editable. `None` goes back to the computed value.
+    SetTaskActualCost {
+        uid: u32,
+        cost: Option<f64>,
+    },
+    /// Actual cost entered by hand for one assignment; the task's own entry, if any,
+    /// still wins. `None` goes back to the computed share.
+    SetAssignmentActualCost {
+        uid: u32,
+        cost: Option<f64>,
+    },
     CreateRecurringTask {
         after_uid: Option<u32>,
         spec: RecurrenceSpec,
@@ -235,6 +279,23 @@ pub enum Command {
     RemoveSplit {
         uid: u32,
         index: Option<u32>,
+    },
+    /// Move segment `index` (1 or later) of a split task to start at `start`.
+    MoveSegment {
+        uid: u32,
+        index: u32,
+        start: i64,
+    },
+    /// Insert copied tasks after `after_uid` and its subtree.
+    PasteTasks {
+        after_uid: Option<u32>,
+        clipboard: TaskClipboard,
+    },
+    /// Copy `field` of `from_uid` to the tasks `to_uids`.
+    FillDown {
+        from_uid: u32,
+        to_uids: Vec<u32>,
+        field: FillField,
     },
 }
 
@@ -264,12 +325,28 @@ pub fn leveled(project: &Project) -> Result<Command, EngineError> {
 pub fn apply_one(project: &mut Project, command: &Command) -> Result<(), EngineError> {
     let edited = edited_task(project, command);
     apply_inner(project, command)?;
+    if let Some(calendar_id) = edited_calendar(project, command) {
+        calendar_base::after_edit(project, calendar_id);
+    }
     if let Some(task) = edited.and_then(|uid| project.task_mut(uid)) {
         if task.series_uid.is_some() {
             task.detached = true;
         }
     }
     Ok(())
+}
+
+/// The calendar whose hours a command edits.
+fn edited_calendar(project: &Project, command: &Command) -> Option<u32> {
+    match command {
+        Command::AddHoliday { .. } | Command::RemoveHoliday { .. } => Some(project.calendar_id),
+        Command::SetCalendarWeek { calendar_id, .. }
+        | Command::SetCalendarExceptions { calendar_id, .. }
+        | Command::ClearCalendarExceptions { calendar_id, .. }
+        | Command::SetCalendarWorkWeek { calendar_id, .. }
+        | Command::ClearCalendarWorkWeek { calendar_id, .. } => Some(*calendar_id),
+        _ => None,
+    }
 }
 
 /// The single task a command edits, so an edited occurrence can leave its series.
@@ -292,11 +369,15 @@ fn edited_task(project: &Project, command: &Command) -> Option<u32> {
         | Command::SetLevelingDelay { uid, .. }
         | Command::SetDeadline { uid, .. }
         | Command::SplitTask { uid, .. }
-        | Command::RemoveSplit { uid, .. } => Some(*uid),
+        | Command::RemoveSplit { uid, .. }
+        | Command::MoveSegment { uid, .. } => Some(*uid),
         // Before any progress these set the duration or work: that is an edit.
         Command::SetRemainingDuration { uid, .. } | Command::SetRemainingWork { uid, .. } => project
             .task(*uid)
-            .filter(|task| !recurrence::has_progress(task))
+            .filter(|task| {
+                !recurrence::has_progress(task)
+                    && !recurrence::with_assignment_entries(project).contains(&task.uid)
+            })
             .map(|task| task.uid),
         Command::AssignResource { task_uid, .. } => Some(*task_uid),
         Command::UpdateAssignment { uid, .. } | Command::RemoveAssignment { uid } => project
@@ -445,9 +526,15 @@ fn apply_inner(project: &mut Project, command: &Command) -> Result<(), EngineErr
         }
         Command::RemoveHoliday { date } => {
             let naive = parse_date_key(date).ok_or_else(|| EngineError::from(Invalid::BadDate))?;
+            if calendar_base::inherits_exception(project, project.calendar_id, naive, naive) {
+                return Err(Invalid::InheritedFromBase.into());
+            }
             project.calendar_mut().clear_exception(naive);
         }
-        Command::CreateCalendar { name } => {
+        Command::CreateCalendar { name, base_id } => {
+            if base_id.is_some_and(|id| project.calendar_by_id(id).is_none()) {
+                return Err(Invalid::NoSuchCalendar.into());
+            }
             let uid = project.alloc_calendar_uid();
             let mut calendar = Calendar::standard();
             calendar.id = uid;
@@ -457,7 +544,26 @@ fn apply_inner(project: &mut Project, command: &Command) -> Result<(), EngineErr
             } else {
                 label.to_string()
             };
+            if let Some(base) = base_id.and_then(|id| project.calendar_by_id(id)) {
+                // Start as the base, owning nothing.
+                calendar.week = base.week.clone();
+                calendar.exceptions = base.exceptions.clone();
+                calendar.work_weeks = base.work_weeks.clone();
+                calendar.base = Some(calendar_base::capture(&calendar, base));
+            }
             project.calendars.push(calendar);
+        }
+        Command::SetProjectCalendar { calendar_id } => {
+            let calendar = project
+                .calendar_by_id(*calendar_id)
+                .ok_or_else(|| EngineError::from(Invalid::NoSuchCalendar))?;
+            if !calendar.has_working_time() {
+                return Err(EngineError::NoWorkingTime);
+            }
+            project.calendar_id = *calendar_id;
+        }
+        Command::SetCalendarBase { calendar_id, base_id } => {
+            calendar_base::set_base(project, *calendar_id, *base_id)?;
         }
         Command::RenameCalendar { calendar_id, name } => {
             let label = name.trim();
@@ -515,6 +621,9 @@ fn apply_inner(project: &mut Project, command: &Command) -> Result<(), EngineErr
                 .ok_or_else(|| EngineError::from(Invalid::BadDate))?;
             let to_date =
                 parse_date_key(to).ok_or_else(|| EngineError::from(Invalid::BadDate))?;
+            if calendar_base::inherits_exception(project, *calendar_id, from_date, to_date) {
+                return Err(Invalid::InheritedFromBase.into());
+            }
             let calendar = project
                 .calendar_mut_by_id(*calendar_id)
                 .ok_or_else(|| EngineError::from(Invalid::NoSuchCalendar))?;
@@ -523,6 +632,48 @@ fn apply_inner(project: &mut Project, command: &Command) -> Result<(), EngineErr
             }
             if !calendar.has_working_time() {
                 return Err(EngineError::NoWorkingTime);
+            }
+        }
+        Command::SetCalendarWorkWeek {
+            calendar_id,
+            name,
+            from,
+            to,
+            week,
+        } => {
+            if week.len() != 7 {
+                return Err(Invalid::WeekNeedsSevenDays.into());
+            }
+            let from = parse_date_key(from).ok_or_else(|| EngineError::from(Invalid::BadDate))?;
+            let to = parse_date_key(to).ok_or_else(|| EngineError::from(Invalid::BadDate))?;
+            let mut days: [Vec<TimeRange>; 7] = Default::default();
+            for (index, day) in week.iter().enumerate() {
+                days[index] = normalize_ranges(day)?;
+            }
+            calendar_base::make_room_for_work_week(project, *calendar_id, from, to);
+            let calendar = project
+                .calendar_mut_by_id(*calendar_id)
+                .ok_or_else(|| EngineError::from(Invalid::NoSuchCalendar))?;
+            calendar.set_work_week(WorkWeek {
+                name: name.trim().to_string(),
+                from,
+                to,
+                week: days,
+            })?;
+            if !calendar.has_working_time() {
+                return Err(EngineError::NoWorkingTime);
+            }
+        }
+        Command::ClearCalendarWorkWeek { calendar_id, from } => {
+            let from = parse_date_key(from).ok_or_else(|| EngineError::from(Invalid::BadDate))?;
+            if calendar_base::inherits_work_week(project, *calendar_id, from) {
+                return Err(Invalid::InheritedFromBase.into());
+            }
+            let calendar = project
+                .calendar_mut_by_id(*calendar_id)
+                .ok_or_else(|| EngineError::from(Invalid::NoSuchCalendar))?;
+            if !calendar.remove_work_week(from) {
+                return Err(Invalid::NoSuchWorkWeek.into());
             }
         }
         Command::MoveTask { uid, start } => move_task(project, *uid, *start)?,
@@ -717,6 +868,22 @@ fn apply_inner(project: &mut Project, command: &Command) -> Result<(), EngineErr
             let task = project.task_mut(*uid).ok_or(EngineError::TaskNotFound)?;
             task.deadline = *date;
         }
+        Command::SetEditableActualCosts { editable } => project.editable_actual_costs = *editable,
+        Command::SetTaskActualCost { uid, cost } => {
+            let task = project.task_mut(*uid).ok_or(EngineError::TaskNotFound)?;
+            if task.summary {
+                return Ok(());
+            }
+            task.manual_actual_cost = cost.map(|cost| cost.max(0.0));
+        }
+        Command::SetAssignmentActualCost { uid, cost } => {
+            let assignment = project
+                .assignments
+                .iter_mut()
+                .find(|assignment| assignment.uid == *uid)
+                .ok_or(EngineError::AssignmentNotFound)?;
+            assignment.manual_actual_cost = cost.map(|cost| cost.max(0.0));
+        }
         Command::CreateRecurringTask { after_uid, spec } => {
             let spec = recurrence::clean_spec(spec);
             recurrence::validate_spec(project, &spec)?;
@@ -749,6 +916,15 @@ fn apply_inner(project: &mut Project, command: &Command) -> Result<(), EngineErr
         }
         Command::SplitTask { uid, at, gap } => split::split_task(project, *uid, *at, *gap)?,
         Command::RemoveSplit { uid, index } => split::remove_split(project, *uid, *index)?,
+        Command::MoveSegment { uid, index, start } => {
+            split::move_segment(project, *uid, *index, *start)?
+        }
+        Command::PasteTasks { after_uid, clipboard } => {
+            clipboard::paste_tasks(project, *after_uid, clipboard)?
+        }
+        Command::FillDown { from_uid, to_uids, field } => {
+            clipboard::fill_down(project, *from_uid, to_uids, *field)?
+        }
     }
     Ok(())
 }
@@ -834,7 +1010,7 @@ fn occurrence_level_error() -> EngineError {
     Invalid::OccurrenceOutline.into()
 }
 
-fn subtree_end(tasks: &[Task], index: usize) -> usize {
+pub(crate) fn subtree_end(tasks: &[Task], index: usize) -> usize {
     let level = tasks[index].outline_level;
     let mut end = index + 1;
     while end < tasks.len() && tasks[end].outline_level > level {

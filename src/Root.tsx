@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
 
 import App from "./App";
-import { getLanguage, inTauri, setLanguage } from "./api";
+import { getLanguage, getTheme, inTauri, setLanguage } from "./api";
 import { detectLang, I18nProvider, type Lang } from "./i18n";
+import { applyTheme } from "./theme";
 
 function systemLang(): Lang {
   return detectLang(navigator.languages?.length ? navigator.languages : [navigator.language]);
 }
 
 /**
- * Picks the interface language before the app renders: the user's saved choice, or the
- * system language. The backend follows along, so the native menu and dialogs match.
+ * Picks the interface language and the theme before the app renders: the user's saved
+ * choices, or the system's. The backend follows along, so the native menu and dialogs match.
  */
 export function Root() {
   // Outside Tauri there is no saved choice to wait for.
@@ -20,7 +21,11 @@ export function Root() {
     if (!inTauri()) return;
     let cancelled = false;
     void (async () => {
-      const saved = await getLanguage().catch(() => null);
+      const [saved, theme] = await Promise.all([
+        getLanguage().catch(() => null),
+        getTheme().catch(() => "system" as const),
+      ]);
+      if (!cancelled) applyTheme(theme);
       const next = saved ?? systemLang();
       // Wait for the backend to switch first, so a dialog it opens at launch (restoring an
       // autosave) is already in this language. Not remembered when it follows the system.

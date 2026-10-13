@@ -44,6 +44,10 @@ pub enum Invalid {
     WeekNeedsSevenDays,
     BadDate,
     DateRangeTooLong,
+    WorkWeekOverlaps,
+    NoSuchWorkWeek,
+    CalendarBaseLoop,
+    InheritedFromBase,
     BadTimeRange,
     OverlappingTimeRanges,
     NotRecurring,
@@ -66,6 +70,8 @@ pub enum Invalid {
     SplitGapNotPositive,
     NotSplit,
     NoSuchSplit,
+    FirstSegment,
+    NothingToPaste,
 }
 
 impl EngineError {
@@ -152,6 +158,22 @@ impl Invalid {
                 fixed("Tuần làm việc phải có 7 ngày", "A work week must have 7 days")
             }
             Self::BadDate => fixed("Ngày không hợp lệ", "Invalid date"),
+            Self::WorkWeekOverlaps => fixed(
+                "Tuần làm việc trùng ngày với một tuần làm việc khác",
+                "That work week overlaps another work week",
+            ),
+            Self::CalendarBaseLoop => fixed(
+                "Lịch không thể dựa trên chính nó hoặc trên lịch dựa trên nó",
+                "A calendar cannot be based on itself or on a calendar based on it",
+            ),
+            Self::InheritedFromBase => fixed(
+                "Mục này đến từ lịch gốc: hãy sửa ở lịch gốc, hoặc đặt giờ khác cho những ngày đó",
+                "This comes from the base calendar: change it there, or set other hours for those days",
+            ),
+            Self::NoSuchWorkWeek => fixed(
+                "Không có tuần làm việc này",
+                "That work week does not exist",
+            ),
             Self::DateRangeTooLong => fixed("Khoảng ngày quá dài", "The date range is too long"),
             Self::BadTimeRange => fixed("Khoảng giờ không hợp lệ", "Invalid working time range"),
             Self::OverlappingTimeRanges => fixed(
@@ -224,6 +246,11 @@ impl Invalid {
             ),
             Self::NotSplit => fixed("Công việc này chưa bị tách", "This task is not split"),
             Self::NoSuchSplit => fixed("Không có khoảng ngắt này", "That split does not exist"),
+            Self::FirstSegment => fixed(
+                "Đoạn đầu dời cùng cả công việc; hãy kéo cả thanh",
+                "The first segment moves with the whole task; drag the bar instead",
+            ),
+            Self::NothingToPaste => fixed("Không có gì để dán", "There is nothing to paste"),
         }
     }
 }
@@ -250,6 +277,10 @@ mod tests {
             WeekNeedsSevenDays,
             BadDate,
             DateRangeTooLong,
+            WorkWeekOverlaps,
+            NoSuchWorkWeek,
+            CalendarBaseLoop,
+            InheritedFromBase,
             BadTimeRange,
             OverlappingTimeRanges,
             NotRecurring,
@@ -272,6 +303,8 @@ mod tests {
             SplitGapNotPositive,
             NotSplit,
             NoSuchSplit,
+            FirstSegment,
+            NothingToPaste,
         ];
         for reason in all {
             let (vi, en) = (reason.message(Lang::Vi), reason.message(Lang::En));

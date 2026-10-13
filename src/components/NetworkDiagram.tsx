@@ -11,9 +11,16 @@ import { networkDiagramMessages } from "./NetworkDiagram.i18n";
 const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 2;
 const PAD = 10;
-const CRITICAL = "#c23b3b";
-const LINK = "#6d6d72";
-const SELECTED = "#0a84ff";
+// SVG colours are CSS tokens, set through `style` so they follow the theme.
+const CRITICAL = "var(--bar-critical)";
+const LINK = "var(--link)";
+const SELECTED = "var(--accent)";
+const BARS = {
+  critical: CRITICAL,
+  manual: "var(--bar-manual)",
+  summary: "var(--bar-summary)",
+  task: "var(--bar-task)",
+};
 
 interface Props {
   project: Project;
@@ -172,10 +179,10 @@ export function NetworkDiagram({ project, layout, selected, highlighted, onSelec
           >
             <defs>
               <marker id="network-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
-                <path d="M0,1 L9,5 L0,9 z" fill={LINK} />
+                <path d="M0,1 L9,5 L0,9 z" style={{ fill: LINK }} />
               </marker>
               <marker id="network-arrow-critical" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
-                <path d="M0,1 L9,5 L0,9 z" fill={CRITICAL} />
+                <path d="M0,1 L9,5 L0,9 z" style={{ fill: CRITICAL }} />
               </marker>
             </defs>
             {layout.edges.map((edge) => (
@@ -238,12 +245,12 @@ function EdgePath({ edge, critical }: { edge: NetworkEdge; critical: boolean }) 
       <path
         d={edgePathData(edge.points)}
         fill="none"
-        stroke={color}
+        style={{ stroke: color }}
         strokeWidth={critical ? 1.8 : 1.2}
         markerEnd={`url(#${critical ? "network-arrow-critical" : "network-arrow"})`}
       />
       {label && a && b && (
-        <text className="network-edge-label" x={(a.x + b.x) / 2} y={(a.y + b.y) / 2 - 4} textAnchor="middle" fill={color}>
+        <text className="network-edge-label" x={(a.x + b.x) / 2} y={(a.y + b.y) / 2 - 4} textAnchor="middle" style={{ fill: color }}>
           {label}
         </text>
       )}
@@ -270,8 +277,8 @@ function TaskBox({
   onEdit: (uid: number) => void;
 }) {
   const { width: w, height: h } = node;
-  const stroke = barColor(task);
-  const fill = highlighted ? "#fff3c4" : task.summary ? "#f3f3f6" : "white";
+  const stroke = barColor(task, BARS);
+  const fill = highlighted ? "var(--network-highlight-box)" : task.summary ? "var(--network-summary-box)" : "var(--network-box)";
   const percent = Math.max(0, Math.min(100, task.percent_complete));
   const m = useMessages(networkBoxMessages);
   const name = task.name.trim() || m.taskFallback(task.id);
@@ -287,11 +294,11 @@ function TaskBox({
       <title>{`${task.wbs} ${name}${task.critical ? m.criticalSuffix : ""}`}</title>
       {selected && <Shape task={task} w={w} h={h} inset={-4} fill="none" stroke={SELECTED} strokeWidth={2.5} />}
       <Shape task={task} w={w} h={h} inset={0} fill={fill} stroke={stroke} strokeWidth={task.critical ? 2.4 : 1.4} />
-      {task.summary && <rect x={1} y={1} width={w - 2} height={26} fill={stroke} opacity={0.12} />}
+      {task.summary && <rect x={1} y={1} width={w - 2} height={26} style={{ fill: stroke }} opacity={0.12} />}
       <text className="network-name" x={w / 2} y={18} textAnchor="middle">
         {truncate(name, w - 2 * pad, 7)}
       </text>
-      <line x1={task.milestone ? 14 : 1} x2={task.milestone ? w - 14 : w - 1} y1={27} y2={27} stroke={stroke} strokeOpacity={0.35} />
+      <line x1={task.milestone ? 14 : 1} x2={task.milestone ? w - 14 : w - 1} y1={27} y2={27} style={{ stroke }} strokeOpacity={0.35} />
       <text className="network-field" x={pad} y={43}>
         {`ID ${task.id}${task.wbs ? ` · WBS ${task.wbs}` : ""}`}
       </text>
@@ -311,7 +318,7 @@ function TaskBox({
         <tspan x={w - pad} textAnchor="end">{`${Math.round(percent)}%`}</tspan>
       </text>
       {percent > 0 && (
-        <rect x={pad} y={h - 6} width={((w - 2 * pad) * percent) / 100} height={3} rx={1.5} fill={stroke} opacity={0.6} />
+        <rect x={pad} y={h - 6} width={((w - 2 * pad) * percent) / 100} height={3} rx={1.5} style={{ fill: stroke }} opacity={0.6} />
       )}
     </g>
   );
@@ -351,7 +358,7 @@ function Shape({
     ]
       .map(([x, y]) => `${x},${y}`)
       .join(" ");
-    return <polygon points={points} fill={fill} stroke={stroke} strokeWidth={strokeWidth} />;
+    return <polygon points={points} style={{ fill, stroke }} strokeWidth={strokeWidth} />;
   }
   return (
     <rect
@@ -360,8 +367,7 @@ function Shape({
       width={w - 2 * inset}
       height={h - 2 * inset}
       rx={task.summary ? 2 : 6}
-      fill={fill}
-      stroke={stroke}
+      style={{ fill, stroke }}
       strokeWidth={strokeWidth}
     />
   );

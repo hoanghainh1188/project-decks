@@ -1,6 +1,7 @@
 import { utcMidnight } from "./format";
 import { timescaleMessages } from "./ganttLayout.i18n";
 import { pick } from "./i18n";
+import { LIGHT_CANVAS, type CanvasPalette } from "./theme";
 import type { Project, Scale, Segment, Task } from "./types";
 
 export const ROW = 28;
@@ -69,6 +70,28 @@ export function previewPieces(task: Task, start: number, finish: number): Segmen
   });
 }
 
+/**
+ * Index of the piece of a split bar at content x, or null when the bar is not split or
+ * x is in a gap. Dragging piece 1 or later moves that piece and the ones after it.
+ */
+export function segmentAt(task: Task, x: number, origin: number, px: number): number | null {
+  const pieces = splitPieces(task, task.segments);
+  if (!pieces) return null;
+  const index = pieces.findIndex((piece) => {
+    const span = pieceSpan(piece, origin, px);
+    return x >= span.x - 2 && x <= span.x + span.w + 2;
+  });
+  return index < 0 ? null : index;
+}
+
+/** Pieces while piece `index` is dragged to `start`: it and the later ones move together. */
+export function segmentPreview(task: Task, index: number, start: number): Segment[] | null {
+  const pieces = splitPieces(task, task.segments);
+  if (!pieces || !pieces[index]) return pieces;
+  const shift = start - pieces[index].start;
+  return pieces.map((piece, at) => (at < index ? piece : { start: piece.start + shift, finish: piece.finish + shift }));
+}
+
 /** Horizontal extent of one piece, in content pixels. */
 export function pieceSpan(piece: Segment, origin: number, px: number): { x: number; w: number } {
   const x = ((piece.start - origin) / 86400000) * px;
@@ -87,11 +110,12 @@ export function progressWidths(spans: { w: number }[], percent: number): number[
   });
 }
 
-export function barColor(task: Task): string {
-  if (task.critical) return "#c23b3b";
-  if (task.manual) return "#2a9d8f";
-  if (task.summary) return "#1d1d1f";
-  return "#2f6fad";
+/** The bar colour of `task`: light for PDF export, or the on-screen canvas palette. */
+export function barColor(task: Task, palette: Pick<CanvasPalette, "critical" | "manual" | "summary" | "task"> = LIGHT_CANVAS): string {
+  if (task.critical) return palette.critical;
+  if (task.manual) return palette.manual;
+  if (task.summary) return palette.summary;
+  return palette.task;
 }
 
 /** Full-day exceptions on the project calendar, matching the Gantt shading. */
