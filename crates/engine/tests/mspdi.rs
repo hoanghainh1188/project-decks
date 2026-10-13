@@ -435,11 +435,12 @@ fn hand_entered_actual_costs_round_trip_and_feed_the_totals() {
     assert!(back.editable_actual_costs);
     for task in &doc.project.tasks {
         let after = back.task(task.uid).unwrap();
-        assert_eq!(
-            after.manual_actual_cost, task.manual_actual_cost,
-            "{}",
-            task.name
-        );
+        // A file does not say whether a task's cost was entered on the task or on its
+        // assignments; with assignments the entry comes back on them (numbers equal).
+        let assigned = back.assignments.iter().any(|a| a.task_uid == task.uid);
+        if !assigned {
+            assert_eq!(after.manual_actual_cost, task.manual_actual_cost, "{}", task.name);
+        }
         assert_eq!(
             after.actual_cost, task.actual_cost,
             "{}: actual cost",

@@ -330,6 +330,7 @@ fn push_assignment(project: &mut Project, task_uid: u32, resource_uid: u32, copy
         remaining_work: work,
         cost: 0.0,
         actual_cost: 0.0,
+        manual_actual_cost: None,
     });
 }
 

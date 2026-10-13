@@ -181,6 +181,8 @@ export interface Assignment {
   remaining_work: number;
   cost: number;
   actual_cost: number;
+  /** Hand-entered actual cost; counts only while costs are editable and the task has no entry. */
+  manual_actual_cost: number | null;
 }
 
 export interface Overallocation {
@@ -303,6 +305,7 @@ export type Command =
   | { type: "set_deadline"; uid: number; date: number | null }
   | { type: "set_editable_actual_costs"; editable: boolean }
   | { type: "set_task_actual_cost"; uid: number; cost: number | null }
+  | { type: "set_assignment_actual_cost"; uid: number; cost: number | null }
   | { type: "create_recurring_task"; after_uid: number | null; spec: RecurrenceSpec }
   | { type: "update_recurring_task"; uid: number; spec: RecurrenceSpec }
   | { type: "split_task"; uid: number; at: number; gap: number }

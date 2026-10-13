@@ -213,6 +213,13 @@ class FakeBackend {
         calendar.work_weeks = calendar.work_weeks.filter((item) => item.from !== command.from);
         return;
       }
+      case "set_assignment_actual_cost": {
+        const assignment = project.assignments.find((item) => item.uid === command.uid);
+        if (!assignment) throw `Không có phân công ${command.uid}`;
+        assignment.manual_actual_cost = command.cost;
+        if (project.editable_actual_costs && command.cost != null) assignment.actual_cost = command.cost;
+        return;
+      }
       case "set_editable_actual_costs":
         project.editable_actual_costs = command.editable;
         return;

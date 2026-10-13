@@ -307,6 +307,10 @@ pub struct Assignment {
     pub remaining_work: i64,
     pub cost: f64,
     pub actual_cost: f64,
+    /// Actual cost entered by hand for this resource on this task. Used only while
+    /// `Project::editable_actual_costs` is on and the task has no entry of its own.
+    #[serde(default)]
+    pub manual_actual_cost: Option<f64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

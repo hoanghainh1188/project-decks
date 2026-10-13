@@ -241,6 +241,12 @@ pub enum Command {
         uid: u32,
         cost: Option<f64>,
     },
+    /// Actual cost entered by hand for one assignment; the task's own entry, if any,
+    /// still wins. `None` goes back to the computed share.
+    SetAssignmentActualCost {
+        uid: u32,
+        cost: Option<f64>,
+    },
     CreateRecurringTask {
         after_uid: Option<u32>,
         spec: RecurrenceSpec,
@@ -338,7 +344,10 @@ fn edited_task(project: &Project, command: &Command) -> Option<u32> {
         // Before any progress these set the duration or work: that is an edit.
         Command::SetRemainingDuration { uid, .. } | Command::SetRemainingWork { uid, .. } => project
             .task(*uid)
-            .filter(|task| !recurrence::has_progress(task))
+            .filter(|task| {
+                !recurrence::has_progress(task)
+                    && !recurrence::with_assignment_entries(project).contains(&task.uid)
+            })
             .map(|task| task.uid),
         Command::AssignResource { task_uid, .. } => Some(*task_uid),
         Command::UpdateAssignment { uid, .. } | Command::RemoveAssignment { uid } => project
@@ -804,6 +813,14 @@ fn apply_inner(project: &mut Project, command: &Command) -> Result<(), EngineErr
                 return Ok(());
             }
             task.manual_actual_cost = cost.map(|cost| cost.max(0.0));
+        }
+        Command::SetAssignmentActualCost { uid, cost } => {
+            let assignment = project
+                .assignments
+                .iter_mut()
+                .find(|assignment| assignment.uid == *uid)
+                .ok_or(EngineError::AssignmentNotFound)?;
+            assignment.manual_actual_cost = cost.map(|cost| cost.max(0.0));
         }
         Command::CreateRecurringTask { after_uid, spec } => {
             let spec = recurrence::clean_spec(spec);

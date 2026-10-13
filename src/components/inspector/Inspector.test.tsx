@@ -113,6 +113,26 @@ describe("Inspector", () => {
     expect(send).toHaveBeenLastCalledWith({ type: "set_task_actual_cost", uid: 2, cost: null });
   });
 
+  it("enters an assignment's actual cost only while costs are editable", () => {
+    const task = { ...leaf };
+    const resource = makeResource({ uid: 7, name: "An" });
+    const assignment = makeAssignment({ uid: 3, task_uid: 2, resource_uid: 7, actual_cost: 400 });
+    const off = makeProject({ tasks: [task], resources: [resource], assignments: [assignment] });
+    const { unmount } = renderInspector(task, off);
+    expect(screen.queryByLabelText("Chi phí thực tế An")).not.toBeInTheDocument();
+    unmount();
+    const { send } = renderInspector(task, { ...off, editable_actual_costs: true });
+    const field = screen.getByLabelText("Chi phí thực tế An");
+    expect(field).toHaveAttribute("placeholder", "400");
+    fireEvent.change(field, { target: { value: "650" } });
+    fireEvent.blur(field);
+    expect(send).toHaveBeenLastCalledWith({ type: "set_assignment_actual_cost", uid: 3, cost: 650 });
+    fireEvent.change(field, { target: { value: "abc" } });
+    fireEvent.blur(field);
+    expect(field).toHaveValue("");
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps a summary task's actual cost computed even when costs are editable", () => {
     renderInspector(summary, makeProject({ tasks: [summary], editable_actual_costs: true }));
     expect(screen.getByLabelText("Chi phí thực tế")).toBeDisabled();

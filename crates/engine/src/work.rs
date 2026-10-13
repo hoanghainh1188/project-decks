@@ -240,6 +240,7 @@ pub fn add_assignment(project: &mut Project, task_uid: u32, resource_uid: u32, u
         remaining_work: 0,
         cost: 0.0,
         actual_cost: 0.0,
+        manual_actual_cost: None,
     });
     // Adding another resource to an effort-driven fixed-duration task keeps
     // duration and total work, and shares that work across the new unit weights.
@@ -604,14 +605,28 @@ fn compute_costs(project: &mut Project, by_task: &HashMap<u32, Vec<usize>>) {
                 }
             }
         };
+        // Assignment entries replace their computed share; the task total follows them
+        // unless the task has an entry of its own.
+        let mut any_entry = false;
+        let mut labor_actual = 0.0;
         for &position in own {
             let assignment = &mut project.assignments[position];
-            if labor > 0.0 {
-                assignment.actual_cost = actual_labor * (assignment.cost / labor);
+            let share = if labor > 0.0 {
+                actual_labor * (assignment.cost / labor)
             } else {
-                assignment.actual_cost = 0.0;
-            }
+                0.0
+            };
+            // The task's own entry wins: assignments then share it.
+            let entry = assignment.manual_actual_cost.filter(|_| editable && manual.is_none());
+            any_entry |= entry.is_some();
+            assignment.actual_cost = entry.map_or(share, |cost| cost.max(0.0));
+            labor_actual += assignment.actual_cost;
         }
+        let actual = if manual.is_none() && any_entry {
+            actual - actual_labor + labor_actual
+        } else {
+            actual
+        };
         let task = &mut project.tasks[index];
         task.cost = total;
         task.actual_cost = actual;

@@ -486,6 +486,9 @@ pub fn read_mspdi(xml: &str) -> Result<Project, EngineError> {
         for task in &mut project.tasks {
             task.manual_actual_cost = None;
         }
+        for assignment in &mut project.assignments {
+            assignment.manual_actual_cost = None;
+        }
     }
     for task in &mut project.tasks {
         if let Some(file) = file_progress.get(&task.uid) {
@@ -494,6 +497,9 @@ pub fn read_mspdi(xml: &str) -> Result<Project, EngineError> {
     }
     project.start = project.calendar().next_work_start(project.start);
     schedule(&mut project)?;
+    if keep_real_entries(&mut project) {
+        schedule(&mut project)?;
+    }
     Ok(project)
 }
 
@@ -820,6 +826,11 @@ fn apply_text(name: &str, parent: Option<&str>, text: &str, project: &mut Projec
         (Some("Assignment"), "Work") => {
             if let Some(assignment) = assignment {
                 assignment.work = parse_duration_iso(value).unwrap_or(0);
+            }
+        }
+        (Some("Assignment"), "ActualCost") => {
+            if let Some(assignment) = assignment {
+                assignment.actual_cost = value.parse().ok().filter(|cost: &f64| cost.is_finite());
             }
         }
         (Some("Assignment"), "OvertimeWork") => {
@@ -1335,6 +1346,7 @@ struct AssignmentBuilder {
     units: f64,
     work: i64,
     overtime_work: i64,
+    actual_cost: Option<f64>,
     periods: Vec<Period>,
 }
 
@@ -1360,6 +1372,7 @@ impl AssignmentBuilder {
             remaining_work: self.work,
             cost: 0.0,
             actual_cost: 0.0,
+            manual_actual_cost: self.actual_cost,
         }
     }
 }
@@ -1392,4 +1405,35 @@ impl TaskBuilder {
         }
         (task, dependencies)
     }
+}
+
+/// A file's actual cost is an entry only where it differs from what the engine computes:
+/// Project writes every actual cost, entered or not, and freezing the computed ones would
+/// stop them following progress. Assignments are compared with their computed share, and
+/// tasks with the total their assignment entries give. Returns whether entries remain,
+/// so the caller schedules again with them.
+fn keep_real_entries(project: &mut Project) -> bool {
+    let tasks: Vec<Option<f64>> = project.tasks.iter_mut().map(|task| task.manual_actual_cost.take()).collect();
+    let assignments: Vec<Option<f64>> = project
+        .assignments
+        .iter_mut()
+        .map(|assignment| assignment.manual_actual_cost.take())
+        .collect();
+    if tasks.iter().chain(&assignments).all(Option::is_none) {
+        return false;
+    }
+    let differs = |entry: Option<f64>, computed: f64| entry.filter(|cost| (cost - computed).abs() > 0.005);
+    // Costs as computed with no entries at all.
+    crate::work::publish_costs_and_usage(project);
+    let mut any = false;
+    for (assignment, entry) in project.assignments.iter_mut().zip(assignments) {
+        assignment.manual_actual_cost = differs(entry, assignment.actual_cost);
+        any |= assignment.manual_actual_cost.is_some();
+    }
+    crate::work::publish_costs_and_usage(project);
+    for (task, entry) in project.tasks.iter_mut().zip(tasks) {
+        task.manual_actual_cost = differs(entry, task.actual_cost);
+        any |= task.manual_actual_cost.is_some();
+    }
+    any
 }
