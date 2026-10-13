@@ -291,7 +291,7 @@ Panel nhỏ cạnh Gantt, nhãn tiếng Việt và viết tắt trong ngoặc:
 
 Theo đánh giá độc lập sau PR #23 (đối chiếu từng mục với code) và kiểm tra giao diện trên một dự án mẫu 21 dòng. Pha 11 làm trước vì nhỏ và người dùng thấy ngay; Pha 12 là nền cho Pha 13 và 16. Pha 14 chạy song song khi có tài khoản Apple Developer.
 
-Trạng thái (13/10/2026): Pha 11–13 và 15–17 đã xong. Pha 14 đã làm phần gắn kiểu tệp, CSP, bản universal; còn ký số và notarize, cần tài khoản Apple Developer. Pha 15 còn đối chiếu với tệp xuất từ Project thật, nhập chi phí thực tế theo assignment/nguồn lực/thời gian, giao diện lịch nguồn lực và báo cáo cảnh báo khi nhập MSPDI.
+Trạng thái (13/10/2026): Pha 11–13 và 15–17 đã xong. Pha 14 đã làm phần gắn kiểu tệp, CSP, bản universal; còn ký số và notarize, cần tài khoản Apple Developer. Pha 15 còn đối chiếu với tệp xuất từ Project thật và giao diện lịch nguồn lực. Đã thêm sau Pha 15: chi phí thực tế nhập theo assignment (PR #62) và báo cáo cảnh báo khi nhập MSPDI (PR #63, `mspdi_report.rs`: tuần làm việc bị bỏ, % bị thay bằng số theo ngày thực tế, công việc đổi ngày so với tệp quá một phút); chi phí thực tế theo ngày để backlog.
 
 Kiểm tra thủ công còn nợ trong `pnpm tauri dev` (các PR #28–#33 mới được kiểm bằng test, bench và ảnh chụp trình duyệt):
 
