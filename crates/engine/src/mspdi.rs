@@ -9,6 +9,7 @@ use crate::model::{
     Accrual, Assignment, Baseline, ConstraintType, DepKind, Dependency, Project, Resource,
     ResourceKind, Task, TaskType,
 };
+use crate::mspdi_calendar_days;
 use crate::mspdi_cost;
 use crate::mspdi_report::{ImportNote, ImportReport};
 use crate::mspdi_workweeks::{self, WorkWeekBuilder};
@@ -284,7 +285,18 @@ pub fn read_mspdi_with_report(xml: &str) -> Result<(Project, ImportReport), Engi
                     }
                     "WeekDay" => {
                         if let (Some(cal), Some(day)) = (calendar.as_mut(), weekday.take()) {
-                            if let Some(index) = day_type_index(day.day_type) {
+                            if day.day_type == Some(0) && work_week.is_none() {
+                                // DayType 0 is an exception, written like an `<Exception>`.
+                                if !mspdi_calendar_days::add_exception(
+                                    &mut cal.exceptions,
+                                    day.from.as_deref(),
+                                    day.to.as_deref(),
+                                    day.working,
+                                    &day.ranges,
+                                ) {
+                                    cal.exceptions_without_dates += 1;
+                                }
+                            } else if let Some(index) = day.day_type.and_then(day_type_index) {
                                 let ranges = if day.working { day.ranges } else { Vec::new() };
                                 match work_week.as_mut() {
                                     Some(item) => item.week[index] = Some(ranges),
@@ -306,34 +318,13 @@ pub fn read_mspdi_with_report(xml: &str) -> Result<(Project, ImportReport), Engi
                     }
                     "Exception" => {
                         if let (Some(cal), Some(item)) = (calendar.as_mut(), exception.take()) {
-                            // A working exception with no hours is not a day off.
-                            let start_ms = item.from.as_deref().and_then(parse_iso);
-                            if !(item.working && item.ranges.is_empty()) {
-                                if let Some(start_ms) = start_ms {
-                                    let end_ms =
-                                        item.to.as_deref().and_then(parse_iso).unwrap_or(start_ms);
-                                    let ranges = if item.working {
-                                        item.ranges.clone()
-                                    } else {
-                                        Vec::new()
-                                    };
-                                    let mut date = crate::timeutil::civil(start_ms).0;
-                                    let end = crate::timeutil::civil(end_ms).0;
-                                    for _ in 0..3660 {
-                                        cal.exceptions.insert(
-                                            crate::timeutil::date_key(date),
-                                            ranges.clone(),
-                                        );
-                                        if date >= end {
-                                            break;
-                                        }
-                                        date = match date.succ_opt() {
-                                            Some(next) => next,
-                                            None => break,
-                                        };
-                                    }
-                                }
-                            }
+                            mspdi_calendar_days::add_exception(
+                                &mut cal.exceptions,
+                                item.from.as_deref(),
+                                item.to.as_deref(),
+                                item.working,
+                                &item.ranges,
+                            );
                         }
                     }
                     "Calendar" => {
@@ -607,7 +598,7 @@ fn apply_text(name: &str, parent: Option<&str>, text: &str, project: &mut Projec
         }
         (Some("WeekDay"), "DayType") => {
             if let Some(day) = weekday {
-                day.day_type = value.parse().unwrap_or(0);
+                day.day_type = value.parse().ok();
             }
         }
         (Some("WeekDay"), "DayWorking") => {
@@ -633,11 +624,15 @@ fn apply_text(name: &str, parent: Option<&str>, text: &str, project: &mut Projec
         (Some("TimePeriod"), "FromDate") => {
             if let Some(item) = exception {
                 item.from = Some(value.to_string());
+            } else if let Some(day) = weekday {
+                day.from = Some(value.to_string());
             }
         }
         (Some("TimePeriod"), "ToDate") => {
             if let Some(item) = exception {
                 item.to = Some(value.to_string());
+            } else if let Some(day) = weekday {
+                day.to = Some(value.to_string());
             }
         }
         (Some("Task"), "UID") => {
@@ -1241,6 +1236,8 @@ struct CalendarBuilder {
     exceptions: BTreeMap<String, Vec<TimeRange>>,
     work_weeks: Vec<WorkWeek>,
     weeks_without_dates: usize,
+    /// `DayType` 0 entries with no usable `FromDate`.
+    exceptions_without_dates: usize,
     base_uid: Option<u32>,
     /// Weekdays the file lists; a based calendar takes the others from its base.
     listed: [bool; 7],
@@ -1262,6 +1259,9 @@ impl CalendarBuilder {
         };
         for _ in 0..self.weeks_without_dates {
             notes.push(ImportNote::WorkWeekWithoutDates { calendar: calendar.name.clone() });
+        }
+        for _ in 0..self.exceptions_without_dates {
+            notes.push(ImportNote::ExceptionWithoutDates { calendar: calendar.name.clone() });
         }
         mspdi_workweeks::add_all(&mut calendar, self.work_weeks, notes);
         if let Some(base_id) = self.base_uid.filter(|id| *id != calendar.id) {
@@ -1285,9 +1285,13 @@ impl CalendarBuilder {
 
 #[derive(Default)]
 struct WeekdayBuilder {
-    day_type: u8,
+    /// `None` when the element is missing or not a number.
+    day_type: Option<u8>,
     working: bool,
     ranges: Vec<TimeRange>,
+    /// The `TimePeriod` of a `DayType` 0 exception.
+    from: Option<String>,
+    to: Option<String>,
 }
 
 #[derive(Default)]

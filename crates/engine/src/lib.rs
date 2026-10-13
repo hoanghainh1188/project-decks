@@ -18,6 +18,7 @@ pub mod lang;
 pub mod level;
 pub mod model;
 pub mod mspdi;
+mod mspdi_calendar_days;
 mod mspdi_cost;
 mod mspdi_progress;
 pub mod mspdi_report;
