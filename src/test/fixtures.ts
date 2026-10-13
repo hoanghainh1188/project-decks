@@ -103,6 +103,7 @@ export function makeAssignment(
     remaining_work: 480,
     cost: 0,
     actual_cost: 0,
+    manual_actual_cost: null,
     ...overrides,
   };
 }

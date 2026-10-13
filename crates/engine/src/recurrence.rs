@@ -407,6 +407,7 @@ pub fn regenerate(project: &mut Project, summary_uid: u32) -> Result<(), EngineE
 
     let level = project.tasks[index].outline_level;
     let end = subtree_end(&project.tasks, index);
+    let entered = with_assignment_entries(project);
     let region: Vec<Task> = project.tasks.drain(index + 1..end).collect();
     let mut detached = Vec::new();
     let mut attached = Vec::new();
@@ -414,7 +415,7 @@ pub fn regenerate(project: &mut Project, summary_uid: u32) -> Result<(), EngineE
     for task in region {
         if task.series_uid == Some(summary_uid) {
             // An occurrence with recorded progress happened; regenerating keeps it as is.
-            if task.detached || has_progress(&task) {
+            if task.detached || has_progress(&task) || entered.contains(&task.uid) {
                 detached.push(task);
             } else {
                 attached.push(task);
@@ -499,6 +500,17 @@ pub fn regenerate(project: &mut Project, summary_uid: u32) -> Result<(), EngineE
 
 /// An occurrence with recorded progress took place: regenerating and deleting the
 /// series keep it, like an occurrence edited on its own.
+/// Tasks with an actual cost entered on one of their assignments: like progress, it
+/// records something that happened.
+pub fn with_assignment_entries(project: &Project) -> std::collections::HashSet<u32> {
+    project
+        .assignments
+        .iter()
+        .filter(|assignment| assignment.manual_actual_cost.is_some())
+        .map(|assignment| assignment.task_uid)
+        .collect()
+}
+
 pub fn has_progress(task: &Task) -> bool {
     task.actual_start.is_some()
         || task.percent_complete > 0.0
@@ -512,10 +524,15 @@ pub fn delete_series(project: &mut Project, summary_uid: u32) -> Result<(), Engi
     normalize_outline(project);
     let index = project.index_of(summary_uid).ok_or(EngineError::TaskNotFound)?;
     let end = subtree_end(&project.tasks, index);
+    let entered = with_assignment_entries(project);
     let mut removed = vec![summary_uid];
     let mut kept = Vec::new();
     for mut task in project.tasks.drain(index..end).skip(1) {
-        if task.series_uid == Some(summary_uid) && !task.detached && !has_progress(&task) {
+        if task.series_uid == Some(summary_uid)
+            && !task.detached
+            && !has_progress(&task)
+            && !entered.contains(&task.uid)
+        {
             removed.push(task.uid);
             continue;
         }

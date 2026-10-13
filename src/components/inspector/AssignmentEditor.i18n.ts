@@ -9,6 +9,8 @@ export const assignmentEditorMessages = defineMessages(
     remove: "Bỏ",
     newUnits: "Đơn vị gán",
     choose: "Chọn…",
+    actualCost: "Thực tế",
+    actualCostOf: (name: string) => `Chi phí thực tế ${name}`,
   },
   {
     assign: "Assign resources",
@@ -18,5 +20,7 @@ export const assignmentEditorMessages = defineMessages(
     remove: "Remove",
     newUnits: "Units to assign",
     choose: "Choose…",
+    actualCost: "Actual",
+    actualCostOf: (name: string) => `Actual cost for ${name}`,
   },
 );

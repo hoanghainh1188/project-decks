@@ -260,10 +260,12 @@ fn accrued_over(calendar: &Calendar, accrual: Accrual, intervals: &[(i64, i64)],
 /// progress windows with the task accrual.
 pub fn actual_cost_at(project: &Project, task: &Task, at: i64) -> f64 {
     // A hand-entered cost on a task with no progress is booked on the status date.
-    if project.editable_actual_costs
-        && task.manual_actual_cost.is_some()
-        && task.percent_complete <= 0.0
-    {
+    let entered = task.manual_actual_cost.is_some()
+        || project
+            .assignments
+            .iter()
+            .any(|assignment| assignment.task_uid == task.uid && assignment.manual_actual_cost.is_some());
+    if project.editable_actual_costs && entered && task.percent_complete <= 0.0 {
         let booked = project.status_date.unwrap_or(task.start);
         return if at >= booked { task.actual_cost } else { 0.0 };
     }
