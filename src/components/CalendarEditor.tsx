@@ -15,6 +15,8 @@ const DEFAULT_RANGES: TimeRange[] = [
 
 interface CalendarEditorProps {
   calendar: Calendar;
+  /** Every calendar, to choose a base from; none offers only standing alone. */
+  calendars?: Calendar[];
   send: (command: Command) => Promise<Snapshot | void | undefined>;
 }
 
@@ -24,7 +26,7 @@ interface ExceptionSpan {
   ranges: TimeRange[];
 }
 
-export function CalendarEditor({ calendar, send }: CalendarEditorProps) {
+export function CalendarEditor({ calendar, calendars = [], send }: CalendarEditorProps) {
   const m = useMessages(calendarEditorMessages);
   const [span, setSpan] = useState<"day" | "range">("day");
   const [from, setFrom] = useState("");
@@ -35,7 +37,9 @@ export function CalendarEditor({ calendar, send }: CalendarEditorProps) {
   const [drafting, setDrafting] = useState(false);
   // The start date of the work week being edited, which the engine uses as its key.
   const [editing, setEditing] = useState<string | null>(null);
-  const exceptions = groupExceptions(calendar.exceptions);
+  // A span never mixes the base's days with this calendar's own, which differ in what
+  // can be removed.
+  const exceptions = groupExceptions(calendar.exceptions, (date) => fromBase(calendar, date));
 
   function commitWeek(week: TimeRange[][]) {
     void send({ type: "set_calendar_week", calendar_id: calendar.id, week });
@@ -99,8 +103,35 @@ export function CalendarEditor({ calendar, send }: CalendarEditorProps) {
         }}
       />
 
+      <label>{m.basedOn}</label>
+      <select
+        aria-label={m.basedOn}
+        value={calendar.base?.id ?? ""}
+        onChange={(event) =>
+          void send({
+            type: "set_calendar_base",
+            calendar_id: calendar.id,
+            base_id: event.target.value ? Number(event.target.value) : null,
+          })
+        }
+      >
+        <option value="">{m.noBase}</option>
+        {calendars
+          .filter((item) => !leadsTo(calendars, item.id, calendar.id))
+          .map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.name}
+            </option>
+          ))}
+      </select>
+      {calendar.base && <p className="meta">{m.basedHint}</p>}
+
       <h3>{m.workWeek}</h3>
-      <WeekPattern week={calendar.week} onChange={commitWeek} />
+      <WeekPattern
+        week={calendar.week}
+        inherited={calendar.base ? calendar.base.week.map((day) => day == null) : undefined}
+        onChange={commitWeek}
+      />
 
       <h3>{m.otherWeeks}</h3>
       <p className="meta">{m.otherWeeksHint}</p>
@@ -229,7 +260,10 @@ export function CalendarEditor({ calendar, send }: CalendarEditorProps) {
                 : `${formatDateKeyDisplay(item.from)} – ${formatDateKeyDisplay(item.to)}`}
               {" · "}
               {item.ranges.length === 0 ? m.nonworking : item.ranges.map(formatRange).join(", ")}
+              {fromBase(calendar, item.from) ? ` · ${m.fromBase}` : ""}
             </span>
+            {/* A base calendar's exception is changed there, or overridden with other hours. */}
+            {!fromBase(calendar, item.from) && (
             <Button
               variant="danger"
               Icon={Trash2}
@@ -244,6 +278,7 @@ export function CalendarEditor({ calendar, send }: CalendarEditorProps) {
             >
               {m.remove}
             </Button>
+            )}
           </li>
         ))}
       </ul>
@@ -252,7 +287,16 @@ export function CalendarEditor({ calendar, send }: CalendarEditorProps) {
 }
 
 /** The seven days of a weekly pattern, each off or with its ranges of hours. */
-function WeekPattern({ week, onChange }: { week: TimeRange[][]; onChange: (week: TimeRange[][]) => void }) {
+function WeekPattern({
+  week,
+  inherited,
+  onChange,
+}: {
+  week: TimeRange[][];
+  /** Days taken from the base calendar, marked as such. */
+  inherited?: boolean[];
+  onChange: (week: TimeRange[][]) => void;
+}) {
   const m = useMessages(calendarEditorMessages);
   function setDay(index: number, ranges: TimeRange[]) {
     if (ranges.length > 0 && !rangesValid(ranges)) return;
@@ -275,6 +319,7 @@ function WeekPattern({ week, onChange }: { week: TimeRange[][]; onChange: (week:
               />
               {label}
             </label>
+            {inherited?.[index] && <span className="meta">{m.fromBase}</span>}
             {working && (
               <>
                 <RangeRows ranges={ranges} onChange={(next) => setDay(index, next)} />
@@ -370,16 +415,39 @@ function sameRanges(left: TimeRange[], right: TimeRange[]): boolean {
   );
 }
 
-function groupExceptions(exceptions: Record<string, TimeRange[]>): ExceptionSpan[] {
+function groupExceptions(
+  exceptions: Record<string, TimeRange[]>,
+  inherited: (date: string) => boolean = () => false,
+): ExceptionSpan[] {
   const spans: ExceptionSpan[] = [];
   for (const key of Object.keys(exceptions).sort()) {
     const ranges = exceptions[key] ?? [];
     const last = spans[spans.length - 1];
-    if (last && nextDateKey(last.to) === key && sameRanges(last.ranges, ranges)) {
+    if (
+      last &&
+      nextDateKey(last.to) === key &&
+      sameRanges(last.ranges, ranges) &&
+      inherited(last.from) === inherited(key)
+    ) {
       last.to = key;
     } else {
       spans.push({ from: key, to: key, ranges });
     }
   }
   return spans;
+}
+
+/** Whether following bases from `from` reaches `target` (itself included). */
+function leadsTo(calendars: Calendar[], from: number, target: number): boolean {
+  let at: number | undefined = from;
+  for (let guard = 0; at != null && guard <= calendars.length; guard += 1) {
+    if (at === target) return true;
+    at = calendars.find((item) => item.id === at)?.base?.id;
+  }
+  return false;
+}
+
+/** An exception that comes from the base calendar, not set on this one. */
+function fromBase(calendar: Calendar, date: string): boolean {
+  return calendar.base != null && !(date in calendar.base.exceptions);
 }

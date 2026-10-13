@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::calendar::{Calendar, TimeRange, WorkWeek};
+use crate::calendar_base;
 use crate::clipboard::{self, FillField, TaskClipboard};
 use crate::error::{EngineError, Invalid};
 use crate::level::level_project;
@@ -96,6 +97,15 @@ pub enum Command {
     },
     CreateCalendar {
         name: String,
+        /// The new calendar is based on this one (older logs have none: a copy of the
+        /// standard calendar).
+        #[serde(default)]
+        base_id: Option<u32>,
+    },
+    /// Base a calendar on another, or make it stand alone (`None`); it keeps its hours.
+    SetCalendarBase {
+        calendar_id: u32,
+        base_id: Option<u32>,
     },
     RenameCalendar {
         calendar_id: u32,
@@ -311,12 +321,28 @@ pub fn leveled(project: &Project) -> Result<Command, EngineError> {
 pub fn apply_one(project: &mut Project, command: &Command) -> Result<(), EngineError> {
     let edited = edited_task(project, command);
     apply_inner(project, command)?;
+    if let Some(calendar_id) = edited_calendar(project, command) {
+        calendar_base::after_edit(project, calendar_id);
+    }
     if let Some(task) = edited.and_then(|uid| project.task_mut(uid)) {
         if task.series_uid.is_some() {
             task.detached = true;
         }
     }
     Ok(())
+}
+
+/// The calendar whose hours a command edits.
+fn edited_calendar(project: &Project, command: &Command) -> Option<u32> {
+    match command {
+        Command::AddHoliday { .. } | Command::RemoveHoliday { .. } => Some(project.calendar_id),
+        Command::SetCalendarWeek { calendar_id, .. }
+        | Command::SetCalendarExceptions { calendar_id, .. }
+        | Command::ClearCalendarExceptions { calendar_id, .. }
+        | Command::SetCalendarWorkWeek { calendar_id, .. }
+        | Command::ClearCalendarWorkWeek { calendar_id, .. } => Some(*calendar_id),
+        _ => None,
+    }
 }
 
 /// The single task a command edits, so an edited occurrence can leave its series.
@@ -496,9 +522,15 @@ fn apply_inner(project: &mut Project, command: &Command) -> Result<(), EngineErr
         }
         Command::RemoveHoliday { date } => {
             let naive = parse_date_key(date).ok_or_else(|| EngineError::from(Invalid::BadDate))?;
+            if calendar_base::inherits_exception(project, project.calendar_id, naive, naive) {
+                return Err(Invalid::InheritedFromBase.into());
+            }
             project.calendar_mut().clear_exception(naive);
         }
-        Command::CreateCalendar { name } => {
+        Command::CreateCalendar { name, base_id } => {
+            if base_id.is_some_and(|id| project.calendar_by_id(id).is_none()) {
+                return Err(Invalid::NoSuchCalendar.into());
+            }
             let uid = project.alloc_calendar_uid();
             let mut calendar = Calendar::standard();
             calendar.id = uid;
@@ -508,7 +540,17 @@ fn apply_inner(project: &mut Project, command: &Command) -> Result<(), EngineErr
             } else {
                 label.to_string()
             };
+            if let Some(base) = base_id.and_then(|id| project.calendar_by_id(id)) {
+                // Start as the base, owning nothing.
+                calendar.week = base.week.clone();
+                calendar.exceptions = base.exceptions.clone();
+                calendar.work_weeks = base.work_weeks.clone();
+                calendar.base = Some(calendar_base::capture(&calendar, base));
+            }
             project.calendars.push(calendar);
+        }
+        Command::SetCalendarBase { calendar_id, base_id } => {
+            calendar_base::set_base(project, *calendar_id, *base_id)?;
         }
         Command::RenameCalendar { calendar_id, name } => {
             let label = name.trim();
@@ -566,6 +608,9 @@ fn apply_inner(project: &mut Project, command: &Command) -> Result<(), EngineErr
                 .ok_or_else(|| EngineError::from(Invalid::BadDate))?;
             let to_date =
                 parse_date_key(to).ok_or_else(|| EngineError::from(Invalid::BadDate))?;
+            if calendar_base::inherits_exception(project, *calendar_id, from_date, to_date) {
+                return Err(Invalid::InheritedFromBase.into());
+            }
             let calendar = project
                 .calendar_mut_by_id(*calendar_id)
                 .ok_or_else(|| EngineError::from(Invalid::NoSuchCalendar))?;
@@ -592,6 +637,7 @@ fn apply_inner(project: &mut Project, command: &Command) -> Result<(), EngineErr
             for (index, day) in week.iter().enumerate() {
                 days[index] = normalize_ranges(day)?;
             }
+            calendar_base::make_room_for_work_week(project, *calendar_id, from, to);
             let calendar = project
                 .calendar_mut_by_id(*calendar_id)
                 .ok_or_else(|| EngineError::from(Invalid::NoSuchCalendar))?;
@@ -607,6 +653,9 @@ fn apply_inner(project: &mut Project, command: &Command) -> Result<(), EngineErr
         }
         Command::ClearCalendarWorkWeek { calendar_id, from } => {
             let from = parse_date_key(from).ok_or_else(|| EngineError::from(Invalid::BadDate))?;
+            if calendar_base::inherits_work_week(project, *calendar_id, from) {
+                return Err(Invalid::InheritedFromBase.into());
+            }
             let calendar = project
                 .calendar_mut_by_id(*calendar_id)
                 .ok_or_else(|| EngineError::from(Invalid::NoSuchCalendar))?;

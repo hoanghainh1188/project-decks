@@ -6,6 +6,7 @@
 
 pub mod autosave;
 pub mod calendar;
+pub mod calendar_base;
 pub mod checkpoint;
 pub mod clipboard;
 pub mod command;

@@ -103,7 +103,7 @@ export function ProjectDialog({
               {m.newCalendarButton}
             </Button>
           </div>
-          <CalendarEditor key={calendar.id} calendar={calendar} send={send} />
+          <CalendarEditor key={calendar.id} calendar={calendar} calendars={project.calendars} send={send} />
         </>
       )}
     </Modal>

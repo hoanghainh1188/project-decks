@@ -8,6 +8,10 @@ export const calendarEditorMessages = defineMessages(
     /** A day of the work week; `index` 0 is Monday. */
     weekday: (index: number) => VI_WEEKDAYS[index] ?? "",
     calendarName: "Tên lịch",
+    basedOn: "Dựa trên lịch",
+    noBase: "Không (lịch độc lập)",
+    basedHint: "Ngày lễ và giờ làm của lịch gốc áp dụng cho lịch này, trừ những gì lịch này tự đặt.",
+    fromBase: "theo lịch gốc",
     workWeek: "Tuần làm việc",
     otherWeeks: "Tuần làm việc khác",
     otherWeeksHint: "Giờ làm riêng cho một khoảng ngày, thay cho tuần làm việc ở trên. Ngoại lệ vẫn được ưu tiên.",
@@ -38,6 +42,10 @@ export const calendarEditorMessages = defineMessages(
   {
     weekday: (index: number) => EN_WEEKDAYS[index] ?? "",
     calendarName: "Calendar name",
+    basedOn: "Based on",
+    noBase: "None (stands alone)",
+    basedHint: "Holidays and hours of the base calendar apply here, except what this calendar sets itself.",
+    fromBase: "from the base calendar",
     workWeek: "Work week",
     otherWeeks: "Other work weeks",
     otherWeeksHint: "Different hours for a span of dates, replacing the work week above. Exceptions still win.",

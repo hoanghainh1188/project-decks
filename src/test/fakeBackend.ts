@@ -198,6 +198,27 @@ class FakeBackend {
         }
         return;
       }
+      case "create_calendar": {
+        const id = Math.max(0, ...project.calendars.map((item) => item.id)) + 1;
+        const base = project.calendars.find((item) => item.id === command.base_id);
+        const source = base ?? project.calendars[0];
+        project.calendars.push({
+          ...structuredClone(source),
+          id,
+          name: command.name,
+          base: base ? { id: base.id, week: base.week.map(() => null), exceptions: {}, work_weeks: [] } : null,
+        });
+        return;
+      }
+      case "set_calendar_base": {
+        const calendar = project.calendars.find((item) => item.id === command.calendar_id);
+        if (!calendar) throw `Không có lịch ${command.calendar_id}`;
+        calendar.base =
+          command.base_id == null
+            ? null
+            : { id: command.base_id, week: calendar.week.map(() => null), exceptions: {}, work_weeks: [] };
+        return;
+      }
       case "set_calendar_work_week": {
         const calendar = project.calendars.find((item) => item.id === command.calendar_id);
         if (!calendar) throw `Không có lịch ${command.calendar_id}`;

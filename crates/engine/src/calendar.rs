@@ -44,6 +44,20 @@ pub struct Calendar {
     pub exceptions: BTreeMap<String, Vec<TimeRange>>,
     #[serde(default)]
     pub work_weeks: Vec<WorkWeek>,
+    /// Set when the calendar is based on another one; `week`, `exceptions` and
+    /// `work_weeks` then hold the merged result (see `calendar_base`).
+    #[serde(default)]
+    pub base: Option<CalendarBase>,
+}
+
+/// What a calendar based on calendar `id` sets itself.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CalendarBase {
+    pub id: u32,
+    /// Weekdays set on this calendar; `None` takes the base calendar's day.
+    pub week: [Option<Vec<TimeRange>>; 7],
+    pub exceptions: BTreeMap<String, Vec<TimeRange>>,
+    pub work_weeks: Vec<WorkWeek>,
 }
 
 impl Calendar {
@@ -62,6 +76,7 @@ impl Calendar {
             week,
             exceptions: BTreeMap::new(),
             work_weeks: Vec::new(),
+            base: None,
         }
     }
 

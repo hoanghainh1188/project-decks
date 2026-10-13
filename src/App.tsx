@@ -122,9 +122,9 @@ export default function App() {
   const { startFileDialog, openFileWhenFree, fileDialogBusy } = useFileDialog(run, setError);
 
   const createCalendar = useCallback(
-    async (name: string, assign: (id: number) => Command | null, openEditor: boolean) => {
+    async (name: string, assign: (id: number) => Command | null, openEditor: boolean, baseId: number | null) => {
       const before = snap?.project.calendars.map((calendar) => calendar.id) ?? [];
-      const result = await send({ type: "create_calendar", name });
+      const result = await send({ type: "create_calendar", name, base_id: baseId });
       if (!result) return null;
       const created = result.project.calendars.find((calendar) => !before.includes(calendar.id));
       if (!created) return null;
@@ -504,7 +504,8 @@ export default function App() {
                 onEditCalendar={setCalendarEditId}
                 onCreateCalendar={(resource) => {
                   const name = resource.name.trim() ? m.calendarFor(resource.name.trim()) : m.resourceCalendar;
-                  void createCalendar(name, (id) => resourceCommand({ ...resource, calendar_id: id }), true);
+                  // Based on the project calendar, so its holidays reach the resource.
+                  void createCalendar(name, (id) => resourceCommand({ ...resource, calendar_id: id }), true, project.calendar_id);
                 }}
               />
             )}
@@ -534,7 +535,12 @@ export default function App() {
               onEditCalendar={setCalendarEditId}
               onCreateCalendar={() => {
                 const name = task.name.trim() ? m.calendarFor(task.name.trim()) : m.taskCalendar;
-                void createCalendar(name, (id) => ({ type: "set_task_calendar", uid: task.uid, calendar_id: id }), true);
+                void createCalendar(
+                  name,
+                  (id) => ({ type: "set_task_calendar", uid: task.uid, calendar_id: id }),
+                  true,
+                  project.calendar_id,
+                );
               }}
             />
           )}
@@ -566,7 +572,7 @@ export default function App() {
             });
           }}
           send={send}
-          onCreateCalendar={() => createCalendar(m.newCalendar, () => null, false)}
+          onCreateCalendar={() => createCalendar(m.newCalendar, () => null, false, null)}
         />
       )}
       {editingCalendar && (
@@ -576,7 +582,7 @@ export default function App() {
           onClose={() => setCalendarEditId(null)}
           footer={<Button variant="primary" Icon={Check} onClick={() => setCalendarEditId(null)}>{m.close}</Button>}
         >
-          <CalendarEditor calendar={editingCalendar} send={send} />
+          <CalendarEditor calendar={editingCalendar} calendars={project?.calendars ?? []} send={send} />
         </Modal>
       )}
       {seriesDialog != null && project && (
