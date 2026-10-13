@@ -17,6 +17,9 @@ pub enum ImportNote {
     WorkWeekOverlaps { calendar: String, name: String },
     /// A work week with no usable `FromDate` was left out.
     WorkWeekWithoutDates { calendar: String },
+    /// A calendar exception (a `WeekDay` with `DayType` 0) with no usable `FromDate` was
+    /// left out.
+    ExceptionWithoutDates { calendar: String },
     /// The percent complete the file gave was replaced by the one its actuals give.
     PercentFromActuals { task: String, file: f64, used: f64 },
     /// A task the engine schedules on other dates than the file gave.
@@ -92,14 +95,20 @@ fn week_line(note: &ImportNote, lang: Lang) -> Option<String> {
         (ImportNote::WorkWeekWithoutDates { calendar }, Lang::En) => {
             format!("• Calendar “{calendar}”: a work week with no start date was left out.")
         }
+        (ImportNote::ExceptionWithoutDates { calendar }, Lang::Vi) => {
+            format!("• Lịch “{calendar}”: một ngày ngoại lệ không có ngày bắt đầu, đã bỏ.")
+        }
+        (ImportNote::ExceptionWithoutDates { calendar }, Lang::En) => {
+            format!("• Calendar “{calendar}”: an exception with no start date was left out.")
+        }
         _ => return None,
     })
 }
 
 fn heading_weeks(lang: Lang) -> String {
     match lang {
-        Lang::Vi => "Một số tuần làm việc trong tệp không đọc được:".into(),
-        Lang::En => "Some work weeks in the file could not be read:".into(),
+        Lang::Vi => "Một số tuần làm việc hoặc ngày ngoại lệ trong tệp không đọc được:".into(),
+        Lang::En => "Some work weeks or exceptions in the file could not be read:".into(),
     }
 }
 
