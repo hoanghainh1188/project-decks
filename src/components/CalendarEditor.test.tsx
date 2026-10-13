@@ -123,3 +123,83 @@ describe("CalendarEditor", () => {
     });
   });
 });
+
+describe("CalendarEditor work weeks", () => {
+  it("lists the other work weeks and removes one", async () => {
+    const user = userEvent.setup();
+    const send = vi.fn(async () => undefined);
+    const base = {
+      ...calendar(),
+      work_weeks: [{ name: "Giờ hè", from: "2026-06-01", to: "2026-08-31", week: calendar().week }],
+    };
+    render(<CalendarEditor calendar={base} send={send} />);
+    const item = screen.getByText(/Giờ hè/).closest("li") as HTMLElement;
+    await user.click(within(item).getByRole("button", { name: "Bỏ" }));
+    expect(send).toHaveBeenCalledWith({ type: "clear_calendar_work_week", calendar_id: 1, from: "2026-06-01" });
+  });
+
+  it("adds a work week that starts as a copy of the default week", async () => {
+    const user = userEvent.setup();
+    const send = vi.fn(async () => ({}) as never);
+    const base = calendar();
+    render(<CalendarEditor calendar={base} send={send} />);
+    expect(screen.getByText("Chưa có tuần làm việc khác.")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Thêm tuần làm việc" }));
+    const form = screen.getByRole("group", { name: "Thêm tuần làm việc" });
+    await user.type(within(form).getByLabelText("Tên tuần"), "Giờ hè");
+    await user.type(within(form).getByLabelText("Từ ngày"), "2026-06-01");
+    await user.tab();
+    await user.type(within(form).getByLabelText("Đến ngày"), "2026-08-31");
+    await user.tab();
+    await user.click(within(form).getByLabelText("Thứ Sáu"));
+    await user.click(within(form).getByRole("button", { name: "Lưu tuần làm việc" }));
+    expect(send).toHaveBeenCalledWith({
+      type: "set_calendar_work_week",
+      calendar_id: 1,
+      name: "Giờ hè",
+      from: "2026-06-01",
+      to: "2026-08-31",
+      week: [...base.week.slice(0, 4), [], ...base.week.slice(5)],
+    });
+    expect(screen.queryByRole("group", { name: "Thêm tuần làm việc" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the form open when the engine refuses the work week", async () => {
+    const user = userEvent.setup();
+    const send = vi.fn(async () => undefined);
+    render(<CalendarEditor calendar={calendar()} send={send} />);
+    await user.click(screen.getByRole("button", { name: "Thêm tuần làm việc" }));
+    const form = screen.getByRole("group", { name: "Thêm tuần làm việc" });
+    await user.type(within(form).getByLabelText("Từ ngày"), "2026-06-01");
+    await user.tab();
+    await user.type(within(form).getByLabelText("Đến ngày"), "2026-08-31");
+    await user.tab();
+    await user.click(within(form).getByRole("button", { name: "Lưu tuần làm việc" }));
+    expect(screen.getByRole("group", { name: "Thêm tuần làm việc" })).toBeInTheDocument();
+  });
+});
+
+describe("CalendarEditor editing a work week", () => {
+  it("clears the old week first when its start date changes", async () => {
+    const user = userEvent.setup();
+    const send = vi.fn(async () => ({}) as never);
+    const base = {
+      ...calendar(),
+      work_weeks: [{ name: "Giờ hè", from: "2026-06-01", to: "2026-08-31", week: calendar().week }],
+    };
+    render(<CalendarEditor calendar={base} send={send} />);
+    const item = screen.getByText(/Giờ hè/).closest("li") as HTMLElement;
+    await user.click(within(item).getByRole("button", { name: "Sửa" }));
+    const form = screen.getByRole("group", { name: "Thêm tuần làm việc" });
+    const from = within(form).getByLabelText("Từ ngày");
+    await user.clear(from);
+    await user.type(from, "2026-05-25");
+    await user.tab();
+    await user.click(within(form).getByRole("button", { name: "Lưu tuần làm việc" }));
+    expect((send.mock.calls as unknown as [{ type: string }][]).map(([command]) => command.type)).toEqual([
+      "clear_calendar_work_week",
+      "set_calendar_work_week",
+    ]);
+    expect(send).toHaveBeenNthCalledWith(1, { type: "clear_calendar_work_week", calendar_id: 1, from: "2026-06-01" });
+  });
+});

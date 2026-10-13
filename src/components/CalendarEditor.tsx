@@ -1,9 +1,9 @@
-import { CalendarPlus, Plus, Trash2, X } from "lucide-react";
+import { CalendarPlus, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useState } from "react";
 
 import { formatDateKeyDisplay, minuteToTime } from "../format";
 import { useMessages } from "../i18n";
-import type { Calendar, Command, Snapshot, TimeRange } from "../types";
+import type { Calendar, Command, Snapshot, TimeRange, WorkWeek } from "../types";
 import { Button } from "./Button";
 import { calendarEditorMessages, WEEK_INDEXES } from "./CalendarEditor.i18n";
 import { DateKeyField, TimeField } from "./DateTimeField";
@@ -31,15 +31,35 @@ export function CalendarEditor({ calendar, send }: CalendarEditorProps) {
   const [to, setTo] = useState("");
   const [kind, setKind] = useState<"off" | "hours">("off");
   const [hours, setHours] = useState<TimeRange[]>(DEFAULT_RANGES);
+  const [draft, setDraft] = useState<WorkWeek>(() => emptyWeek(calendar));
+  const [drafting, setDrafting] = useState(false);
+  // The start date of the work week being edited, which the engine uses as its key.
+  const [editing, setEditing] = useState<string | null>(null);
   const exceptions = groupExceptions(calendar.exceptions);
 
   function commitWeek(week: TimeRange[][]) {
     void send({ type: "set_calendar_week", calendar_id: calendar.id, week });
   }
 
-  function setDay(index: number, ranges: TimeRange[]) {
-    if (ranges.length > 0 && !rangesValid(ranges)) return;
-    commitWeek(calendar.week.map((day, dayIndex) => (dayIndex === index ? ranges : day)));
+  async function addWeek() {
+    // A week whose start date changed is a new week: the old one goes first.
+    if (editing && editing !== draft.from) {
+      const cleared = await send({ type: "clear_calendar_work_week", calendar_id: calendar.id, from: editing });
+      if (!cleared) return;
+    }
+    const result = await send({
+      type: "set_calendar_work_week",
+      calendar_id: calendar.id,
+      name: draft.name.trim(),
+      from: draft.from,
+      to: draft.to,
+      week: draft.week,
+    });
+    if (result) {
+      setDraft(emptyWeek(calendar));
+      setDrafting(false);
+      setEditing(null);
+    }
   }
 
   async function addException() {
@@ -80,32 +100,80 @@ export function CalendarEditor({ calendar, send }: CalendarEditorProps) {
       />
 
       <h3>{m.workWeek}</h3>
-      {WEEK_INDEXES.map((index) => {
-        const label = m.weekday(index);
-        const ranges = calendar.week[index] ?? [];
-        const working = ranges.length > 0;
-        const extra = suggestRange(ranges);
-        return (
-          <div className="week-day" key={index}>
-            <label className="check">
-              <input
-                type="checkbox"
-                checked={working}
-                onChange={(event) => setDay(index, event.target.checked ? DEFAULT_RANGES : [])}
-              />
-              {label}
-            </label>
-            {working && (
-              <>
-                <RangeRows ranges={ranges} onChange={(next) => setDay(index, next)} />
-                <Button Icon={Plus} disabled={!extra} onClick={() => extra && setDay(index, [...ranges, extra])}>
-                  {m.addRange}
-                </Button>
-              </>
-            )}
-          </div>
-        );
-      })}
+      <WeekPattern week={calendar.week} onChange={commitWeek} />
+
+      <h3>{m.otherWeeks}</h3>
+      <p className="meta">{m.otherWeeksHint}</p>
+      <ul>
+        {calendar.work_weeks.map((item) => (
+          <li key={item.from}>
+            <span>
+              {item.name ? `${item.name} · ` : ""}
+              {formatDateKeyDisplay(item.from)} – {formatDateKeyDisplay(item.to)}
+            </span>
+            <Button
+              Icon={Pencil}
+              onClick={() => {
+                setDraft({ ...item });
+                setEditing(item.from);
+                setDrafting(true);
+              }}
+            >
+              {m.editWeek}
+            </Button>
+            <Button
+              variant="danger"
+              Icon={Trash2}
+              onClick={() => void send({ type: "clear_calendar_work_week", calendar_id: calendar.id, from: item.from })}
+            >
+              {m.remove}
+            </Button>
+          </li>
+        ))}
+      </ul>
+      {calendar.work_weeks.length === 0 && <p className="meta">{m.noOtherWeeks}</p>}
+      {!drafting && (
+        <Button
+          Icon={Plus}
+          onClick={() => {
+            setDraft(emptyWeek(calendar));
+            setEditing(null);
+            setDrafting(true);
+          }}
+        >
+          {m.newWeek}
+        </Button>
+      )}
+      {drafting && (
+        <div className="exception-form" role="group" aria-label={m.newWeek}>
+          <input
+            aria-label={m.weekName}
+            placeholder={m.weekNamePlaceholder}
+            value={draft.name}
+            onChange={(event) => setDraft({ ...draft, name: event.target.value })}
+          />
+          <label>
+            {m.from}
+            <DateKeyField ariaLabel={m.fromDate} value={draft.from} onCommit={(from) => setDraft({ ...draft, from })} />
+          </label>
+          <label>
+            {m.to}
+            <DateKeyField ariaLabel={m.toDate} value={draft.to} onCommit={(to) => setDraft({ ...draft, to })} />
+          </label>
+          <WeekPattern week={draft.week} onChange={(week) => setDraft({ ...draft, week })} />
+          <Button
+            variant="primary"
+            Icon={CalendarPlus}
+            disabled={!draft.from || !draft.to || draft.to < draft.from}
+            onClick={() => void addWeek()}
+          >
+            {m.addWeek}
+          </Button>
+          <Button Icon={X} onClick={() => { setDrafting(false); setEditing(null); }}>
+            {m.cancelWeek}
+          </Button>
+        </div>
+      )}
 
       <h3>{m.exceptionsHeading}</h3>
       <div className="exception-form">
@@ -181,6 +249,50 @@ export function CalendarEditor({ calendar, send }: CalendarEditorProps) {
       </ul>
     </div>
   );
+}
+
+/** The seven days of a weekly pattern, each off or with its ranges of hours. */
+function WeekPattern({ week, onChange }: { week: TimeRange[][]; onChange: (week: TimeRange[][]) => void }) {
+  const m = useMessages(calendarEditorMessages);
+  function setDay(index: number, ranges: TimeRange[]) {
+    if (ranges.length > 0 && !rangesValid(ranges)) return;
+    onChange(week.map((day, dayIndex) => (dayIndex === index ? ranges : day)));
+  }
+  return (
+    <>
+      {WEEK_INDEXES.map((index) => {
+        const label = m.weekday(index);
+        const ranges = week[index] ?? [];
+        const working = ranges.length > 0;
+        const extra = suggestRange(ranges);
+        return (
+          <div className="week-day" key={index}>
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={working}
+                onChange={(event) => setDay(index, event.target.checked ? DEFAULT_RANGES : [])}
+              />
+              {label}
+            </label>
+            {working && (
+              <>
+                <RangeRows ranges={ranges} onChange={(next) => setDay(index, next)} />
+                <Button Icon={Plus} disabled={!extra} onClick={() => extra && setDay(index, [...ranges, extra])}>
+                  {m.addRange}
+                </Button>
+              </>
+            )}
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+/** A new work week starts as a copy of the default week, to be changed. */
+function emptyWeek(calendar: Calendar): WorkWeek {
+  return { name: "", from: "", to: "", week: calendar.week.map((day) => day.map((range) => ({ ...range }))) };
 }
 
 function RangeRows({ ranges, onChange }: { ranges: TimeRange[]; onChange: (ranges: TimeRange[]) => void }) {

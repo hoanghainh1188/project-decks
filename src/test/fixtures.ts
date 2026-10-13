@@ -112,7 +112,7 @@ export function standardCalendar(id = 1, name = "Tiêu chuẩn"): Calendar {
     { start_minute: 8 * 60, end_minute: 12 * 60 },
     { start_minute: 13 * 60, end_minute: 17 * 60 },
   ];
-  return { id, name, week: [workday, workday, workday, workday, workday, [], []], exceptions: {} };
+  return { id, name, week: [workday, workday, workday, workday, workday, [], []], exceptions: {}, work_weeks: [] };
 }
 
 export function makeProject(overrides: Partial<Project> = {}): Project {

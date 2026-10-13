@@ -3,13 +3,14 @@ use std::collections::BTreeMap;
 use quick_xml::events::Event;
 use quick_xml::Reader;
 
-use crate::calendar::{Calendar, TimeRange};
+use crate::calendar::{Calendar, TimeRange, WorkWeek};
 use crate::error::EngineError;
 use crate::model::{
     Accrual, Assignment, Baseline, ConstraintType, DepKind, Dependency, Project, Resource,
     ResourceKind, Task, TaskType,
 };
 use crate::mspdi_cost;
+use crate::mspdi_workweeks::{self, WorkWeekBuilder};
 use crate::mspdi_progress::{self, FileProgress, TaskProgress, TimephasedActual};
 use crate::schedule::schedule;
 use crate::split::Split;
@@ -175,6 +176,7 @@ pub fn read_mspdi(xml: &str) -> Result<Project, EngineError> {
     let mut weekday: Option<WeekdayBuilder> = None;
     let mut working: Option<TimeRange> = None;
     let mut exception: Option<ExceptionBuilder> = None;
+    let mut work_week: Option<WorkWeekBuilder> = None;
     let mut task: Option<TaskBuilder> = None;
     let mut link: Option<LinkBuilder> = None;
     let mut baseline: Option<Baseline> = None;
@@ -200,6 +202,7 @@ pub fn read_mspdi(xml: &str) -> Result<Project, EngineError> {
                         })
                     }
                     Some("Exception") => exception = Some(ExceptionBuilder::default()),
+                    Some("WorkWeek") => work_week = Some(WorkWeekBuilder::default()),
                     Some("Task") => task = Some(TaskBuilder::default()),
                     Some("PredecessorLink") => link = Some(LinkBuilder::default()),
                     Some("Baseline") => {
@@ -239,6 +242,9 @@ pub fn read_mspdi(xml: &str) -> Result<Project, EngineError> {
                         }
                     }
                 }
+                if let Some(item) = work_week.as_mut() {
+                    item.read(parent, &name, text.trim());
+                }
                 apply_text(
                     &name,
                     parent,
@@ -271,8 +277,17 @@ pub fn read_mspdi(xml: &str) -> Result<Project, EngineError> {
                     "WeekDay" => {
                         if let (Some(cal), Some(day)) = (calendar.as_mut(), weekday.take()) {
                             if let Some(index) = day_type_index(day.day_type) {
-                                cal.week[index] = if day.working { day.ranges } else { Vec::new() };
+                                let ranges = if day.working { day.ranges } else { Vec::new() };
+                                match work_week.as_mut() {
+                                    Some(item) => item.week[index] = Some(ranges),
+                                    None => cal.week[index] = ranges,
+                                }
                             }
+                        }
+                    }
+                    "WorkWeek" => {
+                        if let (Some(cal), Some(item)) = (calendar.as_mut(), work_week.take()) {
+                            cal.work_weeks.extend(item.finish(&cal.week));
                         }
                     }
                     "Exception" => {
@@ -827,24 +842,7 @@ fn write_calendar(xml: &mut String, calendar: &Calendar) {
     el(xml, "Name", &escape(&calendar.name));
     el(xml, "IsBaseCalendar", "1");
     xml.push_str("<WeekDays>\n");
-    for index in 0..7 {
-        let day_type = index_to_day_type(index);
-        xml.push_str("<WeekDay>\n");
-        el(xml, "DayType", &day_type.to_string());
-        let ranges = &calendar.week[index];
-        el(xml, "DayWorking", if ranges.is_empty() { "0" } else { "1" });
-        if !ranges.is_empty() {
-            xml.push_str("<WorkingTimes>\n");
-            for range in ranges {
-                xml.push_str("<WorkingTime>\n");
-                el(xml, "FromTime", &format_clock(range.start_minute));
-                el(xml, "ToTime", &format_clock(range.end_minute));
-                xml.push_str("</WorkingTime>\n");
-            }
-            xml.push_str("</WorkingTimes>\n");
-        }
-        xml.push_str("</WeekDay>\n");
-    }
+    write_week_days(xml, &calendar.week);
     xml.push_str("</WeekDays>\n<Exceptions>\n");
     for (date, ranges) in &calendar.exceptions {
         xml.push_str("<Exception>\n<EnteredByOccurrences>0</EnteredByOccurrences>\n<TimePeriod>\n");
@@ -865,7 +863,33 @@ fn write_calendar(xml: &mut String, calendar: &Calendar) {
         }
         xml.push_str("</Exception>\n");
     }
-    xml.push_str("</Exceptions>\n</Calendar>\n");
+    xml.push_str("</Exceptions>\n");
+    mspdi_workweeks::write_work_weeks(xml, calendar);
+    xml.push_str("</Calendar>\n");
+}
+
+/// The seven `<WeekDay>` elements of a weekly pattern.
+pub(crate) fn write_week_days(xml: &mut String, week: &[Vec<TimeRange>; 7]) {
+    for (index, ranges) in week.iter().enumerate() {
+        xml.push_str("<WeekDay>\n");
+        el(xml, "DayType", &index_to_day_type(index).to_string());
+        el(xml, "DayWorking", if ranges.is_empty() { "0" } else { "1" });
+        if !ranges.is_empty() {
+            xml.push_str("<WorkingTimes>\n");
+            for range in ranges {
+                xml.push_str("<WorkingTime>\n");
+                el(xml, "FromTime", &format_clock(range.start_minute));
+                el(xml, "ToTime", &format_clock(range.end_minute));
+                xml.push_str("</WorkingTime>\n");
+            }
+            xml.push_str("</WorkingTimes>\n");
+        }
+        xml.push_str("</WeekDay>\n");
+    }
+}
+
+pub(crate) fn escape_text(text: &str) -> String {
+    escape(text)
 }
 
 fn write_task(xml: &mut String, project: &Project, task: &Task) {
@@ -1134,11 +1158,12 @@ struct CalendarBuilder {
     name: String,
     week: [Vec<TimeRange>; 7],
     exceptions: BTreeMap<String, Vec<TimeRange>>,
+    work_weeks: Vec<WorkWeek>,
 }
 
 impl CalendarBuilder {
     fn finish(self) -> Calendar {
-        Calendar {
+        let mut calendar = Calendar {
             id: if self.id == 0 { 1 } else { self.id },
             name: if self.name.is_empty() {
                 "Chuẩn".into()
@@ -1147,7 +1172,10 @@ impl CalendarBuilder {
             },
             week: self.week,
             exceptions: self.exceptions,
-        }
+            work_weeks: Vec::new(),
+        };
+        mspdi_workweeks::add_all(&mut calendar, self.work_weeks);
+        calendar
     }
 }
 
