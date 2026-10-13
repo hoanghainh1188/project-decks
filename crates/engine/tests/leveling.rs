@@ -400,3 +400,92 @@ fn a_resource_that_never_works_when_the_task_does_is_left_overloaded_quickly() {
         .iter()
         .all(|task| task.leveling_delay == 0));
 }
+
+/// A calendar working Monday to Saturday, 07:00–16:00, for the tasks in `uids`.
+fn on_long_days(doc: &mut Document, uids: &[u32]) {
+    doc.apply(Command::CreateCalendar {
+        name: "Ca dài".into(),
+        base_id: None,
+    })
+    .unwrap();
+    let calendar_id = doc.project.calendars.last().unwrap().id;
+    let day = vec![sheafly_engine::calendar::TimeRange::new(7 * 60, 16 * 60)];
+    let mut week = vec![day; 6];
+    week.push(Vec::new());
+    doc.apply(Command::SetCalendarWeek { calendar_id, week })
+        .unwrap();
+    for uid in uids {
+        doc.apply(Command::SetTaskCalendar {
+            uid: *uid,
+            calendar_id: Some(calendar_id),
+        })
+        .unwrap();
+    }
+}
+
+#[test]
+fn a_resource_that_only_partly_covers_the_task_calendar_is_left_overloaded_quickly() {
+    // The tasks work Mon–Sat 07–16; An keeps the standard hours, so some of each task
+    // (07–08, lunch, Saturday) always falls outside them, however long it waits.
+    // Every task used to slide an hour at a time for four years before giving up.
+    let uids: Vec<u32> = (1..=12).collect();
+    let mut doc = doc_with(&[2 * DAY; 12], &["An"]);
+    on_long_days(&mut doc, &uids);
+    for uid in &uids {
+        assign(&mut doc, *uid, 1, 1.0);
+    }
+    let before: Vec<i64> = uids.iter().map(|uid| task(&doc, *uid).start).collect();
+    let started = std::time::Instant::now();
+    doc.apply(Command::LevelResources).unwrap();
+    assert!(
+        started.elapsed() < std::time::Duration::from_millis(200),
+        "{:?}",
+        started.elapsed()
+    );
+    assert!(!doc.project.overallocations.is_empty());
+    let after: Vec<i64> = uids.iter().map(|uid| task(&doc, *uid).start).collect();
+    assert_eq!(after, before);
+    assert!(doc
+        .project
+        .tasks
+        .iter()
+        .all(|task| task.leveling_delay == 0));
+}
+
+#[test]
+fn a_short_task_on_a_partly_covered_calendar_still_waits_for_the_resource() {
+    // Two hours from 11:00 run into An's lunch; from 13:00 they fit.
+    let mut doc = doc_with(&[120], &["An"]);
+    on_long_days(&mut doc, &[1]);
+    start_no_earlier(&mut doc, 1, at(0, 11, 0));
+    assign(&mut doc, 1, 1, 1.0);
+    assert_eq!(task(&doc, 1).start, at(0, 11, 0));
+    doc.apply(Command::LevelResources).unwrap();
+    assert_eq!(task(&doc, 1).start, at(0, 13, 0));
+    assert!(doc.project.overallocations.is_empty());
+}
+
+#[test]
+fn a_work_week_months_ahead_still_ends_the_wait() {
+    // An works the tasks' long days only through March, so the task waits until then.
+    let mut doc = doc_with(&[2 * DAY], &["An"]);
+    on_long_days(&mut doc, &[1]);
+    let calendar_id = doc.project.resources[0]
+        .calendar_id
+        .unwrap_or(doc.project.calendar_id);
+    let day = vec![sheafly_engine::calendar::TimeRange::new(7 * 60, 16 * 60)];
+    let mut week = vec![day; 6];
+    week.push(Vec::new());
+    doc.apply(Command::SetCalendarWorkWeek {
+        calendar_id,
+        name: "Tháng ba".into(),
+        from: "2026-03-02".into(),
+        to: "2026-03-31".into(),
+        week,
+    })
+    .unwrap();
+    assign(&mut doc, 1, 1, 1.0);
+    doc.apply(Command::LevelResources).unwrap();
+    assert_eq!(task(&doc, 1).start, at(56, 7, 0));
+    assert!(doc.project.overallocations.is_empty());
+}
