@@ -1,0 +1,400 @@
+//! Rescheduling one leaf and the work after it, for leveling.
+//!
+//! Leveling delays one task at a time, and only that task and the tasks its links reach
+//! can move. Instead of a full forward pass after every delay, this recomputes those
+//! leaves in leaf order with the same `schedule_leaf` and stops wherever dates come out
+//! unchanged. Late dates, slack, and summary dates are left for one full
+//! `schedule_dates` once leveling is done: leveling itself reads only leaf dates.
+
+use std::collections::{BTreeSet, HashMap};
+
+use crate::graph::Graph;
+use crate::model::{ConstraintType, DepKind, Project};
+use crate::schedule::{schedule_leaf, write_early, Dates};
+use crate::split;
+
+pub(crate) struct Ripple {
+    /// Each leaf's place in the graph's leaf order, so queued leaves come out with
+    /// their predecessors first.
+    rank: Vec<usize>,
+    /// Leaf early dates as the last pass left them.
+    early: Dates,
+    /// Summary finish pushes never happen here (see `Ripple::new`).
+    no_shift: HashMap<u32, i64>,
+}
+
+impl Ripple {
+    /// `None` when one forward pass does not settle the dates and leveling must
+    /// reschedule the whole project after each delay: an ALAP task (placed from late
+    /// dates), or a summary that must finish by a link or a date (its leaves are pushed
+    /// over extra passes). Call it right after a full `schedule_dates`.
+    pub(crate) fn new(project: &Project, graph: &Graph) -> Option<Self> {
+        if !one_pass_settles(project, graph) {
+            return None;
+        }
+        let mut rank = vec![usize::MAX; project.tasks.len()];
+        for (place, &index) in graph.order().iter().enumerate() {
+            rank[index] = place;
+        }
+        let early = project
+            .tasks
+            .iter()
+            .map(|task| (!task.summary).then_some((task.early_start, task.early_finish)))
+            .collect();
+        Some(Self {
+            rank,
+            early,
+            no_shift: HashMap::new(),
+        })
+    }
+
+    /// Reschedule the leaf at `from` and every leaf its new dates move. Each leaf whose
+    /// dates change gets the (start, finish) it had before its first change in `before`.
+    pub(crate) fn run(
+        &mut self,
+        project: &mut Project,
+        graph: &Graph,
+        from: usize,
+        before: &mut HashMap<usize, (i64, i64)>,
+    ) {
+        let mut queue: BTreeSet<(usize, usize)> = BTreeSet::new();
+        queue.insert((self.rank[from], from));
+        while let Some((_, index)) = queue.pop_first() {
+            let (es, ef, conflict) =
+                schedule_leaf(project, graph, index, &self.early, &self.no_shift);
+            write_early(&mut project.tasks[index], es, ef, conflict);
+            let old = self.early[index].replace((es, ef));
+            if old == Some((es, ef)) {
+                continue;
+            }
+            if let Some(old) = old {
+                before.entry(index).or_insert(old);
+            }
+            if !project.tasks[index].splits.is_empty() {
+                let segments = split::segments_of(project, &project.tasks[index]);
+                project.tasks[index].segments = segments;
+            }
+            for leaf in moved_by(project, graph, index) {
+                queue.insert((self.rank[leaf], leaf));
+            }
+        }
+        #[cfg(test)]
+        same_as_full_pass(project, graph);
+    }
+}
+
+/// In tests, every quick reschedule must leave each leaf as a full pass would.
+#[cfg(test)]
+fn same_as_full_pass(project: &Project, graph: &Graph) {
+    let mut full = project.clone();
+    crate::schedule::schedule_dates(&mut full, graph);
+    for (quick, full) in project.tasks.iter().zip(&full.tasks).filter(|(task, _)| !task.summary) {
+        assert_eq!(
+            (quick.start, quick.finish, quick.early_start, quick.early_finish, quick.conflict),
+            (full.start, full.finish, full.early_start, full.early_finish, full.conflict),
+            "task {} after a quick reschedule",
+            quick.uid
+        );
+        assert_eq!(quick.segments, full.segments, "segments of task {}", quick.uid);
+    }
+}
+
+/// True when no task is ALAP and no summary must finish by an FF/SF link or an
+/// FNET/MFO date: then one forward pass gives the dates and late dates never feed back.
+fn one_pass_settles(project: &Project, graph: &Graph) -> bool {
+    project.tasks.iter().enumerate().all(|(index, task)| {
+        if task.constraint_type == ConstraintType::Alap {
+            return false;
+        }
+        if !task.summary {
+            return true;
+        }
+        let finish_date = matches!(task.constraint_type, ConstraintType::Fnet | ConstraintType::Mfo)
+            && task.constraint_date.is_some();
+        let finish_link = graph.preds(index).iter().any(|&link| {
+            matches!(project.dependencies[link].kind, DepKind::Ff | DepKind::Sf)
+        });
+        !finish_date && !finish_link
+    })
+}
+
+/// Leaves whose bounds read the dates of the leaf at `index`: successors of the leaf and
+/// of every summary above it (a summary's dates span its leaves), with a summary
+/// successor standing for all its leaves.
+fn moved_by(project: &Project, graph: &Graph, index: usize) -> Vec<usize> {
+    let mut nodes = vec![index];
+    let mut parent = project.tasks[index].parent_uid;
+    while let Some(position) = parent.and_then(|uid| graph.position(uid)) {
+        nodes.push(position);
+        parent = project.tasks[position].parent_uid;
+    }
+    let mut leaves = Vec::new();
+    for node in nodes {
+        for &link in graph.succs(node) {
+            let Some(successor) = graph.position(project.dependencies[link].successor_uid) else {
+                continue;
+            };
+            if project.tasks[successor].summary {
+                leaves.extend(graph.leaves_under(project, successor));
+            } else {
+                leaves.push(successor);
+            }
+        }
+    }
+    leaves
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Ripple;
+    use crate::calendar::TimeRange;
+    use crate::command::{apply_one, Command};
+    use crate::document::Document;
+    use crate::level::level_with;
+    use crate::model::{ConstraintType, DepKind, Project, ResourceKind};
+    use crate::schedule::{prepare, schedule, schedule_dates};
+    use crate::timeutil::civil;
+
+    const HOUR: i64 = 60;
+    const HOUR_MS: i64 = 3_600_000;
+    const DAY_MS: i64 = 86_400_000;
+    /// Projects per run: under twenty seconds in a debug build, most of it the check
+    /// after every quick reschedule.
+    const SEEDS: u64 = 150;
+
+    /// A fixed linear congruential generator, so every run builds the same projects.
+    struct Random(u64);
+
+    impl Random {
+        fn below(&mut self, n: u64) -> u64 {
+            self.0 = self
+                .0
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            (self.0 >> 33) % n.max(1)
+        }
+
+        fn chance(&mut self, percent: u64) -> bool {
+            self.below(100) < percent
+        }
+
+        fn pick<T: Copy>(&mut self, items: &[T]) -> T {
+            items[self.below(items.len() as u64) as usize]
+        }
+    }
+
+    /// Apply one command without scheduling, much quicker than `Document::apply` in a
+    /// debug build. A command that fails, or leaves a link cycle, changes nothing.
+    fn apply(project: &mut Project, command: Command) {
+        let mut trial = project.clone();
+        if apply_one(&mut trial, &command).is_ok() && prepare(&mut trial).is_ok() {
+            *project = trial;
+        }
+    }
+
+    /// A new calendar with `days` from Monday on and the rest of the week off.
+    fn calendar(project: &mut Project, name: &str, mut days: Vec<Vec<TimeRange>>) -> Option<u32> {
+        apply(project, Command::CreateCalendar { name: name.into(), base_id: None });
+        let calendar_id = project.calendars.last()?.id;
+        days.resize(7, Vec::new());
+        apply(project, Command::SetCalendarWeek { calendar_id, week: days });
+        Some(calendar_id)
+    }
+
+    /// What a generated project may hold beyond the common mix.
+    #[derive(Clone, Copy, PartialEq)]
+    enum Mix {
+        /// Nothing that makes `Ripple::new` decline, so the quick path is tested.
+        OnePass,
+        /// FF and SF links into groups and FNET dates on groups: no ALAP, so a group
+        /// that must finish later is what makes `Ripple::new` decline.
+        GroupFinish,
+        /// Many ALAP tasks, placed from late dates, and no group finish dates.
+        Alap,
+        /// ALAP tasks and finish dates on groups too.
+        Anything,
+    }
+
+    /// A project with groups, links of every kind (to and from groups too), splits,
+    /// constraints, started and manual tasks, other calendars, holidays, and resources
+    /// with different units and calendars.
+    fn project(seed: u64, mix: Mix) -> Project {
+        let mut random = Random(seed);
+        let mut project = Document::new_default().project;
+        let tasks = 20 + random.below(40) as u32;
+        for uid in 2..=tasks {
+            let name = format!("Việc {uid}");
+            apply(&mut project, Command::AddTask { name, after_uid: Some(uid - 1) });
+        }
+        for uid in 2..=tasks {
+            if random.chance(25) {
+                apply(&mut project, Command::Indent { uid });
+            }
+        }
+        let start = project.start;
+        // Task calendars work inside the standard hours and resource calendars around
+        // them, so every task can find room. (A task whose hours a resource never fully
+        // works searches four years before it gives up: slow, and not what this tests.)
+        let morning = vec![TimeRange::new(8 * 60, 12 * 60)];
+        let mornings = calendar(&mut project, "Buổi sáng", vec![morning; 5]);
+        let long_day = vec![TimeRange::new(7 * 60, 18 * 60)];
+        let long_days = calendar(&mut project, "Ngày dài", vec![long_day; 6]);
+        for day in [3, 11, 17] {
+            if random.chance(50) {
+                let date = civil(start + day * DAY_MS).0.format("%Y-%m-%d").to_string();
+                apply(&mut project, Command::AddHoliday { date });
+            }
+        }
+        for uid in 1..=tasks {
+            let minutes = HOUR * random.pick(&[0, 1, 2, 4, 8, 12, 16, 24, 40]);
+            apply(&mut project, Command::SetDuration { uid, minutes });
+            let priority = random.pick(&[300, 500, 500, 500, 700, 1000]);
+            apply(&mut project, Command::SetPriority { uid, priority });
+            if random.chance(15) {
+                apply(&mut project, Command::SetTaskCalendar { uid, calendar_id: mornings });
+            }
+        }
+        let kinds = [DepKind::Fs, DepKind::Fs, DepKind::Ss, DepKind::Ff, DepKind::Sf];
+        for _ in 0..tasks {
+            let predecessor_uid = 1 + random.below(u64::from(tasks)) as u32;
+            let successor_uid = 1 + random.below(u64::from(tasks)) as u32;
+            let kind = random.pick(&kinds);
+            let to_summary = project.task(successor_uid).is_some_and(|task| task.summary);
+            if mix == Mix::OnePass && to_summary && matches!(kind, DepKind::Ff | DepKind::Sf) {
+                continue;
+            }
+            let lag = random.pick(&[0, 0, -2 * HOUR, 4 * HOUR, 8 * HOUR]);
+            let link = Command::AddDependency { predecessor_uid, successor_uid, kind, lag };
+            apply(&mut project, link);
+        }
+        for uid in 1..=tasks {
+            let at = start + random.below(10) as i64 * DAY_MS + random.below(9) as i64 * HOUR_MS;
+            let summary = project.task(uid).is_some_and(|task| task.summary);
+            let constraint_type = match random.below(20) {
+                0 => ConstraintType::Snet,
+                1 => ConstraintType::Fnlt,
+                2 => ConstraintType::Snlt,
+                3 if !summary => ConstraintType::Mso,
+                4 if matches!(mix, Mix::Alap | Mix::Anything) => ConstraintType::Alap,
+                7..=10 if mix == Mix::Alap => ConstraintType::Alap,
+                5 if matches!(mix, Mix::GroupFinish | Mix::Anything) || !summary => {
+                    ConstraintType::Fnet
+                }
+                6 if !summary => ConstraintType::Mfo,
+                _ => continue,
+            };
+            let date = Some(at);
+            apply(&mut project, Command::SetConstraint { uid, constraint_type, date });
+        }
+        // Splits are placed from the scheduled start.
+        schedule(&mut project).expect("schedules");
+        for uid in 1..=tasks {
+            let task_start = project.task(uid).map(|task| task.start);
+            if let Some(task_start) = task_start.filter(|_| random.chance(10)) {
+                let gap = HOUR * random.pick(&[2, 8, 16]);
+                apply(&mut project, Command::SplitTask { uid, at: task_start + 2 * HOUR_MS, gap });
+            }
+            if random.chance(5) {
+                let actual = Some(start + random.below(3) as i64 * DAY_MS);
+                apply(&mut project, Command::SetActualStart { uid, start: actual });
+            }
+            if random.chance(4) {
+                let manual = Command::SetManual { uid, manual: true, start: None, finish: None };
+                apply(&mut project, manual);
+            }
+        }
+        let people = 2 + random.below(4) as u32;
+        for person in 0..people {
+            let name = format!("Người {person}");
+            apply(&mut project, Command::AddResource { name, kind: ResourceKind::Person });
+        }
+        let resources: Vec<u32> = project.resources.iter().map(|resource| resource.uid).collect();
+        for &uid in &resources {
+            let max_units = random.pick(&[0.5, 1.0, 1.0, 2.0]);
+            let calendar_id = if random.chance(20) { long_days } else { None };
+            let update = Command::UpdateResource {
+                uid,
+                name: format!("Người {uid}"),
+                kind: ResourceKind::Person,
+                max_units,
+                calendar_id,
+                standard_rate: 0.0,
+                overtime_rate: 0.0,
+                cost_per_use: 0.0,
+            };
+            apply(&mut project, update);
+        }
+        for task_uid in 1..=tasks {
+            for _ in 0..1 + random.below(2) {
+                let resource_uid = random.pick(&resources);
+                let units = random.pick(&[0.5, 1.0, 1.0]);
+                apply(&mut project, Command::AssignResource { task_uid, resource_uid, units });
+            }
+        }
+        schedule(&mut project).expect("schedules");
+        project
+    }
+
+    fn leveled(mut project: Project, quick: bool) -> Project {
+        level_with(&mut project, quick).expect("levels");
+        project
+    }
+
+    /// How often the generated projects hold what the test is meant to cover.
+    #[derive(Default)]
+    struct Seen {
+        delayed: usize,
+        delayed_splits: usize,
+        started: usize,
+        manual: usize,
+        links_into_groups: usize,
+    }
+
+    impl Seen {
+        fn count(&mut self, before: &Project, after: &Project) {
+            for task in after.tasks.iter().filter(|task| task.leveling_delay > 0) {
+                self.delayed += 1;
+                self.delayed_splits += usize::from(!task.splits.is_empty());
+            }
+            self.started += before.tasks.iter().filter(|task| task.actual_start.is_some()).count();
+            self.manual += before.tasks.iter().filter(|task| task.manual).count();
+            self.links_into_groups += before
+                .dependencies
+                .iter()
+                .filter(|dep| before.task(dep.successor_uid).is_some_and(|task| task.summary))
+                .count();
+        }
+    }
+
+    #[test]
+    fn the_quick_reschedule_levels_exactly_like_the_full_one() {
+        let mut seen = Seen::default();
+        for seed in 0..SEEDS {
+            let mixes = [Mix::OnePass, Mix::GroupFinish, Mix::OnePass, Mix::Alap, Mix::OnePass, Mix::Anything];
+            let mix = mixes[seed as usize % mixes.len()];
+            let mut base = project(seed, mix);
+            let graph = prepare(&mut base).expect("graph");
+            schedule_dates(&mut base, &graph);
+            let quick_path = Ripple::new(&base, &graph).is_some();
+            assert!(quick_path || mix != Mix::OnePass, "seed {seed} should take the quick path");
+            let quick = leveled(base.clone(), true);
+            let full = leveled(base, false);
+            for (a, b) in quick.tasks.iter().zip(&full.tasks) {
+                assert_eq!(
+                    (a.uid, a.leveling_delay, a.start, a.finish, a.total_slack),
+                    (b.uid, b.leveling_delay, b.start, b.finish, b.total_slack),
+                    "seed {seed}"
+                );
+            }
+            assert_eq!(quick.overallocations, full.overallocations, "seed {seed}");
+            seen.count(&full, &quick);
+        }
+        // Without these the test would prove little: leveling must move many tasks,
+        // split ones among them, around started and manual tasks and links into groups.
+        assert!(seen.delayed >= 5 * SEEDS as usize, "only {} delayed", seen.delayed);
+        assert!(seen.delayed_splits >= 20, "only {} split tasks delayed", seen.delayed_splits);
+        assert!(seen.started >= 50, "only {} started tasks", seen.started);
+        assert!(seen.manual >= 50, "only {} manual tasks", seen.manual);
+        assert!(seen.links_into_groups >= 100, "only {} links into groups", seen.links_into_groups);
+    }
+}

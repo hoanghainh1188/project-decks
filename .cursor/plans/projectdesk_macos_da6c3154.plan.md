@@ -1,6 +1,6 @@
 ---
 name: Sheafly macOS
-overview: "Sheafly là ứng dụng desktop Tauri (Rust + React) quản lý dự án theo hướng Microsoft Project. Pha 1–13 và 15–17 đã xong; Pha 14 xong phần không cần tài khoản Apple. Sau pha 10 đã thêm: bản cài đa nền tảng (PR #17), test frontend (PR #18), phần còn lại của pha 9–10 (PR #19), sơ đồ mạng (PR #20), tách công việc (PR #21), CLAUDE.md (PR #22), an toàn dữ liệu (PR #23), giao diện cơ bản (Pha 11, PR #25), nền tệp và hiệu năng (Pha 12, PR #28–#30), theo dõi tiến độ (Pha 13, PR #31–#32) và sửa giao diện sau khi chụp màn hình dự án mẫu (PR #33). Sau đó là Pha 14 (cài đặt), 15 và 17 (PR #34–#60: dọn dẹp, sơ đồ mạng, thanh công cụ, giao diện tối, copy/paste, MSPDI đầy đủ). Việc tiếp theo là ký số của Pha 14 (cần tài khoản Apple Developer) và phần còn lại của Pha 15, rồi Pha 18 (lập kế hoạch theo năng lực, đang thiết kế) ở mục Lộ trình; còn nợ vài bước kiểm tra thủ công trong app thật (xem đầu mục Lộ trình)."
+overview: "Sheafly là ứng dụng desktop Tauri (Rust + React) quản lý dự án theo hướng Microsoft Project. Pha 1–13 và 15–17 đã xong; Pha 14 xong phần không cần tài khoản Apple. Sau pha 10 đã thêm: bản cài đa nền tảng (PR #17), test frontend (PR #18), phần còn lại của pha 9–10 (PR #19), sơ đồ mạng (PR #20), tách công việc (PR #21), CLAUDE.md (PR #22), an toàn dữ liệu (PR #23), giao diện cơ bản (Pha 11, PR #25), nền tệp và hiệu năng (Pha 12, PR #28–#30), theo dõi tiến độ (Pha 13, PR #31–#32) và sửa giao diện sau khi chụp màn hình dự án mẫu (PR #33). Sau đó là Pha 14 (cài đặt), 15 và 17 (PR #34–#60: dọn dẹp, sơ đồ mạng, thanh công cụ, giao diện tối, copy/paste, MSPDI đầy đủ). Việc tiếp theo là ký số của Pha 14 (cần tài khoản Apple Developer) và phần còn lại của Pha 15, rồi Pha 18 (lập kế hoạch theo năng lực; P1 xong) ở mục Lộ trình; còn nợ vài bước kiểm tra thủ công trong app thật (xem đầu mục Lộ trình)."
 todos:
   - id: scaffold
     content: Tauri 2 + React + crate engine
@@ -78,8 +78,8 @@ todos:
     content: "Pha 17: UX ngang MS Project (copy/paste, tách App.tsx, bàn phím, giao diện còn lại). PR A (dọn dẹp, tiêu đề, EVM, README), B (sơ đồ mạng), C (thanh công cụ, focus, bàn phím Gantt, EVM phóng to, tab, màu và biểu tượng), D (copy/paste, điền xuống, kéo từng đoạn) và E (token màu, giao diện tối, tách App.tsx, test còn thiếu) xong"
     status: completed
   - id: capacity-scheduling
-    content: "Pha 18: lập kế hoạch theo năng lực cho hàng trăm người, hàng ngàn task mỗi sprint (leveling nhanh, năng lực theo ngày, vai trò → người, nhập hàng loạt, xem trước đề xuất, dự báo khoảng ước lượng). Đang thiết kế; P1 trước"
-    status: pending
+    content: "Pha 18: lập kế hoạch theo năng lực cho hàng trăm người, hàng ngàn task mỗi sprint (leveling nhanh, năng lực theo ngày, vai trò → người, nhập hàng loạt, xem trước đề xuất, dự báo khoảng ước lượng). P1 (leveling nhanh) xong; tiếp P2"
+    status: in_progress
 isProject: false
 ---
 
@@ -296,7 +296,7 @@ Theo đánh giá độc lập sau PR #23 (đối chiếu từng mục với code
 
 Trạng thái (13/10/2026): Pha 11–13 và 15–17 đã xong. Pha 14 đã làm phần gắn kiểu tệp, CSP, bản universal; còn ký số và notarize, cần tài khoản Apple Developer. Pha 15 còn đối chiếu với tệp xuất từ Project thật. Lịch nguồn lực vốn đã có giao diện từ Pha 6 (ghi "chưa có giao diện" trước đây là nhầm); sau Pha 15 thêm lịch gốc như Project (`calendar_base.rs`, `SetCalendarBase`, `FORMAT_VERSION` = 9): lịch nguồn lực và lịch task tạo mới dựa trên lịch dự án nên ngày lễ của dự án tự áp dụng, mỗi lịch chỉ lưu phần nó tự đặt. Đã thêm sau Pha 15: chi phí thực tế nhập theo assignment (PR #62) và báo cáo cảnh báo khi nhập MSPDI (PR #63, `mspdi_report.rs`: tuần làm việc bị bỏ, % bị thay bằng số theo ngày thực tế, công việc đổi ngày so với tệp quá một phút); chi phí thực tế theo ngày để backlog. Hộp thoại Thông tin dự án chia tab Chung / Thống kê (số liệu do engine tính, `statistics.rs`, so với đường cơ sở 0) và chọn được lịch dự án (`SetProjectCalendar`, `FORMAT_VERSION` = 10); sửa lịch chuyển sang hộp thoại "Lịch làm việc" riêng (menu Dự án), có Lưu/Hủy riêng như Project.
 
-Trạng thái (13/10/2026): Pha 18 (lập kế hoạch theo năng lực) đã nghiên cứu xong và có thiết kế; P1 (leveling nhanh) là việc engine tiếp theo.
+Trạng thái (13/10/2026): Pha 18 (lập kế hoạch theo năng lực) đã nghiên cứu xong và có thiết kế; P1 (leveling nhanh: 5.000 task từ 46 s còn 40 ms) đã xong, P2 (mô hình năng lực) là việc tiếp theo.
 
 Kiểm tra thủ công còn nợ trong `pnpm tauri dev` (các PR #28–#33 mới được kiểm bằng test, bench và ảnh chụp trình duyệt):
 
@@ -505,7 +505,7 @@ Chia 5 PR: (A) dọn dẹp và chỉnh nhỏ, (B) sơ đồ mạng, (C) thanh c�
 - Dọn 9 warning clippy của engine. (PR A)
 - Viết lại README: tính năng, cách cài bản phát hành, cách build; bỏ đường dẫn cứng. (PR A)
 
-### Pha 18 — lập kế hoạch theo năng lực (L, tách 4 PR) — đang thiết kế
+### Pha 18 — lập kế hoạch theo năng lực (L, tách 4 PR) — đang làm (P1 xong)
 
 **Nhu cầu (13/10/2026, từ một nhóm dùng thử).** Hàng trăm người, hàng ngàn task mỗi sprint. Mỗi người ôm vài PG (nhóm sản phẩm); trong một PG, task BE giao cho một người, FE cho một người. Input là PIC, năng lực của PIC theo từng ngày, effort của task và thứ tự ưu tiên; muốn engine tự xếp từng người làm lần lượt theo ưu tiên. Với Microsoft Project họ phải gán từng người vào từng task, đặt ràng buộc, rồi tự bấm leveling. Thêm nữa, task đặt duration dài hơn effort (ví dụ 3 ngày cho 3 giờ việc) chiếm chỗ cả 3 ngày, nên task sau bị đẩy ra sau 3 ngày. Con số đó thật ra là cửa sổ hoặc hạn chót; trong Sheafly nó nên là `deadline`, còn duration suy ra từ effort chia năng lực (task Fixed Work).
 
@@ -529,14 +529,25 @@ Kết quả đúng: không còn quá tải, không có giờ rảnh xen giữa c
 
 **Quyết định.** Lõi theo LiquidPlanner (`level.rs` đã cùng họ: xếp tuần tự, theo giờ). Lấy mô hình năng lực và vai trò của Float/Runn, luồng "đề xuất → duyệt → áp dụng" và báo task không vừa sprint của Jira. Không lấy cách xếp theo team (cần từng người) và cách chia đều tổng giờ (chính là lỗi 3 giờ trải trên 3 ngày).
 
-**P1 — leveling nhanh (M).** Cùng kết quả, nhanh hơn; không đổi định dạng tệp.
+**P1 — leveling nhanh (M) — đã xong.** Không đổi định dạng tệp; thứ tự hòa đổi nên `ENGINE_REVISION` = 6.
 
-- Chọn task kế tiếp bằng heap thay cho quét toàn bộ. Khóa của `next_to_place` là (levelable, waiting, start, −priority, total_slack, uid): khi một task được xếp thì các task sau nó có thể hết `waiting`, khi ngày đổi thì `start` đổi, nên đẩy lại các task đó vào heap và bỏ bản cũ lúc lấy ra.
-- `total_slack` đến từ lượt lùi toàn dự án: dời một task có thể đổi ngày kết thúc dự án và slack của cả task không nối sau nó. Chỉ khi hai task trùng cả ngày bắt đầu lẫn ưu tiên thì slack mới quyết định thứ tự, nên tính lại slack khi gặp hòa (hoặc khi ngày kết thúc dự án đổi) thay vì sau mỗi lần dời. Nếu cách đó không giữ đúng thứ tự cũ thì chấp nhận thứ tự hòa mới và tăng `ENGINE_REVISION`.
-- Dời một task thì chỉ tính lại ngày của nó và các task nối sau (theo `Graph`), không gọi `schedule_dates` cho cả dự án. Quay về tính lại toàn bộ như bây giờ khi: task có liên kết qua summary, có task ALAP (phụ thuộc ngày kết thúc dự án), hoặc ràng buộc làm ngày đổi ngoài tập đó.
-- So ngày và dựng lại tải bận chỉ trên tập đã đổi, không trên mọi task đã xếp. Tra task và nguồn lực theo uid bằng chỉ mục, không duyệt danh sách.
-- Tải bận của từng người giữ theo khoảng thời gian có sắp xếp, cập nhật thêm khoảng mới thay vì quét lại, để `earliest_fit` nhảy thẳng tới khe trống.
-- Nghiệm thu: test vàng trên vài dự án sinh ngẫu nhiên (hạt giống cố định, có liên kết, summary, task tách, ràng buộc, ALAP, lịch riêng, và các task trùng ngày bắt đầu, trùng ưu tiên nhưng khác slack): độ trễ sau cân bằng bằng đúng bản hiện tại, ghi trước khi sửa. Bench `-- capacity 500 5000` dưới 1 giây; `-- leveling` không chậm hơn. Kết quả không đổi thì không tăng `ENGINE_REVISION`; replay tệp cũ không bị ảnh hưởng vì log ghi `ApplyLeveling { delays }`, không chạy lại heuristic.
+- Thứ tự xếp là một heap (`Order` trong `level.rs`) với khóa (không dời được, đang chờ tiền nhiệm, ngày bắt đầu, −ưu tiên, slack, uid); task đổi khóa (ngày đổi, hết chờ) được đẩy lại, bản cũ bỏ qua khi lấy ra.
+- **Đổi so với Pha 16:** slack để phân xử khi trùng ngày bắt đầu và ưu tiên là **slack trước khi cân bằng**, không phải slack đang đổi theo từng bước. Giữ slack động cần chạy lượt lùi cả dự án sau mỗi lần xếp (chính là phần chậm), và hòa xảy ra thường xuyên vì ưu tiên mặc định là 500. Slack ban đầu cũng không phụ thuộc thứ tự leveling tình cờ đã xếp. Chỉ tệp còn lệnh `LevelResources` cũ (trước Pha 16) chạy lại heuristic, nên chỉ chúng có thể cân bằng khác; tệp mới ghi `ApplyLeveling { delays }`.
+- Dời một task thì `ripple.rs` chỉ tính lại task đó và các lá mà liên kết của nó (hoặc của summary chứa nó) chạm tới, theo thứ tự lá của `Graph`, bằng đúng `schedule_leaf`; dừng ở chỗ ngày không đổi. Cập nhật segment của task tách. Lượt lùi, slack và summary để cho một lần `schedule_dates` đầy đủ ở cuối.
+- Quay về tính lại toàn bộ sau mỗi lần dời khi dự án có task ALAP (đặt theo ngày muộn) hoặc summary phải kết thúc theo FF/SF hay FNET/MFO (cần nhiều lượt). Khi đó vẫn nhanh gấp đôi trước nhờ bỏ phần so ngày O(n²) và tra cứu tuyến tính.
+- Tra task theo vị trí, nguồn lực theo uid, assignment gom theo task một lần (`Lookup`). Profile trước khi sửa: `dates_of` (tra `project.task` tuyến tính cho mọi task đã xếp) chiếm 38 %, tính lịch trong `schedule_dates` 46 %.
+- Test: `the_quick_reschedule_levels_exactly_like_the_full_one` (trong `ripple.rs`) sinh 150 dự án (hạt giống cố định; nhóm, liên kết đủ loại kể cả vào/ra nhóm, task tách, ràng buộc, task đã bắt đầu, task tay, lịch riêng, ngày nghỉ, nguồn lực khác đơn vị và lịch; bốn kiểu: một lượt, nhóm phải kết thúc muộn, nhiều ALAP, đủ thứ), cân bằng bằng cả hai đường và đòi cùng độ trễ, ngày, slack và quá tải. Trong build test, sau mỗi lần tính lại nhanh, mọi lá còn được so với một bản tính lại toàn bộ (ngày, ngày sớm, xung đột, segment). Test đếm để chắc dữ liệu khó có thật (khoảng 1.480 task bị dời, 129 task tách bị dời, 231 task đã bắt đầu, 177 task tay, 769 liên kết vào nhóm) và mọi dự án kiểu một lượt đi đường nhanh; dưới 20 giây ở bản debug. Đã thử làm hỏng từng điều kiện của đường nhanh (lan qua summary cha, segment, nhóm kết thúc muộn, ALAP): test đều bắt được.
+- Bench (release, cùng máy):
+
+| Người | Task | Trước | Sau |
+|---|---|---|---|
+| 50 | 500 | 0,2 s | 3 ms |
+| 300 | 3.000 | 11,9 s | 22 ms |
+| 500 | 5.000 | 46 s | 40 ms |
+| 1.000 | 10.000 | — | 95 ms |
+
+  Thêm liên kết FS (tới 4.534 liên kết trên 5.000 task) vẫn khoảng 45 ms. `-- leveling` (500 task, 10 người): 308 ms → 10 ms, dài 101 ngày như trước. Một task ALAP trong dự án 3.000 task: 5,9 s (đường đầy đủ). Ít người: 2.000 task trên 3 người 145 ms, 5.000 task trên 10 người 283 ms (tải bận của một người dựng lại theo số khoảng của người đó). Chia pha (nhóm 50 task, pha nối FS): 5.000 task 347 ms, vì liên kết vào một nhóm lớn đưa cả nhóm vào hàng đợi.
+- Còn lại: (1) đường đầy đủ vẫn O(n²), nên một task ALAP làm cả dự án lớn chậm; có thể tính lại ALAP riêng thay vì cả dự án. (3) Tải bận của một người dựng lại toàn bộ khoảng sau mỗi task (`add_to_busy`) và dựng lại tất cả khi một task đã xếp bị dời (`busy_of`); nối thêm khoảng và dựng lại chỉ người bị ảnh hưởng sẽ bỏ phần bậc hai theo người. (2) Có từ trước: task có giờ làm mà nguồn lực không bao giờ làm đủ (lịch task là Thứ 2–Thứ 7, 7:00–16:00, lịch người là lịch chuẩn) để `earliest_fit` dò từng bước suốt 4 năm rồi mới bỏ, khoảng 100–200 ms mỗi task như vậy; `a_resource_that_never_works_when_the_task_does_is_left_overloaded_quickly` chỉ bao trường hợp hai lịch không trùng chút nào.
 
 **P2 — mô hình năng lực (M).**
 
