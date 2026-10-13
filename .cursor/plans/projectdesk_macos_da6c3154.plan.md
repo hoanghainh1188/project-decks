@@ -1,6 +1,6 @@
 ---
 name: Sheafly macOS
-overview: "Sheafly là ứng dụng desktop Tauri (Rust + React) quản lý dự án theo hướng Microsoft Project. Pha 1–13, 16 và 17 đã xong; Pha 14 xong phần không cần tài khoản Apple. Sau pha 10 đã thêm: bản cài đa nền tảng (PR #17), test frontend (PR #18), phần còn lại của pha 9–10 (PR #19), sơ đồ mạng (PR #20), tách công việc (PR #21), CLAUDE.md (PR #22), an toàn dữ liệu (PR #23), giao diện cơ bản (Pha 11, PR #25), nền tệp và hiệu năng (Pha 12, PR #28–#30), theo dõi tiến độ (Pha 13, PR #31–#32) và sửa giao diện sau khi chụp màn hình dự án mẫu (PR #33). Sau đó là Pha 14 (cài đặt), 15 và 17 (PR #34–#55: dọn dẹp, sơ đồ mạng, thanh công cụ, giao diện tối, copy/paste). Việc tiếp theo là ký số của Pha 14 (cần tài khoản Apple Developer) và Pha 15 ở mục Lộ trình; còn nợ vài bước kiểm tra thủ công trong app thật (xem đầu mục Lộ trình)."
+overview: "Sheafly là ứng dụng desktop Tauri (Rust + React) quản lý dự án theo hướng Microsoft Project. Pha 1–13 và 15–17 đã xong; Pha 14 xong phần không cần tài khoản Apple. Sau pha 10 đã thêm: bản cài đa nền tảng (PR #17), test frontend (PR #18), phần còn lại của pha 9–10 (PR #19), sơ đồ mạng (PR #20), tách công việc (PR #21), CLAUDE.md (PR #22), an toàn dữ liệu (PR #23), giao diện cơ bản (Pha 11, PR #25), nền tệp và hiệu năng (Pha 12, PR #28–#30), theo dõi tiến độ (Pha 13, PR #31–#32) và sửa giao diện sau khi chụp màn hình dự án mẫu (PR #33). Sau đó là Pha 14 (cài đặt), 15 và 17 (PR #34–#60: dọn dẹp, sơ đồ mạng, thanh công cụ, giao diện tối, copy/paste, MSPDI đầy đủ). Việc tiếp theo là ký số của Pha 14 (cần tài khoản Apple Developer) và phần còn lại của Pha 15 ở mục Lộ trình; còn nợ vài bước kiểm tra thủ công trong app thật (xem đầu mục Lộ trình)."
 todos:
   - id: scaffold
     content: Tauri 2 + React + crate engine
@@ -69,8 +69,8 @@ todos:
     content: "Pha 14: phát hành macOS. Đã xong: bản universal, kiểu tệp .sheafly, Mở gần đây, một bản chạy, CSP. Còn lại: ký số Developer ID, notarize, staple (cần tài khoản Apple Developer)"
     status: in_progress
   - id: mspdi-complete
-    content: "Pha 15: MSPDI đầy đủ (Deadline, chi phí thực tế, WorkWeeks)"
-    status: pending
+    content: "Pha 15: MSPDI đầy đủ (Deadline, chi phí thực tế, WorkWeeks). Đã xong PR A–C (#58–#60); còn đối chiếu với tệp Project thật"
+    status: completed
   - id: leveling-hours
     content: "Pha 16: quá tải theo giờ trùng nhau, leveling tuần tự, lưu độ trễ vào log"
     status: completed
@@ -291,7 +291,7 @@ Panel nhỏ cạnh Gantt, nhãn tiếng Việt và viết tắt trong ngoặc:
 
 Theo đánh giá độc lập sau PR #23 (đối chiếu từng mục với code) và kiểm tra giao diện trên một dự án mẫu 21 dòng. Pha 11 làm trước vì nhỏ và người dùng thấy ngay; Pha 12 là nền cho Pha 13 và 16. Pha 14 chạy song song khi có tài khoản Apple Developer.
 
-Trạng thái (12/10/2026): Pha 11–13, 16 và 17 đã xong. Pha 14 đã làm phần gắn kiểu tệp, CSP, bản universal; còn ký số và notarize, cần tài khoản Apple Developer. Pha 15 đủ điều kiện làm ngay.
+Trạng thái (13/10/2026): Pha 11–13 và 15–17 đã xong. Pha 14 đã làm phần gắn kiểu tệp, CSP, bản universal; còn ký số và notarize, cần tài khoản Apple Developer. Pha 15 còn đối chiếu với tệp xuất từ Project thật, nhập chi phí thực tế theo assignment/nguồn lực/thời gian, giao diện lịch nguồn lực và báo cáo cảnh báo khi nhập MSPDI.
 
 Kiểm tra thủ công còn nợ trong `pnpm tauri dev` (các PR #28–#33 mới được kiểm bằng test, bench và ảnh chụp trình duyệt):
 
@@ -389,7 +389,7 @@ Chia 2 PR: (1) lõi lịch theo ngày thực tế, (2) lệnh dời phần chưa
 - Nhập tiến độ (%, ngày thực tế; còn lại khi đã có tiến độ) trên một lần của chuỗi lặp không tách nó khỏi chuỗi. Sửa còn lại khi chưa có tiến độ vẫn là sửa riêng. Sinh lại chuỗi giữ nguyên các lần đã có tiến độ; xóa chuỗi giữ chúng lại như các lần đã sửa riêng.
 - Chuỗi nền (`RecurrenceSpec::background`, ô "Chuỗi nền" trong hộp thoại công việc lặp): không tính vào mốc kết thúc khi tính ngược, không nằm trên đường găng, không làm nhóm chứa nó thành găng, và thanh trạng thái không lấy nó làm ngày kết thúc dự án (trừ khi chỉ còn nó).
 - `FORMAT_VERSION` = 3 (lệnh mới, trường mới), `ENGINE_REVISION` = 3 (sinh lại chuỗi đổi). `tests/progress.rs`: 10 test.
-- Chưa làm: đối chiếu một tệp MSPDI mẫu xuất từ Project (cần tệp thật); ghi/đọc tiến độ đầy đủ qua MSPDI thuộc Pha 15.
+- Chưa làm: đối chiếu một tệp MSPDI mẫu xuất từ Project (cần tệp thật); tiến độ đầy đủ qua MSPDI đã làm ở Pha 15 (PR A).
 
 - Ngày bắt đầu thực tế ghim start, bỏ qua phụ thuộc và ràng buộc; ngày kết thúc thực tế ghim finish. Phần còn lại nối liền sau phần đã làm.
 - Lệnh "Dời phần chưa xong sau ngày trạng thái" dùng `split.rs` để tạo khoảng nghỉ, nên tất định và hoàn tác được.
@@ -435,7 +435,7 @@ Chia 3 PR:
   - **Đã xong (13/10/2026):** `Project.editable_actual_costs` (mặc định tắt = engine tính; khớp `EditableActualCosts` của MSPDI, 1 = nhập tay), `Task.manual_actual_cost`, lệnh `SetEditableActualCosts` và `SetTaskActualCost` (`FORMAT_VERSION` = 6; `ENGINE_REVISION` giữ 4 vì số tính cho các lệnh cũ không đổi). `compute_costs` dùng số nhập tay khi cờ bật, phần nhân công chia cho các assignment; `evm::actual_cost_at` rải chi phí nhập tay theo tiến độ, hoặc dồn vào ngày trạng thái khi task chưa có tiến độ. MSPDI (`mspdi_cost.rs`) ghi `Cost`/`ActualCost`/`RemainingCost` của task, assignment, nguồn lực và `EditableActualCosts`; đọc `ActualCost` của task chỉ khi tệp bật cờ. Giao diện: ô "Chi phí thực tế" trong nhóm Chi phí của panel thuộc tính (chỉ sửa khi cờ bật, để trống = số tính), ô chọn trong Thông tin dự án. Test `tests/actual_cost.rs` và `tests/mspdi.rs`. Sau đó (PR riêng): nhập tay theo assignment (`SetAssignmentActualCost`, `FORMAT_VERSION` = 8): thay phần của assignment, tổng task = phần cố định + các assignment, trừ khi task có số riêng; nhập MSPDI chỉ giữ số khác số tính (`keep_real_entries`). Theo nguồn lực là tổng các assignment (như Project, không nhập riêng). Để backlog (quyết định 13/10/2026): nhập chi phí thực tế theo ngày. Ít người dùng (chủ yếu khi đồng bộ kế toán/chấm công), cỡ L (dữ liệu theo ngày trong model, lệnh mới, lưới trong view Sử dụng, AC của EVM và đường cong S, `TimephasedData` chi phí, quy tắc khi tổng lệch tổng theo ngày) và chưa có tệp Project thật để đối chiếu; làm khi có người cần đường cong S theo AC từng tuần hoặc có tệp MSPDI có dữ liệu này; cách hiểu `EditableActualCosts` dựa trên tên phần tử vì tài liệu Microsoft mô tả mơ hồ, cần đối chiếu với Project thật.
 - **PR C — WorkWeeks (M):** `Calendar` thêm các tuần làm việc theo khoảng ngày (7 ngày giờ làm mỗi tuần), ưu tiên: ngoại lệ > tuần theo khoảng > tuần chuẩn; lệnh `set_calendar_work_week`/`clear_calendar_work_week` (tăng `FORMAT_VERSION` và `ENGINE_REVISION`); MSPDI `<WorkWeeks><WorkWeek>` với `TimePeriod` và `WeekDays`; `CalendarEditor` có mục "Tuần làm việc khác"; chạy lại bench `large_project` để chắc không chậm.
   - **Đã xong (13/10/2026):** `Calendar.work_weeks` (`WorkWeek { name, from, to, week }`, khoảng ngày gồm cả hai đầu, không chồng nhau, xếp theo `from`); ưu tiên ngoại lệ > tuần theo khoảng > tuần chuẩn (`ranges_on`/`week_for`). Lệnh `SetCalendarWorkWeek` (thay tuần có cùng `from`) và `ClearCalendarWorkWeek`; `FORMAT_VERSION` = 7, `ENGINE_REVISION` = 5. Có tuần theo khoảng thì `add_working` không nhảy cả tuần, còn `working_between` chia khoảng theo mép các tuần (`pattern_minutes`) nên chi phí theo số tuần riêng, không theo số ngày; bench `large_project` không đổi (16,6 s so với 16,8 s trước). MSPDI `<WorkWeeks>` đọc/ghi (`mspdi_workweeks.rs`), tuần chồng nhau trong tệp thì bỏ tuần sau. Giao diện: mục "Tuần làm việc khác" trong `CalendarEditor` (danh sách, Sửa, Bỏ, thêm với tuần bắt đầu là bản sao tuần chuẩn); phím Alt+mũi tên ở Gantt cũng theo tuần riêng. Test: `tests/work_weeks.rs`, các test trong `calendar.rs` (so với duyệt từng ngày), fixture viết tay `tests/fixtures/workweeks.xml`. Còn thiếu: lịch nguồn lực dùng chung cơ chế này nhưng chưa có giao diện riêng; "Thời gian làm việc mặc định" (`DayType` 0) của Project chưa đọc; chưa đối chiếu với tệp Project thật. Việc đổi ngày bắt đầu dự án theo tuần riêng là có chủ ý: `schedule()` đẩy `project.start` tới giờ làm đầu tiên, và giá trị đó giữ nguyên khi gỡ tuần riêng (giống ngoại lệ ngày nghỉ).
-  - **Pha 15 xong** (PR A: #58, B: #59, C: PR này).
+  - **Pha 15 xong** (PR A: #58, B: #59, C: #60).
 
 Nghiệm thu mỗi PR: test xuất rồi nhập lại trong `crates/engine/tests/mspdi.rs` (tệp mới), so từng trường; test giao diện cho phần mới. Chưa có tệp xuất từ Project thật: dùng một fixture XML viết tay theo schema MSPDI công khai (có đủ trường mới); khi có Project 2019/365 thì đối chiếu tệp thật (nợ từ Pha 5 và 13). Rủi ro: Project tính lại một số trường khi mở, nên chỉ kiểm được trọn vẹn bằng Project thật.
 
