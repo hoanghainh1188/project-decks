@@ -11,6 +11,7 @@ use crate::model::{
 };
 use crate::mspdi_calendar_days;
 use crate::mspdi_cost;
+use crate::mspdi_fields::{self, FieldReader};
 use crate::mspdi_report::{ImportNote, ImportReport};
 use crate::mspdi_workweeks::{self, WorkWeekBuilder};
 use crate::mspdi_progress::{self, FileProgress, TaskProgress, TimephasedActual};
@@ -33,6 +34,7 @@ pub fn write_mspdi(project: &Project) -> Result<String, EngineError> {
     if let Some(status) = project.status_date {
         el(&mut xml, "StatusDate", &format_iso(status));
     }
+    mspdi_fields::write_definitions(&mut xml, project);
     xml.push_str("<Calendars>\n");
     for calendar in &project.calendars {
         write_calendar(&mut xml, calendar);
@@ -195,12 +197,16 @@ pub fn read_mspdi_with_report(xml: &str) -> Result<(Project, ImportReport), Engi
     let mut timephased: BTreeMap<u32, Vec<Period>> = BTreeMap::new();
     let mut file_progress: BTreeMap<u32, FileProgress> = BTreeMap::new();
     let mut actuals: BTreeMap<u32, TimephasedActual> = BTreeMap::new();
+    let mut fields = FieldReader::default();
 
     loop {
         match reader.read_event() {
             Ok(Event::Start(event)) => {
                 stack.push(local_name(event.name().as_ref()));
                 text.clear();
+                if let Some(name) = stack.last() {
+                    fields.start(name, stack.iter().rev().nth(1).map(String::as_str));
+                }
                 match stack.last().map(String::as_str) {
                     Some("Calendar") => calendar = Some(CalendarBuilder::default()),
                     Some("WeekDay") => weekday = Some(WeekdayBuilder::default()),
@@ -254,6 +260,8 @@ pub fn read_mspdi_with_report(xml: &str) -> Result<(Project, ImportReport), Engi
                 if let Some(item) = work_week.as_mut() {
                     item.read(parent, &name, text.trim());
                 }
+                fields.text(&name, parent, &text);
+                fields.end(&name, parent);
                 apply_text(
                     &name,
                     parent,
@@ -345,6 +353,7 @@ pub fn read_mspdi_with_report(xml: &str) -> Result<(Project, ImportReport), Engi
                     "Task" => {
                         if let Some(builder) = task.take() {
                             if !builder.is_null && builder.uid != 0 {
+                                fields.end_task(builder.uid);
                                 file_progress.insert(
                                     builder.uid,
                                     FileProgress {
@@ -417,6 +426,7 @@ pub fn read_mspdi_with_report(xml: &str) -> Result<(Project, ImportReport), Engi
         }
     }
 
+    fields.finish(&mut project, &mut notes);
     if project.calendars.is_empty() {
         project.calendars.push(Calendar::standard());
     }
@@ -1053,6 +1063,7 @@ fn write_task(xml: &mut String, project: &Project, task: &Task) {
         el(xml, "LagFormat", "3");
         xml.push_str("</PredecessorLink>\n");
     }
+    mspdi_fields::write_values(xml, project, task);
     for baseline in &task.baselines {
         xml.push_str("<Baseline>\n");
         el(xml, "Number", &baseline.number.to_string());

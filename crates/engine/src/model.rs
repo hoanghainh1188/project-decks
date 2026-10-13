@@ -1,6 +1,9 @@
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 use crate::calendar::Calendar;
+use crate::fields::{FieldDef, FieldValue};
 use crate::recurrence::Recurrence;
 use crate::split::{Segment, Split};
 use crate::timeutil::MINUTES_PER_DAY;
@@ -154,6 +157,9 @@ pub struct Task {
     /// Edited on its own; regenerating the series leaves it unchanged.
     #[serde(default)]
     pub detached: bool,
+    /// Values of the project's custom fields, by field id; a field with no value is absent.
+    #[serde(default)]
+    pub values: BTreeMap<u32, FieldValue>,
     /// Interruptions of the work, ordered by offset. Empty when the task is not split.
     #[serde(default)]
     pub splits: Vec<Split>,
@@ -215,6 +221,7 @@ impl Task {
             series_uid: None,
             occurrence_date: None,
             detached: false,
+            values: BTreeMap::new(),
             splits: Vec::new(),
             segments: Vec::new(),
         }
@@ -358,6 +365,14 @@ pub struct Project {
     /// the engine computes them from progress.
     #[serde(default)]
     pub editable_actual_costs: bool,
+    /// Custom task fields, in the order the user added them.
+    #[serde(default)]
+    pub fields: Vec<FieldDef>,
+    /// The id the next custom field gets. Ids are never reused, so an id held outside
+    /// the project (a column, a group) cannot come to mean another field. 0 in files
+    /// written before it existed: the next id is then one past the largest.
+    #[serde(default)]
+    pub next_field_id: u32,
 }
 
 impl Project {
@@ -383,6 +398,8 @@ impl Project {
             overallocations: Vec::new(),
             usage: Vec::new(),
             editable_actual_costs: false,
+            fields: Vec::new(),
+            next_field_id: 1,
         }
     }
 

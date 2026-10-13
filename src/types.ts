@@ -120,10 +120,25 @@ export interface Task {
   series_uid: number | null;
   occurrence_date: number | null;
   detached: boolean;
+  /** Custom field values by field id (JSON object keys are strings); no key, no value. */
+  values: Record<string, FieldValue>;
   splits: Split[];
   /** Computed by the engine; empty when the task is not split. */
   segments: Segment[];
 }
+
+/** Mirror of `fields::FieldKind`. A choice is one of `options`, in the user's order. */
+export type FieldKind = { type: "text" } | { type: "number" } | { type: "choice"; options: string[] };
+
+/** Mirror of `fields::FieldDef`: a custom task field the project declares. */
+export interface FieldDef {
+  id: number;
+  name: string;
+  kind: FieldKind;
+}
+
+/** Mirror of `fields::FieldValue`: a number for number fields, text for the others. */
+export type FieldValue = number | string;
 
 /** Weekdays use 0 = Monday … 6 = Sunday, like calendar weeks. Ordinals are 1–4, or 5 for the last one. */
 export type RecurrencePattern =
@@ -233,6 +248,8 @@ export interface Project {
   usage: UsageRow[];
   /** Actual costs are entered by hand instead of computed from progress. */
   editable_actual_costs: boolean;
+  /** Custom task fields, in the order they were added. */
+  fields: FieldDef[];
 }
 
 export interface Snapshot {
@@ -325,7 +342,18 @@ export type Command =
   | { type: "remove_split"; uid: number; index: number | null }
   | { type: "move_segment"; uid: number; index: number; start: number }
   | { type: "paste_tasks"; after_uid: number | null; clipboard: TaskClipboard }
-  | { type: "fill_down"; from_uid: number; to_uids: number[]; field: FillField };
+  | { type: "fill_down"; from_uid: number; to_uids: number[]; field: FillField }
+  | { type: "add_field"; name: string; kind: FieldKind }
+  | {
+      type: "update_field";
+      id: number;
+      name: string;
+      kind: FieldKind;
+      /** Choices renamed in place, so tasks keep them. */
+      renamed_options: { from: string; to: string }[];
+    }
+  | { type: "delete_field"; id: number }
+  | { type: "set_field_value"; uid: number; field_id: number; value: FieldValue | null };
 
 /** Mirror of `clipboard::TaskCopy`: one copied task, its level relative to the copy. */
 export interface TaskCopy {
@@ -351,6 +379,8 @@ export interface TaskCopy {
   fixed_cost_accrual: Accrual;
   splits: Split[];
   assignments: { resource_uid: number; resource_name: string; units: number; work: number }[];
+  /** Custom field values by field name, as `[name, value]` pairs. */
+  values: [string, FieldValue][];
 }
 
 /** Mirror of `clipboard::TaskClipboard`; links point at positions in `tasks`. */
@@ -359,8 +389,15 @@ export interface TaskClipboard {
   links: { from: number; to: number; kind: DepKind; lag: number }[];
 }
 
-/** Mirror of `clipboard::FillField`: the columns fill-down copies. */
-export type FillField = "name" | "duration" | "start" | "predecessors" | "percent_complete" | "calendar";
+/** Mirror of `clipboard::FillField`: the columns fill-down copies; `{ field }` is a custom field. */
+export type FillField =
+  | "name"
+  | "duration"
+  | "start"
+  | "predecessors"
+  | "percent_complete"
+  | "calendar"
+  | { field: number };
 
 export type ViewId = "gantt" | "tracking" | "resources" | "usage" | "network";
 

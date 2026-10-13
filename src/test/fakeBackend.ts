@@ -1,4 +1,4 @@
-import type { Command, NetworkLayout, ProjectMetrics, Snapshot, Task, TaskClipboard } from "../types";
+import type { Command, FieldValue, NetworkLayout, ProjectMetrics, Snapshot, Task, TaskClipboard } from "../types";
 import { makeMetrics, makeSnapshot, makeTask } from "./fixtures";
 
 export interface InvokeCall {
@@ -139,6 +139,10 @@ class FakeBackend {
         fixed_cost_accrual: task.fixed_cost_accrual,
         splits: task.splits,
         assignments: [],
+        values: this.snapshot.project.fields.flatMap((field): [string, FieldValue][] => {
+          const value = task.values[field.id];
+          return value === undefined ? [] : [[field.name, value]];
+        }),
       })),
       links: [],
     };
@@ -195,7 +199,34 @@ class FakeBackend {
         for (const task of project.tasks.filter((item) => command.to_uids.includes(item.uid))) {
           if (command.field === "name") task.name = source.name;
           if (command.field === "duration") task.duration = source.duration;
+          if (typeof command.field === "object") setValue(task, command.field.field, source.values[command.field.field] ?? null);
         }
+        return;
+      }
+      case "add_field": {
+        if (project.fields.some((field) => field.name.toLowerCase() === command.name.trim().toLowerCase())) throw "Đã có trường cùng tên";
+        const id = Math.max(0, ...project.fields.map((field) => field.id)) + 1;
+        project.fields.push({ id, name: command.name.trim(), kind: command.kind });
+        return;
+      }
+      case "update_field": {
+        // Renames and replaces the kind; the engine also converts or clears values.
+        const field = project.fields.find((item) => item.id === command.id);
+        if (!field) throw "Không có trường này";
+        field.name = command.name.trim();
+        field.kind = command.kind;
+        return;
+      }
+      case "delete_field": {
+        project.fields = project.fields.filter((field) => field.id !== command.id);
+        for (const task of project.tasks) setValue(task, command.id, null);
+        return;
+      }
+      case "set_field_value": {
+        const task = project.tasks.find((item) => item.uid === command.uid);
+        if (!task) throw `Không có công việc ${command.uid}`;
+        if (!project.fields.some((field) => field.id === command.field_id)) throw "Không có trường này";
+        setValue(task, command.field_id, command.value);
         return;
       }
       case "create_calendar": {
@@ -259,6 +290,12 @@ class FakeBackend {
         return;
     }
   }
+}
+
+/** Set or clear a task's custom field value without mutating the old map. */
+function setValue(task: Task, fieldId: number, value: FieldValue | null): void {
+  const { [fieldId]: _old, ...rest } = task.values;
+  task.values = value === null || value === "" ? rest : { ...rest, [fieldId]: value };
 }
 
 function emptyNetwork(): NetworkLayout {

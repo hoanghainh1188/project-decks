@@ -74,6 +74,7 @@ export function makeTask(overrides: Partial<Task> & { uid: number }): Task {
     series_uid: null,
     occurrence_date: null,
     detached: false,
+    values: {},
     splits: [],
     segments: [],
     ...overrides,
@@ -133,6 +134,7 @@ export function makeProject(overrides: Partial<Project> = {}): Project {
     overallocations: [],
     usage: [],
     editable_actual_costs: false,
+    fields: [],
     ...overrides,
   };
 }
