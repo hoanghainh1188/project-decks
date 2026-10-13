@@ -19,6 +19,7 @@ pub mod model;
 pub mod mspdi;
 mod mspdi_cost;
 mod mspdi_progress;
+pub mod mspdi_report;
 mod mspdi_workweeks;
 pub mod network;
 pub mod recovery;

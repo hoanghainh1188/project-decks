@@ -7,6 +7,7 @@
 use chrono::NaiveDate;
 
 use crate::calendar::{Calendar, TimeRange, WorkWeek};
+use crate::mspdi_report::ImportNote;
 use crate::timeutil::{civil, format_iso, parse_iso};
 
 /// A `<WorkWeek>` being read.
@@ -58,10 +59,13 @@ fn date_of(value: &str) -> Option<NaiveDate> {
 }
 
 /// Add the work weeks of a file to `calendar`; one that overlaps an earlier one is
-/// dropped, since the engine keeps them apart.
-pub(crate) fn add_all(calendar: &mut Calendar, work_weeks: Vec<WorkWeek>) {
+/// dropped, since the engine keeps them apart, and noted.
+pub(crate) fn add_all(calendar: &mut Calendar, work_weeks: Vec<WorkWeek>, notes: &mut Vec<ImportNote>) {
     for work_week in work_weeks {
-        let _ = calendar.set_work_week(work_week);
+        let name = work_week.name.clone();
+        if calendar.set_work_week(work_week).is_err() {
+            notes.push(ImportNote::WorkWeekOverlaps { calendar: calendar.name.clone(), name });
+        }
     }
 }
 

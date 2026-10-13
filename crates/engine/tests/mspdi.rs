@@ -439,7 +439,11 @@ fn hand_entered_actual_costs_round_trip_and_feed_the_totals() {
         // assignments; with assignments the entry comes back on them (numbers equal).
         let assigned = back.assignments.iter().any(|a| a.task_uid == task.uid);
         if !assigned {
-            assert_eq!(after.manual_actual_cost, task.manual_actual_cost, "{}", task.name);
+            assert_eq!(
+                after.manual_actual_cost, task.manual_actual_cost,
+                "{}",
+                task.name
+            );
         }
         assert_eq!(
             after.actual_cost, task.actual_cost,
@@ -529,4 +533,104 @@ fn infinite_or_summary_actual_costs_in_a_file_are_not_kept() {
     );
     let project = read_mspdi(&xml).unwrap();
     assert_eq!(project.task(2).unwrap().manual_actual_cost, None);
+}
+
+mod import_report {
+    use super::*;
+    use sheafly_engine::lang::Lang;
+    use sheafly_engine::mspdi::read_mspdi_with_report;
+    use sheafly_engine::mspdi_report::ImportNote;
+
+    #[test]
+    fn our_own_export_reads_back_without_notes() {
+        let mut doc = doc_with(&[2, 3]);
+        doc.apply(Command::SetPercentComplete {
+            uid: 1,
+            percent: 40.0,
+        })
+        .unwrap();
+        let (_, report) = read_mspdi_with_report(&write_mspdi(&doc.project).unwrap()).unwrap();
+        assert_eq!(report.notes, vec![]);
+        assert_eq!(report.message(Lang::Vi), None);
+    }
+
+    #[test]
+    fn the_handwritten_files_explain_what_was_read_differently() {
+        let (_, report) = read_mspdi_with_report(include_str!("fixtures/progress.xml")).unwrap();
+        let percents: Vec<_> = report
+            .notes
+            .iter()
+            .filter_map(|note| match note {
+                ImportNote::PercentFromActuals { task, file, used } => {
+                    Some((task.as_str(), *file, *used))
+                }
+                _ => None,
+            })
+            .collect();
+        assert!(percents.contains(&("Finished", 50.0, 100.0)));
+        assert!(percents.contains(&("Half by duration", 10.0, 50.0)));
+        assert!(
+            percents
+                .iter()
+                .any(|(task, _, _)| *task == "Timephased actual"),
+            "{percents:?}"
+        );
+        let vi = report.message(Lang::Vi).unwrap();
+        assert!(vi.contains("Half by duration: 10 % → 50 %"), "{vi}");
+        let en = report.message(Lang::En).unwrap();
+        assert!(en.contains("Half by duration: 10% → 50%"), "{en}");
+
+        let (_, report) = read_mspdi_with_report(include_str!("fixtures/workweeks.xml")).unwrap();
+        assert!(report.notes.contains(&ImportNote::WorkWeekOverlaps {
+            calendar: "Standard".into(),
+            name: "Overlaps the first, so it is dropped".into(),
+        }));
+        assert!(report.message(Lang::En).unwrap().contains("was left out"));
+    }
+
+    #[test]
+    fn tasks_the_engine_moves_are_listed_with_both_dates() {
+        let xml = one_task(
+            "<Start>2026-01-07T08:00:00</Start><Finish>2026-01-07T17:00:00</Finish>\
+             <Duration>PT8H0M0S</Duration>",
+            "",
+        );
+        let (project, report) = read_mspdi_with_report(&xml).unwrap();
+        assert_eq!(
+            project.task(1).unwrap().start,
+            at(0, 8, 0),
+            "no constraint: starts with the project"
+        );
+        assert_eq!(
+            report.notes,
+            vec![ImportNote::Moved {
+                task: "T".into(),
+                before: (at(2, 8, 0), at(2, 17, 0)),
+                after: (at(0, 8, 0), at(0, 17, 0)),
+            }]
+        );
+        assert!(report
+            .message(Lang::Vi)
+            .unwrap()
+            .contains("1 công việc có ngày khác với tệp"));
+    }
+
+    #[test]
+    fn a_move_within_a_day_shows_the_times_and_a_minute_is_not_a_move() {
+        let xml = one_task(
+            "<Start>2026-01-05T08:01:00</Start><Finish>2026-01-05T12:00:00</Finish>\
+             <Duration>PT4H0M0S</Duration>",
+            "",
+        );
+        let (_, report) = read_mspdi_with_report(&xml).unwrap();
+        assert_eq!(report.notes, vec![], "08:01 against 08:00 is rounding");
+        let xml = one_task(
+            "<Start>2026-01-05T13:00:00</Start><Finish>2026-01-05T17:00:00</Finish>\
+             <Duration>PT4H0M0S</Duration>",
+            "",
+        );
+        let (_, report) = read_mspdi_with_report(&xml).unwrap();
+        let en = report.message(Lang::En).unwrap();
+        assert!(en.contains("13:00–17:00 → 08:00–12:00"), "{en}");
+    }
 }
