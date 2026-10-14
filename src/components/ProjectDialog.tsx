@@ -7,11 +7,13 @@ import { getLang, useMessages } from "../i18n";
 import type { Command, Project, ProjectStatistics, Snapshot } from "../types";
 import { Button } from "./Button";
 import { DateTimeField } from "./DateTimeField";
+import { FieldsTab } from "./FieldsTab";
 import { Modal } from "./Modal";
 import { projectDialogMessages } from "./ProjectDialog.i18n";
 
-type Tab = "general" | "statistics";
-const TABS: Tab[] = ["general", "statistics"];
+export type ProjectTab = "general" | "statistics" | "fields";
+type Tab = ProjectTab;
+const TABS: Tab[] = ["general", "statistics", "fields"];
 
 /**
  * Changes apply as they are made, so the Gantt previews them; Lưu keeps them and Hủy
@@ -26,6 +28,8 @@ export function ProjectDialog({
   onCancel,
   send,
   onOpenWorkingTime,
+  initialTab = "general",
+  error = null,
 }: {
   project: Project;
   /** Computed by the engine; null until loaded. */
@@ -35,11 +39,15 @@ export function ProjectDialog({
   onCancel: () => void;
   send: (command: Command) => Promise<Snapshot | void>;
   onOpenWorkingTime: () => void;
+  /** The tab the dialog opens on (Dự án → Trường tùy chỉnh opens on its tab). */
+  initialTab?: Tab;
+  /** The last edit the engine refused, shown in the footer since the banner is behind the dialog. */
+  error?: string | null;
 }) {
   const m = useMessages(appMessages);
   const p = useMessages(projectDialogMessages);
-  const [tab, setTab] = useState<Tab>("general");
-  const tabRefs = useRef<Record<Tab, HTMLButtonElement | null>>({ general: null, statistics: null });
+  const [tab, setTab] = useState<Tab>(initialTab);
+  const tabRefs = useRef<Record<Tab, HTMLButtonElement | null>>({ general: null, statistics: null, fields: null });
 
   function onTabKey(event: KeyboardEvent) {
     const index = TABS.indexOf(tab);
@@ -62,7 +70,13 @@ export function ProjectDialog({
       onClose={onCancel}
       footer={
         <>
-          <span className="meta dialog-foot-note">{changed ? m.previewing : ""}</span>
+          {error ? (
+            <span className="dialog-foot-note bad" role="alert">
+              {error}
+            </span>
+          ) : (
+            <span className="meta dialog-foot-note">{changed ? m.previewing : ""}</span>
+          )}
           <Button Icon={X} onClick={onCancel}>{m.cancel}</Button>
           <Button variant="primary" Icon={Check} onClick={onSave}>{m.save}</Button>
         </>
@@ -91,6 +105,8 @@ export function ProjectDialog({
       <div className="dialog-tabpanel" role="tabpanel" id="project-panel" aria-labelledby={`project-tab-${tab}`} tabIndex={0}>
         {tab === "general" ? (
           <GeneralTab project={project} send={send} onOpenWorkingTime={onOpenWorkingTime} />
+        ) : tab === "fields" ? (
+          <FieldsTab project={project} send={send} />
         ) : (
           <StatisticsTab statistics={statistics} />
         )}

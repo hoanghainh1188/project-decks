@@ -35,6 +35,8 @@ export interface MenuContext {
   setScale: (scale: Scale) => void;
   setEvmOpen: (open: boolean) => void;
   openProjectInfo: () => void;
+  /** Thông tin dự án, on its custom fields tab. */
+  openCustomFields: () => void;
   /** Lịch làm việc, on the project calendar. */
   openWorkingTime: () => void;
   openBaseline: () => void;
@@ -136,6 +138,9 @@ function viewAction(id: string, ctx: MenuContext): boolean {
       return true;
     case "project-info":
       ctx.openProjectInfo();
+      return true;
+    case "custom-fields":
+      ctx.openCustomFields();
       return true;
     case "working-time":
       ctx.openWorkingTime();

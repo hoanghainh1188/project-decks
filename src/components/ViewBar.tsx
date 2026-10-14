@@ -1,9 +1,10 @@
 import { ChartGantt, ListChecks, Network, Table2, Users, type LucideIcon } from "lucide-react";
-import { useRef, type KeyboardEvent } from "react";
+import { useMemo, useRef, type KeyboardEvent } from "react";
 
+import { distinctValues, formatFieldValue, valueKey } from "../fieldValues";
 import { useMessages } from "../i18n";
 import type { Project, Scale, ViewId } from "../types";
-import type { FilterMode, GroupMode, HighlightMode } from "../viewRows";
+import { fieldMode, fieldOfMode, type FilterMode, type GroupMode, type HighlightMode } from "../viewRows";
 import { viewBarMessages } from "./ViewBar.i18n";
 
 const VIEWS: { id: ViewId; Icon: LucideIcon }[] = [
@@ -33,6 +34,9 @@ interface Props {
   onFilter: (filter: FilterMode) => void;
   filterResource: number | null;
   onFilterResource: (uid: number | null) => void;
+  /** The custom field value a field filter keeps, as `valueKey` gives it ("" for none). */
+  filterValue: string;
+  onFilterValue: (key: string) => void;
   group: GroupMode;
   onGroup: (group: GroupMode) => void;
   highlight: HighlightMode;
@@ -51,6 +55,11 @@ export function ViewBar(props: Props) {
   const { project, view } = props;
   const chart = view === "gantt" || view === "tracking";
   const rowControls = project && (chart || view === "network");
+  const filterField = project ? fieldOfMode(project, props.filter) : null;
+  const filterValues = useMemo(
+    () => (filterField && project ? distinctValues(filterField, project.tasks) : []),
+    [filterField, project],
+  );
   const tabsRef = useRef<HTMLDivElement>(null);
   const m = useMessages(viewBarMessages);
 
@@ -122,14 +131,36 @@ export function ViewBar(props: Props) {
                 if (next === "resource" && props.filterResource == null) {
                   props.onFilterResource(project.resources[0]?.uid ?? null);
                 }
+                const field = fieldOfMode(project, next);
+                // Start on the first value tasks have, so the filter shows something.
+                if (field) props.onFilterValue(valueKey(distinctValues(field, project.tasks)[0]));
               }}
             >
               <option value="none">{m.filterNone}</option>
               <option value="critical">{m.critical}</option>
               <option value="resource">{m.byPerson}</option>
               <option value="late">{m.late}</option>
+              {project.fields.map((field) => (
+                <option key={field.id} value={fieldMode(field)}>
+                  {m.byField(field.name)}
+                </option>
+              ))}
             </select>
           </label>
+          {filterField && (
+            <select
+              aria-label={m.fieldValue}
+              value={props.filterValue}
+              onChange={(event) => props.onFilterValue(event.target.value)}
+            >
+              {filterValues.map((value) => (
+                <option key={valueKey(value)} value={valueKey(value)}>
+                  {formatFieldValue(value)}
+                </option>
+              ))}
+              <option value="">{m.noFieldValue}</option>
+            </select>
+          )}
           {props.filter === "resource" && (
             <select
               aria-label={m.person}
@@ -164,6 +195,11 @@ export function ViewBar(props: Props) {
                 <option value="none">{m.groupNone}</option>
                 <option value="resource">{m.byPerson}</option>
                 <option value="summary">{m.bySummary}</option>
+                {project.fields.map((field) => (
+                  <option key={field.id} value={fieldMode(field)}>
+                    {m.byField(field.name)}
+                  </option>
+                ))}
               </select>
             </label>
           )}

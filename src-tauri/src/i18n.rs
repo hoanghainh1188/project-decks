@@ -279,6 +279,7 @@ pub const PROJECT_MENU: &[Entry] = &[
         "Project Information…",
         None,
     ),
+    item("custom-fields", "Trường tùy chỉnh…", "Custom Fields…", None),
     item("working-time", "Lịch làm việc…", "Working Time…", None),
     item("baseline", "Đường cơ sở…", "Baseline…", None),
     Entry::Separator,
