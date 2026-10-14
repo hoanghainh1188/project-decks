@@ -149,6 +149,7 @@ mod tests {
     use super::Ripple;
     use crate::calendar::TimeRange;
     use crate::command::{apply_one, Command};
+    use crate::availability::AvailabilityPeriod;
     use crate::document::Document;
     use crate::fields::{FieldKind, FieldValue};
     use crate::level_order::{Criterion, SortKey};
@@ -160,7 +161,7 @@ mod tests {
     const HOUR: i64 = 60;
     const HOUR_MS: i64 = 3_600_000;
     const DAY_MS: i64 = 86_400_000;
-    /// Projects per run: under twenty seconds in a debug build, most of it the check
+    /// Projects per run: about twenty seconds in a debug build, most of it the check
     /// after every quick reschedule.
     const SEEDS: u64 = 150;
 
@@ -339,8 +340,38 @@ mod tests {
         if random.chance(60) {
             leveling_order(&mut project, &mut random, tasks);
         }
+        if random.chance(60) {
+            availability(&mut project, &mut random);
+        }
         schedule(&mut project).expect("schedules");
         project
+    }
+
+    /// A few periods of other units on some resources: leaves, half time, double time,
+    /// some open at one end.
+    fn availability(project: &mut Project, random: &mut Random) {
+        let start = civil(project.start).0;
+        let uids: Vec<u32> = project.resources.iter().map(|resource| resource.uid).collect();
+        for uid in uids {
+            if !random.chance(60) {
+                continue;
+            }
+            let mut periods = Vec::new();
+            let mut day = random.below(6) as i64;
+            for index in 0..1 + random.below(3) {
+                let from = (index > 0 || !random.chance(15)).then(|| start + chrono::Duration::days(day));
+                let length = random.below(8) as i64;
+                let open = random.chance(10);
+                let to = (!open).then(|| start + chrono::Duration::days(day + length));
+                let units = random.pick(&[0.0, 0.0, 0.5, 2.0]);
+                periods.push(AvailabilityPeriod { from, to, units });
+                if open {
+                    break;
+                }
+                day += length + 1 + random.below(6) as i64;
+            }
+            apply(project, Command::SetResourceAvailability { uid, periods });
+        }
     }
 
     /// Custom fields with values on most tasks, and a leveling order of one to four
@@ -404,6 +435,10 @@ mod tests {
         ordered_by_field: usize,
         /// Projects their own leveling order levels differently from the default one.
         reordered: usize,
+        /// Resources with periods of other units.
+        with_availability: usize,
+        /// Projects whose periods change how they level.
+        moved_by_availability: usize,
     }
 
     impl Seen {
@@ -421,6 +456,7 @@ mod tests {
                 .count();
             let by_field = |key: &SortKey| matches!(key.criterion, Criterion::Field { .. });
             self.ordered_by_field += usize::from(before.leveling_order.iter().any(by_field));
+            self.with_availability += before.resources.iter().filter(|r| !r.availability.is_empty()).count();
         }
     }
 
@@ -448,6 +484,17 @@ mod tests {
             }
             assert_eq!(quick.overallocations, full.overallocations, "seed {seed}");
             seen.count(&full, &quick);
+            if before_leveling.resources.iter().any(|resource| !resource.availability.is_empty()) {
+                let mut plain = before_leveling.clone();
+                for resource in &mut plain.resources {
+                    resource.availability.clear();
+                }
+                let plain = leveled(plain, true);
+                let delays = |project: &Project| -> Vec<i64> {
+                    project.tasks.iter().map(|task| task.leveling_delay).collect()
+                };
+                seen.moved_by_availability += usize::from(delays(&plain) != delays(&quick));
+            }
             if !base_order.is_empty() {
                 let mut default = before_leveling;
                 default.leveling_order.clear();
@@ -460,7 +507,7 @@ mod tests {
         }
         // Without these the test would prove little: leveling must move many tasks,
         // split ones among them, around started and manual tasks and links into groups,
-        // and many projects must level in an order of their own.
+        // and many projects must level in an order of their own and by capacity by date.
         assert!(seen.delayed >= 5 * SEEDS as usize, "only {} delayed", seen.delayed);
         assert!(seen.delayed_splits >= 20, "only {} split tasks delayed", seen.delayed_splits);
         assert!(seen.started >= 50, "only {} started tasks", seen.started);
@@ -468,6 +515,8 @@ mod tests {
         assert!(seen.links_into_groups >= 100, "only {} links into groups", seen.links_into_groups);
         assert!(seen.ordered_by_field >= 40, "only {} ordered by a field", seen.ordered_by_field);
         assert!(seen.reordered >= 50, "only {} leveled apart from the default", seen.reordered);
+        assert!(seen.with_availability >= 120, "only {} resources with periods", seen.with_availability);
+        assert!(seen.moved_by_availability >= 50, "only {} moved by periods", seen.moved_by_availability);
     }
 
     /// Projects for the check against searching four years: a search that never fits

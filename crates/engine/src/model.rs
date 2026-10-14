@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::availability::AvailabilityPeriod;
 use crate::calendar::Calendar;
 use crate::fields::{FieldDef, FieldValue};
 use crate::level_order::SortKey;
@@ -286,6 +287,9 @@ pub struct Resource {
     pub standard_rate: f64,
     pub overtime_rate: f64,
     pub cost_per_use: f64,
+    /// Days with other units than `max_units` (`availability.rs`), in date order.
+    #[serde(default)]
+    pub availability: Vec<AvailabilityPeriod>,
 }
 
 impl Resource {
@@ -299,6 +303,7 @@ impl Resource {
             standard_rate: 0.0,
             overtime_rate: 0.0,
             cost_per_use: 0.0,
+            availability: Vec::new(),
         }
     }
 }

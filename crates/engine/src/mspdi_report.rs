@@ -15,6 +15,9 @@ const LISTED: usize = 10;
 pub enum ImportNote {
     /// A work week that overlaps an earlier one in the same calendar was left out.
     WorkWeekOverlaps { calendar: String, name: String },
+    /// A resource's availability period that overlaps an earlier one or ends before it
+    /// starts was left out.
+    AvailabilityDropped { resource: String },
     /// A work week with no usable `FromDate` was left out.
     WorkWeekWithoutDates { calendar: String },
     /// A calendar exception (a `WeekDay` with `DayType` 0) with no usable `FromDate` was
@@ -108,6 +111,14 @@ fn week_line(note: &ImportNote, lang: Lang) -> Option<String> {
                 "• Calendar “{calendar}”: week “{name}” overlaps an earlier one and was left out."
             )
         }
+        (ImportNote::AvailabilityDropped { resource }, Lang::Vi) => format!(
+            "• Nguồn lực “{resource}”: một khoảng khả dụng trùng ngày với khoảng trước \
+             hoặc kết thúc trước khi bắt đầu, đã bỏ."
+        ),
+        (ImportNote::AvailabilityDropped { resource }, Lang::En) => format!(
+            "• Resource “{resource}”: an availability period overlaps an earlier one or \
+             ends before it starts, and was left out."
+        ),
         (ImportNote::WorkWeekWithoutDates { calendar }, Lang::Vi) => {
             format!("• Lịch “{calendar}”: một tuần làm việc không có ngày bắt đầu, đã bỏ.")
         }
@@ -153,8 +164,14 @@ fn heading_fields(lang: Lang) -> String {
 
 fn heading_weeks(lang: Lang) -> String {
     match lang {
-        Lang::Vi => "Một số tuần làm việc hoặc ngày ngoại lệ trong tệp không đọc được:".into(),
-        Lang::En => "Some work weeks or exceptions in the file could not be read:".into(),
+        Lang::Vi => {
+            "Một số tuần làm việc, ngày ngoại lệ hoặc khoảng khả dụng của nguồn lực trong tệp không đọc được:"
+                .into()
+        }
+        Lang::En => {
+            "Some work weeks, exceptions, or resource availability periods in the file could not be read:"
+                .into()
+        }
     }
 }
 
