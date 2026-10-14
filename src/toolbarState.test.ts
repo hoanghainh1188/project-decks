@@ -26,6 +26,16 @@ function states(task: Task | null, view: ViewId = "gantt", extra: Partial<Toolba
 }
 
 describe("toolbarStates", () => {
+  it("offers assigning by rules only once the project has a rule", () => {
+    expect(states(null).assignByRules).toEqual({
+      enabled: false,
+      reason: "Dự án chưa có quy tắc giao việc; tạo ở Dự án → Quy tắc giao việc…",
+    });
+    const rule = { conditions: [], target: { type: "resource" as const, uid: 1 }, units: 1 };
+    const ruled = makeSnapshot(makeProject({ tasks: [first], assignment_rules: [rule] }));
+    expect(toolbarStates({ snap: ruled, task: null, view: "resources", fileDialogBusy: false }).assignByRules.enabled).toBe(true);
+  });
+
   it("turns everything off without a project", () => {
     const all = toolbarStates({ snap: null, task: null, view: "gantt", fileDialogBusy: false });
     expect(Object.values(all).every((state) => !state.enabled && state.reason === "Chưa mở dự án")).toBe(true);

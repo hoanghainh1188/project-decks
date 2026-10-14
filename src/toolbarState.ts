@@ -38,6 +38,8 @@ export interface ToolbarStates {
   copyTask: CommandState;
   pasteTask: CommandState;
   fillDown: CommandState;
+  /** Preview who the assignment rules would give the unassigned tasks to. */
+  assignByRules: CommandState;
 }
 
 const ON: CommandState = { enabled: true };
@@ -99,6 +101,7 @@ export function toolbarStates({
       copyTask: none,
       pasteTask: none,
       fillDown: none,
+      assignByRules: none,
     };
   }
   const tasks = snap.project.tasks;
@@ -173,5 +176,6 @@ export function toolbarStates({
     copyTask: needsTask() ?? ON,
     pasteTask,
     fillDown,
+    assignByRules: snap.project.assignment_rules.length > 0 ? ON : off(reasons.noRules),
   };
 }

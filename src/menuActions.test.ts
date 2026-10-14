@@ -22,6 +22,7 @@ function context(overrides: Partial<MenuContext> = {}): MenuContext {
     openCustomFields: vi.fn(),
     openLevelingOrder: vi.fn(),
     openAssignmentRules: vi.fn(),
+    openAssignByRules: vi.fn(),
     openWorkingTime: vi.fn(),
     openBaseline: vi.fn(),
     openRecurring: vi.fn(),
@@ -155,6 +156,16 @@ describe("custom fields", () => {
     handleMenuAction("leveling-order", ctx);
     expect(ctx.openLevelingOrder).toHaveBeenCalled();
     expect(ctx.openProjectInfo).not.toHaveBeenCalled();
+  });
+
+  it("previews the suggestions only when the project has rules", () => {
+    const ctx = context();
+    handleMenuAction("assign-by-rules", ctx);
+    expect(ctx.openAssignByRules).not.toHaveBeenCalled();
+    const rule = { conditions: [], target: { type: "resource" as const, uid: 1 }, units: 1 };
+    const ruled = context({ snap: makeSnapshot(makeProject({ assignment_rules: [rule] })) });
+    handleMenuAction("assign-by-rules", ruled);
+    expect(ruled.openAssignByRules).toHaveBeenCalled();
   });
 
   it("opens the assignment rules", () => {

@@ -286,6 +286,7 @@ pub const PROJECT_MENU: &[Entry] = &[
     item("level", "Cân bằng nguồn lực", "Level Resources", None),
     item("leveling-order", "Thứ tự cân bằng…", "Leveling Order…", None),
     item("assignment-rules", "Quy tắc giao việc…", "Assignment Rules…", None),
+    item("assign-by-rules", "Giao việc theo quy tắc…", "Assign by Rules…", None),
     item("clear-level", "Xóa độ trễ cân bằng", "Clear Leveling", None),
     Entry::Separator,
     item(

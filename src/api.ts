@@ -3,7 +3,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 import { defineMessages, isLang, pick, type Lang } from "./i18n";
 import { isThemeChoice, type ThemeChoice } from "./theme";
-import type { Command, NetworkLayout, NetworkOptions, ProjectMetrics, Snapshot, TaskClipboard } from "./types";
+import type { Command, NetworkLayout, NetworkOptions, ProjectMetrics, Snapshot, Suggestion, TaskClipboard } from "./types";
 
 const apiMessages = defineMessages(
   { failed: "Không thực hiện được thao tác" },
@@ -73,6 +73,11 @@ export function loadMetrics(): Promise<ProjectMetrics> {
 
 export function loadNetworkLayout(options: NetworkOptions): Promise<NetworkLayout> {
   return inOrder(() => invoke<NetworkLayout>("network_layout", { options }));
+}
+
+/** Who the assignment rules would give each unassigned task to; a read, never logged. */
+export function suggestAssignments(): Promise<Suggestion[]> {
+  return inOrder(() => invoke<Suggestion[]>("suggest_assignments"));
 }
 
 /** The tasks `uids` with their subtrees, ready for a `paste_tasks` command. */

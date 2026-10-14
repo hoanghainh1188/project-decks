@@ -39,6 +39,8 @@ export interface MenuContext {
   openCustomFields: () => void;
   openLevelingOrder: () => void;
   openAssignmentRules: () => void;
+  /** Preview the suggestions of the assignment rules. */
+  openAssignByRules: () => void;
   /** Lịch làm việc, on the project calendar. */
   openWorkingTime: () => void;
   openBaseline: () => void;
@@ -149,6 +151,11 @@ function viewAction(id: string, ctx: MenuContext): boolean {
       return true;
     case "assignment-rules":
       ctx.openAssignmentRules();
+      return true;
+    case "assign-by-rules":
+      if (toolbarStates({ snap: ctx.snap, task: ctx.task, view: ctx.view, fileDialogBusy: ctx.fileDialogBusy }).assignByRules.enabled) {
+        ctx.openAssignByRules();
+      }
       return true;
     case "working-time":
       ctx.openWorkingTime();

@@ -32,6 +32,8 @@ export const toolbarMessages = defineMessages(
     project: "Dự án",
     projectInfo: "Dự án…",
     projectInfoTip: "Tên, ngày bắt đầu, ngày trạng thái và lịch dự án",
+    assignByRules: "Giao theo quy tắc…",
+    assignByRulesTip: "Xem ai nên làm các công việc chưa giao, theo quy tắc giao việc, rồi duyệt",
     reports: "Báo cáo",
     evm: "EVM",
     evmTip: "Chỉ số EVM và burn-down",
@@ -69,6 +71,8 @@ export const toolbarMessages = defineMessages(
     project: "Project",
     projectInfo: "Project…",
     projectInfoTip: "Name, start date, status date and project calendar",
+    assignByRules: "Assign by Rules…",
+    assignByRulesTip: "See who the assignment rules give the unassigned tasks to, then accept",
     reports: "Reports",
     evm: "EVM",
     evmTip: "EVM metrics and burn-down",
@@ -99,6 +103,7 @@ export const commandReasons = defineMessages(
     sheetView: "Điền xuống trong bảng của Gantt hoặc Theo dõi",
     oneRow: "Giữ Shift và bấm một hàng bên dưới để chọn các hàng cần điền",
     noColumn: "Bấm vào một ô của cột cần điền (Tên, Thời lượng, Bắt đầu, Tiền nhiệm, %, Lịch)",
+    noRules: "Dự án chưa có quy tắc giao việc; tạo ở Dự án → Quy tắc giao việc…",
   },
   {
     noProject: "No project is open",
@@ -120,5 +125,6 @@ export const commandReasons = defineMessages(
     sheetView: "Fill down in the Gantt or Tracking table",
     oneRow: "Shift-click a row below to select the rows to fill",
     noColumn: "Click a cell in the column to fill (Name, Duration, Start, Predecessors, %, Calendar)",
+    noRules: "The project has no assignment rules; add them in Project → Assignment Rules…",
   },
 );
