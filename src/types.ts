@@ -334,7 +334,7 @@ export interface ImportProblem {
 }
 
 /** A table read for import (`pick_table`, `read_table_sheet`): every cell as text. */
-export interface ImportTable {
+export interface ImportSheet {
   sheets: string[];
   sheet: string | null;
   rows: string[][];

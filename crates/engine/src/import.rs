@@ -355,10 +355,8 @@ fn anchor(project: &Project, after_uid: Option<u32>) -> Result<(usize, u32), Eng
             let position = project.index_of(anchor).ok_or(EngineError::TaskNotFound)?;
             Ok((subtree_end(&project.tasks, position), project.tasks[position].outline_level))
         }
-        None => Ok((
-            project.tasks.len(),
-            project.tasks.last().map_or(1, |task| task.outline_level),
-        )),
+        // At the very end and at the top level, so the rows join no group or series.
+        None => Ok((project.tasks.len(), 1)),
     }
 }
 
@@ -377,7 +375,7 @@ fn task_from(
     if name.is_empty() {
         return fail(ImportColumn::Name, Invalid::ImportName);
     }
-    if input.level > previous_level.map_or(0, |level| level + 1) {
+    if input.level > previous_level.map_or(0, |level| level.saturating_add(1)) {
         return fail(ImportColumn::Level, Invalid::ImportLevel);
     }
     let group = next_level.is_some_and(|next| next > input.level);
@@ -492,6 +490,7 @@ fn rows_in_loops(rows: &[ImportTask], bad: &[bool]) -> Vec<bool> {
         }
     };
     let mut index = vec![usize::MAX; count];
+    // `low` starts equal to `index` for each node as it is reached.
     let mut low = vec![0; count];
     let mut on_stack = vec![false; count];
     let mut stack = Vec::new();

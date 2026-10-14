@@ -91,10 +91,12 @@ fn read_workbook(path: &Path, sheet: Option<&str>) -> Result<Table, TableError> 
         .map_err(|error| TableError::Read(error.to_string()))?;
     let mut rows = Vec::new();
     for cells in range.rows() {
-        if cells.len() > MAX_COLUMNS {
+        // A formatted but empty cell far to the right widens the range; count to the last value.
+        let used = cells.iter().rposition(|cell| !matches!(cell, Data::Empty)).map_or(0, |last| last + 1);
+        if used > MAX_COLUMNS {
             return Err(TableError::TooManyColumns);
         }
-        rows.push(cells.iter().map(cell_text).collect());
+        rows.push(cells[..used].iter().map(cell_text).collect());
         if rows.len() > MAX_ROWS + 1 {
             return Err(TableError::TooManyRows);
         }
@@ -109,15 +111,35 @@ fn read_workbook(path: &Path, sheet: Option<&str>) -> Result<Table, TableError> 
 fn cell_text(cell: &Data) -> String {
     match cell {
         Data::Empty | Data::Error(_) => String::new(),
-        Data::String(text) | Data::DateTimeIso(text) | Data::DurationIso(text) => text.clone(),
+        Data::String(text) | Data::DurationIso(text) => text.clone(),
+        Data::DateTimeIso(text) => iso_text(text),
         Data::Int(number) => number.to_string(),
         Data::Float(number) => number_text(*number),
         Data::Bool(value) => value.to_string(),
+        Data::DateTime(date) if date.is_duration() => hours_text(date.as_f64() * 24.0),
         Data::DateTime(date) => match date.as_datetime() {
             Some(moment) if moment.time() == chrono::NaiveTime::MIN => moment.format("%Y-%m-%d").to_string(),
             Some(moment) => moment.format("%Y-%m-%d %H:%M").to_string(),
             None => date.as_f64().to_string(),
         },
+    }
+}
+
+/// A length of time in a cell (`[h]:mm`) as hours the UI reads as an effort: `16h`, `1.5h`.
+fn hours_text(hours: f64) -> String {
+    let minutes = (hours * 60.0).round();
+    format!("{}h", number_text(minutes / 60.0))
+}
+
+/// An ISO date or time (OpenDocument writes these) in the form the other cells use:
+/// `2026-01-09`, or `2026-01-09 13:30` with a time; anything else as it is.
+fn iso_text(text: &str) -> String {
+    let (date, time) = text.split_once('T').unwrap_or((text, ""));
+    let time = time.get(..5).unwrap_or("");
+    match (date.len(), time) {
+        (10, "") | (10, "00:00") => date.to_string(),
+        (10, time) => format!("{date} {time}"),
+        _ => text.to_string(),
     }
 }
 
@@ -143,8 +165,9 @@ fn decoded(bytes: &[u8]) -> Result<String, TableError> {
     };
     match bytes {
         [0xEF, 0xBB, 0xBF, rest @ ..] => String::from_utf8(rest.to_vec()).map_err(|_| TableError::Encoding),
-        [0xFF, 0xFE, rest @ ..] => utf16(rest, true),
-        [0xFE, 0xFF, rest @ ..] => utf16(rest, false),
+        [0xFF, 0xFE, rest @ ..] if rest.len() % 2 == 0 => utf16(rest, true),
+        [0xFE, 0xFF, rest @ ..] if rest.len() % 2 == 0 => utf16(rest, false),
+        [0xFF, 0xFE, ..] | [0xFE, 0xFF, ..] => Err(TableError::Encoding),
         _ => String::from_utf8(bytes.to_vec()).map_err(|_| TableError::Encoding),
     }
 }
@@ -264,6 +287,17 @@ mod tests {
         assert_eq!(number_text(1.5), "1.5");
         assert_eq!(cell_text(&Data::Int(-2)), "-2");
         assert_eq!(cell_text(&Data::Empty), "");
+        assert_eq!(hours_text(16.0), "16h");
+        assert_eq!(hours_text(1.5), "1.5h");
+        assert_eq!(iso_text("2026-01-09T13:30:00"), "2026-01-09 13:30");
+        assert_eq!(iso_text("2026-01-09T00:00:00"), "2026-01-09");
+        assert_eq!(iso_text("2026-01-09"), "2026-01-09");
+        assert_eq!(iso_text("PT8H"), "PT8H");
+    }
+
+    #[test]
+    fn refuses_utf16_cut_in_the_middle_of_a_character() {
+        assert_eq!(read_csv(&[0xFF, 0xFE, b'A', 0, b'B']), Err(TableError::Encoding));
     }
 
     #[test]
@@ -282,6 +316,10 @@ mod tests {
         let day = rust_xlsxwriter::ExcelDateTime::from_ymd(2026, 1, 9).unwrap();
         let format = rust_xlsxwriter::Format::new().set_num_format("yyyy-mm-dd");
         sheet.write_datetime_with_format(1, 2, &day, &format).unwrap();
+        let blank = rust_xlsxwriter::Format::new().set_bold();
+        sheet.write_blank(1, 150, &blank).unwrap();
+        let effort = rust_xlsxwriter::Format::new().set_num_format("[h]:mm");
+        sheet.write_number_with_format(1, 3, 16.0 / 24.0, &effort).unwrap();
         sheet.write(2, 0, "Họp").unwrap();
         sheet.write(2, 1, 1.5).unwrap();
         let moment = rust_xlsxwriter::ExcelDateTime::from_ymd(2026, 1, 9).unwrap().and_hms(13, 30, 0).unwrap();
@@ -296,9 +334,9 @@ mod tests {
         assert_eq!(
             table.rows,
             rows(&[
-                &["Tên", "Effort", "Hạn"],
-                &["Thiết kế", "16", "2026-01-09"],
-                &["Họp", "1.5", "2026-01-09 13:30"],
+                &["Tên", "Effort", "Hạn", ""],
+                &["Thiết kế", "16", "2026-01-09", "16h"],
+                &["Họp", "1.5", "2026-01-09 13:30", ""],
             ])
         );
         assert_eq!(read_table(&path, Some("Khác")), Err(TableError::NoSuchSheet));

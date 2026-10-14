@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { applyCommand, checkImport, pickTable, readTableSheet } from "./api";
 import { fakeBackend } from "./test/fakeBackend";
+import { makeProject, makeSnapshot, makeTask } from "./test/fixtures";
 
 describe("import calls", () => {
   it("checks rows with the anchor and both tables", async () => {
@@ -19,6 +20,7 @@ describe("import calls", () => {
     fakeBackend.table = { sheets: ["Người", "Việc"], sheet: "Người", rows: [["Tên"]] };
     expect((await pickTable())?.sheets).toEqual(["Người", "Việc"]);
     expect((await readTableSheet("Việc")).sheet).toBe("Việc");
+    await expect(readTableSheet("Khác")).rejects.toBe("Không có trang này trong tệp");
   });
 
   it("imports rows after the anchor in one command", async () => {
@@ -30,5 +32,16 @@ describe("import calls", () => {
     });
     expect(snapshot.project.tasks.map((task) => task.name)).toEqual(["Nhập 1", "Nhập 2"]);
     expect(snapshot.project.resources.map((resource) => resource.name)).toEqual(["Bình"]);
+  });
+
+  it("puts imported rows after the anchor's subtree", async () => {
+    const tasks = [
+      makeTask({ uid: 1, name: "Nhóm", summary: true }),
+      makeTask({ uid: 2, name: "Con", outline_level: 2, parent_uid: 1 }),
+      makeTask({ uid: 3, name: "Sau" }),
+    ];
+    fakeBackend.reset(makeSnapshot(makeProject({ tasks, next_task_uid: 4 })));
+    const snapshot = await applyCommand({ type: "import_rows", after_uid: 1, resources: [], tasks: [{ name: "Mới" }] });
+    expect(snapshot.project.tasks.map((task) => task.name)).toEqual(["Nhóm", "Con", "Mới", "Sau"]);
   });
 });

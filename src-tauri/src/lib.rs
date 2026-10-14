@@ -480,7 +480,11 @@ async fn pick_table(app: tauri::AppHandle, state: State<'_, AppState>) -> Result
         return Ok(None);
     };
     let path = PathBuf::from(path);
-    let table = table::read_table(&path, None).map_err(|error| error.message(lang(&state)))?;
+    let read = path.clone();
+    let table = tauri::async_runtime::spawn_blocking(move || table::read_table(&read, None))
+        .await
+        .map_err(|error| error.to_string())?
+        .map_err(|error| error.message(lang(&state)))?;
     *state.import_table.lock().unwrap_or_else(|err| err.into_inner()) = Some(path);
     Ok(Some(table))
 }
@@ -510,7 +514,9 @@ fn check_import(
     resources: Vec<ImportResource>,
     tasks: Vec<ImportTask>,
 ) -> Vec<ImportProblem> {
-    let problems = import::check_import(&lock(&state).project, after_uid, &resources, &tasks);
+    // Check a copy so edits and autosave do not wait for a large import.
+    let project = lock(&state).project.clone();
+    let problems = import::check_import(&project, after_uid, &resources, &tasks);
     let lang = lang(&state);
     problems
         .into_iter()

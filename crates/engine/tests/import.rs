@@ -321,3 +321,49 @@ fn imports_to_the_end_without_an_anchor() {
     .unwrap();
     assert_eq!(doc.project.tasks.last().unwrap().name, "Cuối cùng");
 }
+
+#[test]
+fn a_huge_level_after_a_bad_row_is_an_error_not_an_overflow() {
+    let doc = doc(&[]);
+    let rows = vec![ImportTask { level: u32::MAX, ..task("A") }, ImportTask { level: 1, ..task("B") }];
+    assert_eq!(
+        errors(&doc, &[], &rows),
+        vec![(ImportTable::Tasks, Some(0), ImportColumn::Level)]
+    );
+}
+
+#[test]
+fn without_an_anchor_rows_go_to_the_top_level_after_a_group() {
+    let mut doc = doc(&[]);
+    doc.apply(Command::AddTask { name: "Con".into(), after_uid: Some(1) }).unwrap();
+    let child = doc.project.tasks[1].uid;
+    doc.apply(Command::Indent { uid: child }).unwrap();
+    doc.apply(Command::ImportRows { after_uid: None, resources: vec![], tasks: vec![task("Cuối")] })
+        .unwrap();
+    let last = named(&doc.project, "Cuối");
+    assert_eq!((last.outline_level, last.parent_uid), (1, None));
+}
+
+#[test]
+fn the_same_person_twice_on_a_row_is_one_assignment() {
+    let mut doc = doc(&["An"]);
+    let twice = vec![
+        ImportAssignee { name: "An".into(), units: 1.0 },
+        ImportAssignee { name: "an".into(), units: 0.5 },
+    ];
+    import(&mut doc, vec![], vec![ImportTask { work: Some(DAY), assignees: twice, ..task("Hai lần") }]).unwrap();
+    let uid = named(&doc.project, "Hai lần").uid;
+    let on_task: Vec<_> = doc.project.assignments.iter().filter(|a| a.task_uid == uid).collect();
+    assert_eq!(on_task.len(), 1);
+    assert_eq!(on_task[0].units, 0.5);
+}
+
+#[test]
+fn a_child_waiting_for_its_own_group_is_reported_for_the_whole_import() {
+    let doc = doc(&[]);
+    let rows = vec![task("Nhóm"), ImportTask { level: 1, after: vec![0], ..task("Con") }];
+    let found = check_import(&doc.project, Some(1), &[], &rows);
+    assert_eq!(found.len(), 1);
+    assert_eq!((found[0].row, &found[0].column), (None, &ImportColumn::Row));
+    assert_eq!(found[0].error, EngineError::DependencyCycle);
+}

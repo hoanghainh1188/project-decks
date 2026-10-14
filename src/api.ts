@@ -7,7 +7,7 @@ import type {
   Command,
   ImportProblem,
   ImportResource,
-  ImportTable,
+  ImportSheet,
   ImportTask,
   NetworkLayout,
   NetworkOptions,
@@ -93,13 +93,13 @@ export function suggestAssignments(): Promise<Suggestion[]> {
 }
 
 /** Ask for a CSV or workbook and read its first sheet; null when cancelled. */
-export function pickTable(): Promise<ImportTable | null> {
-  return afterQueued(() => invoke<ImportTable | null>("pick_table"));
+export function pickTable(): Promise<ImportSheet | null> {
+  return afterQueued(() => invoke<ImportSheet | null>("pick_table"));
 }
 
 /** Another sheet of the workbook `pickTable` read. */
-export function readTableSheet(sheet: string): Promise<ImportTable> {
-  return invoke<ImportTable>("read_table_sheet", { sheet });
+export function readTableSheet(sheet: string): Promise<ImportSheet> {
+  return invoke<ImportSheet>("read_table_sheet", { sheet });
 }
 
 /** What `import_rows` would refuse, row by row; empty when it would succeed. */
