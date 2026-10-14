@@ -21,6 +21,9 @@ pub struct Table {
     /// The sheet read, if any.
     pub sheet: Option<String>,
     pub rows: Vec<Vec<String>>,
+    /// The line or row number (from 1) of each row in the file, as a spreadsheet numbers
+    /// it: blank rows and lines are left out of `rows`, so errors are shown by these.
+    pub lines: Vec<u32>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -70,10 +73,12 @@ pub fn read_table(path: &Path, sheet: Option<&str>) -> Result<Table, TableError>
         read_workbook(path, sheet)
     } else {
         let bytes = std::fs::read(path).map_err(|error| TableError::Read(error.to_string()))?;
+        let (rows, lines) = read_csv(&bytes)?;
         Ok(Table {
             sheets: Vec::new(),
             sheet: None,
-            rows: read_csv(&bytes)?,
+            rows,
+            lines,
         })
     }
 }
@@ -89,22 +94,31 @@ fn read_workbook(path: &Path, sheet: Option<&str>) -> Result<Table, TableError> 
     let range = workbook
         .worksheet_range(&name)
         .map_err(|error| TableError::Read(error.to_string()))?;
+    // The range starts at its first used cell; rows count from the sheet's top.
+    let first = range.start().map_or(0, |(row, _)| row);
     let mut rows = Vec::new();
-    for cells in range.rows() {
+    let mut lines = Vec::new();
+    for (index, cells) in range.rows().enumerate() {
         // A formatted but empty cell far to the right widens the range; count to the last value.
         let used = cells.iter().rposition(|cell| !matches!(cell, Data::Empty)).map_or(0, |last| last + 1);
         if used > MAX_COLUMNS {
             return Err(TableError::TooManyColumns);
         }
+        if used == 0 {
+            continue;
+        }
         rows.push(cells[..used].iter().map(cell_text).collect());
+        lines.push(first + index as u32 + 1);
         if rows.len() > MAX_ROWS + 1 {
             return Err(TableError::TooManyRows);
         }
     }
+    let (rows, lines) = trimmed(rows, lines);
     Ok(Table {
         sheets,
         sheet: Some(name),
-        rows: trimmed(rows),
+        rows,
+        lines,
     })
 }
 
@@ -196,7 +210,7 @@ fn delimiter(text: &str) -> u8 {
     }
 }
 
-fn read_csv(bytes: &[u8]) -> Result<Vec<Vec<String>>, TableError> {
+fn read_csv(bytes: &[u8]) -> Result<(Vec<Vec<String>>, Vec<u32>), TableError> {
     let text = decoded(bytes)?;
     let mut reader = csv::ReaderBuilder::new()
         .has_headers(false)
@@ -204,32 +218,31 @@ fn read_csv(bytes: &[u8]) -> Result<Vec<Vec<String>>, TableError> {
         .delimiter(delimiter(&text))
         .from_reader(text.as_bytes());
     let mut rows = Vec::new();
+    let mut lines = Vec::new();
     for record in reader.records() {
         let record = record.map_err(|error| TableError::Read(error.to_string()))?;
         if record.len() > MAX_COLUMNS {
             return Err(TableError::TooManyColumns);
         }
+        if record.iter().all(|cell| cell.trim().is_empty()) {
+            continue;
+        }
         rows.push(record.iter().map(str::to_string).collect());
+        lines.push(record.position().map_or(0, |position| position.line() as u32));
         if rows.len() > MAX_ROWS + 1 {
             return Err(TableError::TooManyRows);
         }
     }
-    Ok(trimmed(rows))
+    Ok(trimmed(rows, lines))
 }
 
-/// Drop empty rows at the end and pad every row to the widest one, so columns line up.
-fn trimmed(mut rows: Vec<Vec<String>>) -> Vec<Vec<String>> {
-    while rows
-        .last()
-        .is_some_and(|row: &Vec<String>| row.iter().all(|cell| cell.trim().is_empty()))
-    {
-        rows.pop();
-    }
+/// Pad every row to the widest one, so columns line up. Blank rows are already left out.
+fn trimmed(mut rows: Vec<Vec<String>>, lines: Vec<u32>) -> (Vec<Vec<String>>, Vec<u32>) {
     let width = rows.iter().map(Vec::len).max().unwrap_or(0);
     for row in &mut rows {
         row.resize(width, String::new());
     }
-    rows
+    (rows, lines)
 }
 
 #[cfg(test)]
@@ -243,42 +256,49 @@ mod tests {
             .collect()
     }
 
+    fn read_rows(bytes: &[u8]) -> Result<Vec<Vec<String>>, TableError> {
+        read_csv(bytes).map(|(rows, _)| rows)
+    }
+
     #[test]
     fn reads_comma_semicolon_and_tab_separated_files() {
         let expected = rows(&[&["Tên", "Effort"], &["Việc, một", "1,5"]]);
-        assert_eq!(read_csv("Tên,Effort\n\"Việc, một\",\"1,5\"\n".as_bytes()).unwrap(), expected);
-        assert_eq!(read_csv("Tên;Effort\r\n\"Việc, một\";1,5\r\n".as_bytes()).unwrap(), expected);
-        assert_eq!(read_csv("Tên\tEffort\n\"Việc, một\"\t1,5\n".as_bytes()).unwrap(), expected);
+        assert_eq!(read_rows("Tên,Effort\n\"Việc, một\",\"1,5\"\n".as_bytes()).unwrap(), expected);
+        assert_eq!(read_rows("Tên;Effort\r\n\"Việc, một\";1,5\r\n".as_bytes()).unwrap(), expected);
+        assert_eq!(read_rows("Tên\tEffort\n\"Việc, một\"\t1,5\n".as_bytes()).unwrap(), expected);
     }
 
     #[test]
     fn reads_utf8_with_a_mark_and_utf16_and_refuses_other_encodings() {
         let mut bom = vec![0xEF, 0xBB, 0xBF];
         bom.extend("Tên\nAn\n".as_bytes());
-        assert_eq!(read_csv(&bom).unwrap(), rows(&[&["Tên"], &["An"]]));
+        assert_eq!(read_rows(&bom).unwrap(), rows(&[&["Tên"], &["An"]]));
         let mut utf16 = vec![0xFF, 0xFE];
         for unit in "Tên;Ưu tiên\nAn;900\n".encode_utf16() {
             utf16.extend(unit.to_le_bytes());
         }
-        assert_eq!(read_csv(&utf16).unwrap(), rows(&[&["Tên", "Ưu tiên"], &["An", "900"]]));
+        assert_eq!(read_rows(&utf16).unwrap(), rows(&[&["Tên", "Ưu tiên"], &["An", "900"]]));
         // "Tên" in Windows-1258: not UTF-8.
-        assert_eq!(read_csv(&[b'T', 0xEA, b'n']), Err(TableError::Encoding));
+        assert_eq!(read_rows(&[b'T', 0xEA, b'n']), Err(TableError::Encoding));
     }
 
     #[test]
-    fn pads_short_rows_and_drops_empty_ones_at_the_end() {
+    fn pads_short_rows_drops_blank_ones_and_keeps_line_numbers() {
+        let (found, lines) = read_csv(b"a,b,c\n1\n\n,,\n\"x\ny\",2\n3\n").unwrap();
         assert_eq!(
-            read_csv(b"a,b,c\n1\n\n,,\n").unwrap(),
-            rows(&[&["a", "b", "c"], &["1", "", ""]])
+            found,
+            rows(&[&["a", "b", "c"], &["1", "", ""], &["x\ny", "2", ""], &["3", "", ""]])
         );
+        // The quoted cell spans lines 5 and 6.
+        assert_eq!(lines, [1, 2, 5, 7]);
     }
 
     #[test]
     fn refuses_tables_too_large() {
         let wide = vec!["x"; MAX_COLUMNS + 1].join(",");
-        assert_eq!(read_csv(wide.as_bytes()), Err(TableError::TooManyColumns));
+        assert_eq!(read_rows(wide.as_bytes()), Err(TableError::TooManyColumns));
         let long = "x\n".repeat(MAX_ROWS + 2);
-        assert_eq!(read_csv(long.as_bytes()), Err(TableError::TooManyRows));
+        assert_eq!(read_rows(long.as_bytes()), Err(TableError::TooManyRows));
     }
 
     #[test]
@@ -297,7 +317,7 @@ mod tests {
 
     #[test]
     fn refuses_utf16_cut_in_the_middle_of_a_character() {
-        assert_eq!(read_csv(&[0xFF, 0xFE, b'A', 0, b'B']), Err(TableError::Encoding));
+        assert_eq!(read_rows(&[0xFF, 0xFE, b'A', 0, b'B']), Err(TableError::Encoding));
     }
 
     #[test]
@@ -325,18 +345,21 @@ mod tests {
         let moment = rust_xlsxwriter::ExcelDateTime::from_ymd(2026, 1, 9).unwrap().and_hms(13, 30, 0).unwrap();
         let format = rust_xlsxwriter::Format::new().set_num_format("yyyy-mm-dd hh:mm");
         sheet.write_datetime_with_format(2, 2, &moment, &format).unwrap();
+        sheet.write(4, 0, "Sau dòng trống").unwrap();
         workbook.save(&path).unwrap();
 
         let first = read_table(&path, None).unwrap();
         assert_eq!(first.sheets, ["Người", "Việc"]);
         assert_eq!(first.sheet.as_deref(), Some("Người"));
         let table = read_table(&path, Some("Việc")).unwrap();
+        assert_eq!(table.lines, [1, 2, 3, 5]);
         assert_eq!(
             table.rows,
             rows(&[
                 &["Tên", "Effort", "Hạn", ""],
                 &["Thiết kế", "16", "2026-01-09", "16h"],
                 &["Họp", "1.5", "2026-01-09 13:30", ""],
+                &["Sau dòng trống", "", "", ""],
             ])
         );
         assert_eq!(read_table(&path, Some("Khác")), Err(TableError::NoSuchSheet));

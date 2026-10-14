@@ -10,6 +10,7 @@ import {
   loadNetworkLayout,
   loadState,
   suggestAssignments,
+  pickTable,
   onMenu,
   onOpenFile,
   openPending,
@@ -31,6 +32,7 @@ import { RecurringDialog, recurringCommand } from "./components/RecurringDialog"
 import { ResourceAvailabilityDialog } from "./components/ResourceAvailabilityDialog";
 import { AssignmentDialog } from "./components/AssignmentDialog";
 import { AssignPreviewDialog } from "./components/AssignPreviewDialog";
+import { ImportDialog } from "./components/ImportDialog";
 import { ResourceSheet } from "./components/ResourceSheet";
 import { SplitDialog } from "./components/SplitDialog";
 import { StatusBar } from "./components/StatusBar";
@@ -44,7 +46,7 @@ import { pick, useLang, useMessages, useSetLang } from "./i18n";
 import { buildGanttPdf, pdfSuggestedName } from "./ganttPdf";
 import { handleMenuAction } from "./menuActions";
 import { buildNetworkPdf } from "./networkPdf";
-import type { Command, FillField, NetworkLayout, ProjectMetrics, Scale, Snapshot, Suggestion, TaskClipboard, ViewId } from "./types";
+import type { Command, FillField, ImportSheet, NetworkLayout, ProjectMetrics, Scale, Snapshot, Suggestion, TaskClipboard, ViewId } from "./types";
 import {
   commitFocusedField,
   isEditableTarget,
@@ -90,6 +92,7 @@ export default function App() {
   const [assignmentStart, setAssignmentStart] = useState<number | null>(null);
   // Giao việc theo quy tắc: the suggestions being reviewed, null while closed.
   const [suggestions, setSuggestions] = useState<Suggestion[] | null>(null);
+  const [importSheet, setImportSheet] = useState<ImportSheet | null>(null);
   const [rowFilter, setRowFilter] = useState<FilterMode>("none");
   const [filterResource, setFilterResource] = useState<number | null>(null);
   const [filterValue, setFilterValue] = useState("");
@@ -223,6 +226,19 @@ export default function App() {
     }
   }, []);
 
+  // The file dialog goes through startFileDialog, so it never opens over another one.
+  const openImportTable = useCallback(
+    () =>
+      startFileDialog(async () => {
+        const sheet = await pickTable();
+        if (sheet) {
+          setDialogError(null);
+          setImportSheet(sheet);
+        }
+      }),
+    [startFileDialog],
+  );
+
   // Undo every command applied since `cursor`. Queued edits (a field committed on
   // close) land first, because loadState waits for them.
   const rollbackTo = useCallback(
@@ -296,6 +312,7 @@ export default function App() {
         openLevelingOrder: () => void openProjectInfo("leveling"),
         openAssignmentRules: () => void openAssignmentRules(),
         openAssignByRules: () => void openAssignByRules(),
+        openImportTable,
         openWorkingTime: () => void openWorkingTime(snap?.project.calendar_id ?? 1),
         openBaseline: () => setBaselineOpen(true),
         openRecurring: () => setSeriesDialog(0),
@@ -311,7 +328,7 @@ export default function App() {
         setClipboard,
         fillField,
       }),
-    [run, send, startFileDialog, task, snap, view, fileDialogBusy, openProjectInfo, openWorkingTime, openAssignmentRules, openAssignByRules, infoStart, workingTime, availability, assignmentStart, setLang, changeTheme, selection, clipboard, fillField],
+    [run, send, startFileDialog, task, snap, view, fileDialogBusy, openProjectInfo, openWorkingTime, openAssignmentRules, openAssignByRules, openImportTable, infoStart, workingTime, availability, assignmentStart, setLang, changeTheme, selection, clipboard, fillField],
   );
   menuRef.current = handleMenu;
 
@@ -770,6 +787,19 @@ export default function App() {
           onClose={() => {
             setDialogError(null);
             setSuggestions(null);
+          }}
+        />
+      )}
+      {importSheet && project && (
+        <ImportDialog
+          project={project}
+          initial={importSheet}
+          afterTask={task}
+          error={dialogError}
+          send={sendInDialog}
+          onClose={() => {
+            setDialogError(null);
+            setImportSheet(null);
           }}
         />
       )}

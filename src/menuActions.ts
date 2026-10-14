@@ -41,6 +41,8 @@ export interface MenuContext {
   openAssignmentRules: () => void;
   /** Preview the suggestions of the assignment rules. */
   openAssignByRules: () => void;
+  /** Tệp → Nhập bảng: pick a CSV or workbook, then map its columns. */
+  openImportTable: () => void;
   /** Lịch làm việc, on the project calendar. */
   openWorkingTime: () => void;
   openBaseline: () => void;
@@ -82,6 +84,9 @@ function documentAction(id: string, ctx: MenuContext): boolean {
       return true;
     case "import-xml":
       ctx.startFileDialog(importMspdi);
+      return true;
+    case "import-table":
+      ctx.openImportTable();
       return true;
     case "export-xml":
       ctx.startFileDialog(async () => {

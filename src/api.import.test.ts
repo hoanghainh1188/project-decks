@@ -17,7 +17,7 @@ describe("import calls", () => {
 
   it("returns null when the file dialog is cancelled and reads another sheet", async () => {
     expect(await pickTable()).toBeNull();
-    fakeBackend.table = { sheets: ["Người", "Việc"], sheet: "Người", rows: [["Tên"]] };
+    fakeBackend.table = { sheets: ["Người", "Việc"], sheet: "Người", rows: [["Tên"]], lines: [1] };
     expect((await pickTable())?.sheets).toEqual(["Người", "Việc"]);
     expect((await readTableSheet("Việc")).sheet).toBe("Việc");
     await expect(readTableSheet("Khác")).rejects.toBe("Không có trang này trong tệp");

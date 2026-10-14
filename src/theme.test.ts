@@ -42,7 +42,7 @@ const TEXT_PAIRS: [string, string[]][] = [
   ["--text-tab", ["--surface-chrome", "--tab-hover"]],
   ["--text-muted", ["--surface", "--surface-chrome", "--surface-sunken", "--surface-muted", "--chart-bg"]],
   ["--text-faint", ["--surface", "--surface-sunken", "--surface-muted", "--weekend", "--network-bg"]],
-  ["--critical-text", ["--surface", "--selected-row", "--highlight-row"]],
+  ["--critical-text", ["--surface", "--selected-row", "--highlight-row", "--tone-danger-bg"]],
   ["--banner-text", ["--banner-bg"]],
   ["--over-text", ["--over-bg"]],
   ["--on-accent", ["--accent-strong"]],

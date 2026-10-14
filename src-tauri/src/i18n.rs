@@ -210,6 +210,7 @@ pub const FILE_MENU: &[Entry] = &[
     ),
     Entry::Separator,
     item("import-xml", "Nhập MSPDI…", "Import MSPDI…", None),
+    item("import-table", "Nhập bảng (CSV, Excel)…", "Import Table (CSV, Excel)…", None),
     item("export-xml", "Xuất MSPDI…", "Export MSPDI…", None),
     item("export-pdf", "Xuất PDF", "Export PDF", None),
 ];
