@@ -11,6 +11,10 @@
 //! custom choice field first (`[Field asc, Priority desc, Start asc]`), most tasks having
 //! a value, and `leave` to give each person up to three periods of other units (a week
 //! off, weeks at half time).
+//!
+//! `-- suggest [<people> <tasks>]` times the assignment suggestions for an unassigned
+//! backlog (default 500 people, 5000 tasks): twenty skills, one to three per person, and
+//! twenty rules from the values of a list field to the skills.
 
 use std::time::{Duration, Instant};
 
@@ -22,6 +26,8 @@ use sheafly_engine::fields::{FieldDef, FieldKind, FieldValue};
 use sheafly_engine::level::level_project;
 use sheafly_engine::level_order::{Criterion, SortKey};
 use sheafly_engine::model::{Assignment, DepKind, Resource, ResourceKind, Task, TaskType};
+use sheafly_engine::skills::{AssignmentRule, Condition, RuleTarget, SkillDef};
+use sheafly_engine::suggest::suggest;
 use sheafly_engine::store::{load, save};
 use sheafly_engine::timeutil::timestamp;
 use sheafly_engine::{schedule, Document, Project};
@@ -227,11 +233,80 @@ fn capacity(people: u32, tasks: u32, by_field: bool, leave: bool) {
     println!("{:<28} {:>10.1} giờ", "giờ rảnh xen giữa", idle as f64 / 60.0);
 }
 
+/// An unassigned backlog of `tasks` tasks, each with one of twenty values of a list field
+/// that a rule maps to one of twenty skills; `people` have one to three skills each.
+/// Prints how long the suggestions take and how evenly the top picks spread.
+fn suggestions(people: u32, tasks: u32) {
+    let mut seed: u64 = 7;
+    let mut random = |below: u64| {
+        seed = seed.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
+        (seed >> 33) % below
+    };
+    const SKILLS: u32 = 20;
+    let mut project = Project::new("Gợi ý", timestamp(2026, 1, 5, 8, 0));
+    project.skills = (1..=SKILLS).map(|id| SkillDef { id, name: format!("Kỹ năng {id}") }).collect();
+    project.next_skill_id = SKILLS + 1;
+    for uid in 1..=people {
+        let mut resource = Resource::new(uid, format!("Người {uid}"), ResourceKind::Person);
+        for _ in 0..=random(3) {
+            resource.skills.push(1 + random(u64::from(SKILLS)) as u32);
+        }
+        resource.skills.sort_unstable();
+        resource.skills.dedup();
+        project.resources.push(resource);
+    }
+    let options: Vec<String> = (1..=SKILLS).map(|value| format!("Mảng {value}")).collect();
+    project.fields.push(FieldDef { id: 1, name: "Mảng".into(), kind: FieldKind::Choice { options: options.clone() } });
+    project.next_field_id = 2;
+    project.assignment_rules = (1..=SKILLS)
+        .map(|id| AssignmentRule {
+            conditions: vec![Condition { field: 1, values: vec![FieldValue::Text(options[id as usize - 1].clone())] }],
+            target: RuleTarget::Skill { id },
+            units: 1.0,
+        })
+        .collect();
+    for uid in 1..=tasks {
+        let work = 60 * (1 + random(16) as i64);
+        let mut task = Task::new(uid, format!("Việc {uid}"));
+        task.task_type = TaskType::FixedWork;
+        task.duration = work;
+        task.remaining_duration = work;
+        task.work = work;
+        task.remaining_work = work;
+        task.priority = 100 + random(800) as i32;
+        let option = options[random(u64::from(SKILLS)) as usize].clone();
+        task.values.insert(1, FieldValue::Text(option));
+        project.tasks.push(task);
+    }
+    project.next_task_uid = tasks + 1;
+    project.next_resource_uid = people + 1;
+    timed("lập lịch", || schedule(&mut project).expect("schedule"));
+    println!("{people} người, {tasks} công việc, {SKILLS} kỹ năng");
+    let (suggested, _) = timed("gợi ý giao việc", || suggest(&project));
+    let picked: Vec<u32> = suggested.iter().filter_map(|s| s.picks.first().map(|pick| pick.resource_uid)).collect();
+    let mut per_person = vec![0u32; people as usize + 1];
+    for uid in &picked {
+        per_person[*uid as usize] += 1;
+    }
+    let busiest = per_person.iter().max().copied().unwrap_or(0);
+    let finish = suggested.iter().filter_map(|s| s.picks.first().map(|pick| pick.finish)).max().unwrap_or(0);
+    let days = project.calendar().working_between(project.start, finish) as f64 / DAY as f64;
+    println!("{:<28} {:>10} / {tasks}", "có gợi ý", picked.len());
+    println!("{:<28} {:>10} việc", "nhiều nhất một người", busiest);
+    println!("{:<28} {:>10.1} ngày", "xong muộn nhất (ước tính)", days);
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let numbers: Vec<usize> = args.iter().filter_map(|arg| arg.parse().ok()).collect();
     if args.iter().any(|arg| arg == "leveling") {
         leveling(500);
+        return;
+    }
+    if args.iter().any(|arg| arg == "suggest") {
+        let people = numbers.first().copied().unwrap_or(500).max(1) as u32;
+        let tasks = numbers.get(1).copied().unwrap_or(5000) as u32;
+        suggestions(people, tasks);
         return;
     }
     if args.iter().any(|arg| arg == "capacity") {

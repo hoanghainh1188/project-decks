@@ -17,6 +17,7 @@ use sheafly_engine::evm::ProjectMetrics;
 use sheafly_engine::mspdi::{read_mspdi_with_report, write_mspdi};
 use sheafly_engine::network::{self, NetworkLayout, NetworkOptions};
 use sheafly_engine::store;
+use sheafly_engine::suggest::{self, Suggestion};
 use sheafly_engine::{Command, Document, EngineError, Lang, Snapshot};
 use tauri::menu::{AboutMetadata, CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::path::BaseDirectory;
@@ -447,6 +448,13 @@ fn copy_tasks(state: State<'_, AppState>, uids: Vec<u32>) -> clipboard::TaskClip
 #[tauri::command(async)]
 fn network_layout(state: State<'_, AppState>, options: NetworkOptions) -> NetworkLayout {
     network::layout(&lock(&state).project, &options)
+}
+
+/// Who the assignment rules would give each unassigned task to. A read: accepting the
+/// suggestions is an `assign_tasks` command.
+#[tauri::command(async)]
+fn suggest_assignments(state: State<'_, AppState>) -> Vec<Suggestion> {
+    suggest::suggest(&lock(&state).project)
 }
 
 #[tauri::command(async)]
@@ -1164,6 +1172,7 @@ pub fn run() {
             project_state,
             project_metrics,
             network_layout,
+            suggest_assignments,
             copy_tasks,
             apply_command,
             undo,

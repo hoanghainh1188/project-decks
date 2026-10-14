@@ -14,6 +14,7 @@ use crate::model::{
 };
 use crate::recurrence::{self, Recurrence, RecurrenceSpec};
 use crate::schedule::normalize_outline;
+use crate::skills::{self, AssignmentRule, TaskAssignment};
 use crate::split;
 use crate::timeutil::{parse_date_key, MINUTES_PER_DAY, MINUTES_PER_HOUR};
 use crate::tracking;
@@ -334,6 +335,32 @@ pub enum Command {
     SetResourceAvailability {
         uid: u32,
         periods: Vec<AvailabilityPeriod>,
+    },
+    /// Name a new skill; it gets the next free id.
+    AddSkill {
+        name: String,
+    },
+    RenameSkill {
+        id: u32,
+        name: String,
+    },
+    /// Remove a skill from the project and every resource, with the rules that point at it.
+    DeleteSkill {
+        id: u32,
+    },
+    /// Replace a resource's skills.
+    SetResourceSkills {
+        uid: u32,
+        skills: Vec<u32>,
+    },
+    /// Replace the ordered assignment rules. Only suggestions read them.
+    SetAssignmentRules {
+        rules: Vec<AssignmentRule>,
+    },
+    /// Assign many tasks in one undo step, each row as `AssignResource` does; one bad row
+    /// fails them all.
+    AssignTasks {
+        assignments: Vec<TaskAssignment>,
     },
 }
 
@@ -756,6 +783,7 @@ fn apply_inner(project: &mut Project, command: &Command) -> Result<(), EngineErr
         }
         Command::DeleteResource { uid } => {
             project.resources.retain(|resource| resource.uid != *uid);
+            skills::drop_resource(project, *uid);
             let assignment_uids: Vec<u32> = project
                 .assignments
                 .iter()
@@ -977,6 +1005,31 @@ fn apply_inner(project: &mut Project, command: &Command) -> Result<(), EngineErr
         Command::SetLevelingOrder { order } => level_order::set_order(project, order)?,
         Command::SetResourceAvailability { uid, periods } => {
             availability::set_availability(project, *uid, periods)?
+        }
+        Command::AddSkill { name } => {
+            skills::add_skill(project, name)?;
+        }
+        Command::RenameSkill { id, name } => skills::rename_skill(project, *id, name)?,
+        Command::DeleteSkill { id } => skills::delete_skill(project, *id)?,
+        Command::SetResourceSkills { uid, skills } => {
+            skills::set_resource_skills(project, *uid, skills)?
+        }
+        Command::SetAssignmentRules { rules } => skills::set_rules(project, rules)?,
+        Command::AssignTasks { assignments } => {
+            if assignments.is_empty() {
+                return Err(Invalid::NoAssignments.into());
+            }
+            for row in assignments {
+                if !row.units.is_finite() || row.units <= 0.0 {
+                    return Err(Invalid::UnitsNotPositive.into());
+                }
+                let command = Command::AssignResource {
+                    task_uid: row.task_uid,
+                    resource_uid: row.resource_uid,
+                    units: row.units,
+                };
+                apply_one(project, &command)?;
+            }
         }
     }
     Ok(())

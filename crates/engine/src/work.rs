@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::model::{Accrual, Assignment, Project, TaskType, UsageDay, UsageRow};
+use crate::model::{Accrual, Assignment, Project, Task, TaskType, UsageDay, UsageRow};
 use crate::split;
 use crate::timeutil::{civil, compose, date_key};
 
@@ -203,6 +203,22 @@ pub fn apply_change(project: &mut Project, task_uid: u32, changed: Changed) {
         .map(|i| project.assignments[*i].units)
         .sum();
     task.work = work;
+}
+
+/// The duration and work a task with no assignment gets when one resource is assigned to
+/// it at `units`, as `add_assignment` sets them: the new assignment carries the task's
+/// work, then the task type decides what follows. Suggestions use it to date a task for
+/// each person they consider.
+pub fn with_first_assignment(task: &Task, units: f64) -> (i64, i64) {
+    let units = units.max(0.0);
+    let (duration, work) = (task.duration, task.work);
+    let from_work = (work as f64 / units).round().max(0.0) as i64;
+    let duration = match task.task_type {
+        TaskType::FixedUnits if task.effort_driven && work > 0 && units > 0.0 => from_work,
+        TaskType::FixedWork if units > 0.0 => from_work,
+        _ => duration,
+    };
+    (duration.max(0), scale(duration, units))
 }
 
 pub fn add_assignment(project: &mut Project, task_uid: u32, resource_uid: u32, units: f64) -> u32 {

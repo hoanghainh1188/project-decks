@@ -14,6 +14,7 @@ use crate::mspdi_availability::{self, PeriodBuilder};
 use crate::mspdi_calendar_days;
 use crate::mspdi_cost;
 use crate::mspdi_fields::{self, FieldReader};
+use crate::mspdi_skills::{self, SkillReader};
 use crate::mspdi_report::{ImportNote, ImportReport};
 use crate::mspdi_workweeks::{self, WorkWeekBuilder};
 use crate::mspdi_progress::{self, FileProgress, TaskProgress, TimephasedActual};
@@ -201,6 +202,7 @@ pub fn read_mspdi_with_report(xml: &str) -> Result<(Project, ImportReport), Engi
     let mut file_progress: BTreeMap<u32, FileProgress> = BTreeMap::new();
     let mut actuals: BTreeMap<u32, TimephasedActual> = BTreeMap::new();
     let mut fields = FieldReader::default();
+    let mut skills = SkillReader::default();
 
     loop {
         match reader.read_event() {
@@ -208,7 +210,9 @@ pub fn read_mspdi_with_report(xml: &str) -> Result<(Project, ImportReport), Engi
                 stack.push(local_name(event.name().as_ref()));
                 text.clear();
                 if let Some(name) = stack.last() {
-                    fields.start(name, stack.iter().rev().nth(1).map(String::as_str));
+                    let parent = stack.iter().rev().nth(1).map(String::as_str);
+                    fields.start(name, parent);
+                    skills.start(name, parent);
                 }
                 match stack.last().map(String::as_str) {
                     Some("Calendar") => calendar = Some(CalendarBuilder::default()),
@@ -269,6 +273,8 @@ pub fn read_mspdi_with_report(xml: &str) -> Result<(Project, ImportReport), Engi
                 }
                 fields.text(&name, parent, &text);
                 fields.end(&name, parent);
+                skills.text(&name, parent, &text);
+                skills.end(&name, parent);
                 apply_text(
                     &name,
                     parent,
@@ -393,6 +399,7 @@ pub fn read_mspdi_with_report(xml: &str) -> Result<(Project, ImportReport), Engi
                     "Resource" => {
                         if let Some(builder) = resource.take() {
                             if builder.uid != 0 {
+                                skills.end_resource(builder.uid);
                                 project.resources.push(builder.finish(&mut notes));
                             }
                         }
@@ -439,6 +446,7 @@ pub fn read_mspdi_with_report(xml: &str) -> Result<(Project, ImportReport), Engi
     }
 
     fields.finish(&mut project, &mut notes);
+    skills.finish(&mut project);
     if project.calendars.is_empty() {
         project.calendars.push(Calendar::standard());
     }
@@ -1109,6 +1117,7 @@ fn write_resource(xml: &mut String, project: &Project, resource: &Resource) {
     if let Some(calendar_id) = resource.calendar_id {
         el(xml, "CalendarUID", &calendar_id.to_string());
     }
+    mspdi_skills::write_value(xml, project, resource);
     mspdi_availability::write(xml, resource);
     xml.push_str("</Resource>\n");
 }
@@ -1458,6 +1467,7 @@ impl ResourceBuilder {
             overtime_rate: self.overtime_rate,
             cost_per_use: self.cost_per_use,
             availability: Vec::new(),
+            skills: Vec::new(),
         };
         mspdi_availability::apply(&mut resource, self.periods, notes);
         resource
