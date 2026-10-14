@@ -11,6 +11,7 @@ import {
   loadState,
   suggestAssignments,
   pickTable,
+  applyPlan,
   onMenu,
   onOpenFile,
   openPending,
@@ -46,7 +47,7 @@ import { pick, useLang, useMessages, useSetLang } from "./i18n";
 import { buildGanttPdf, pdfSuggestedName } from "./ganttPdf";
 import { handleMenuAction } from "./menuActions";
 import { buildNetworkPdf } from "./networkPdf";
-import type { Command, FillField, ImportSheet, NetworkLayout, ProjectMetrics, Scale, Snapshot, Suggestion, TaskClipboard, ViewId } from "./types";
+import type { Command, FillField, ImportSheet, NetworkLayout, PlanPreview, ProjectMetrics, Scale, Snapshot, Suggestion, TaskClipboard, ViewId } from "./types";
 import {
   commitFocusedField,
   isEditableTarget,
@@ -137,6 +138,21 @@ export default function App() {
   // the banner behind the dialog (where it would outlive the dialog after Lưu). Errors
   // from anything else stay in the banner.
   const [dialogError, setDialogError] = useState<string | null>(null);
+  const applyPlanInDialog = useCallback(
+    (plan: PlanPreview) =>
+      run(async () => {
+        try {
+          const state = await applyPlan(plan);
+          setDialogError(null);
+          return state;
+        } catch (err) {
+          setDialogError(errorMessage(err));
+          return undefined;
+        }
+      }),
+    [run],
+  );
+
   const sendInDialog = useCallback(
     (command: Command) =>
       run(async () => {
@@ -783,7 +799,8 @@ export default function App() {
           project={project}
           suggestions={suggestions}
           error={dialogError}
-          send={sendInDialog}
+          applyPlan={applyPlanInDialog}
+          clearError={() => setDialogError(null)}
           onClose={() => {
             setDialogError(null);
             setSuggestions(null);

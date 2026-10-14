@@ -202,7 +202,7 @@ describe("Root", () => {
     ]);
   });
 
-  it("previews the suggestions, applies them as one command and levels", async () => {
+  it("previews the plan for the suggestions and applies it in one step", async () => {
     vi.spyOn(navigator, "languages", "get").mockReturnValue(["vi-VN"]);
     const rule = { conditions: [], target: { type: "resource" as const, uid: 1 }, units: 1 };
     fakeBackend.reset(
@@ -222,14 +222,14 @@ describe("Root", () => {
     await user.click(await screen.findByRole("button", { name: "Giao theo quy tắc…" }));
     expect(await screen.findByRole("dialog", { name: "Giao việc theo quy tắc" })).toBeInTheDocument();
     expect(fakeBackend.calls.some((call) => call.cmd === "suggest_assignments")).toBe(true);
-    await user.click(screen.getByRole("button", { name: "Áp dụng (1)" }));
-    expect(await screen.findByRole("status")).toHaveTextContent("Đã giao 1 công việc");
-    await user.click(screen.getByRole("button", { name: "Cân bằng nguồn lực" }));
+    const apply = await screen.findByRole("button", { name: "Áp dụng kế hoạch" });
+    await waitFor(() => expect(apply).toBeEnabled());
+    await user.click(apply);
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Giao việc theo quy tắc" })).not.toBeInTheDocument());
-    expect(fakeBackend.commands()).toEqual([
-      { type: "assign_tasks", assignments: [{ task_uid: 1, resource_uid: 1, units: 1 }] },
-      { type: "level_resources" },
-    ]);
+    const applied = fakeBackend.calls.filter((call) => call.cmd === "apply_plan");
+    expect(applied).toHaveLength(1);
+    expect(applied[0].args?.assignments).toEqual([{ task_uid: 1, resource_uid: 1, units: 1 }]);
+    expect(fakeBackend.snapshot.project.assignments).toHaveLength(1);
   });
 
   it("bases a resource's new calendar on the project calendar", async () => {

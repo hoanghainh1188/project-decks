@@ -765,6 +765,9 @@ input.bad { color: var(--critical-text); border-color: var(--critical-text); fon
 .suggestions select { max-width: 280px; }
 .suggestions .num { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .dialog-subhead { font-size: 13px; font-weight: 600; margin: 12px 0 4px; }
+/* Giao việc theo quy tắc: the expected result of the plan. */
+.plan-filter { display: inline-flex; align-items: center; gap: 6px; margin: 2px 0; }
+.plan-late { font-weight: 600; }
 /* Tệp → Nhập bảng: setup in one row, then each column's field over its header. */
 .import-setup { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; }
 .import-target { display: flex; gap: 12px; align-items: center; border: 0; margin: 0; padding: 0; }

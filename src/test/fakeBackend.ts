@@ -3,11 +3,13 @@ import type {
   FieldValue,
   ImportProblem,
   ImportSheet,
+  PlanPreview,
   NetworkLayout,
   ProjectMetrics,
   Snapshot,
   Suggestion,
   Task,
+  TaskAssignment,
   TaskClipboard,
 } from "../types";
 import { makeMetrics, makeResource, makeSnapshot, makeTask } from "./fixtures";
@@ -28,6 +30,8 @@ class FakeBackend {
   network: NetworkLayout = emptyNetwork();
   /** What `suggest_assignments` answers: made up by the test, the engine ranks people. */
   suggestions: Suggestion[] = [];
+  /** What `preview_plan` answers; by default the assignments asked for and no leveling. */
+  planPreview: PlanPreview | null = null;
   /** What `check_import` answers. */
   importProblems: ImportProblem[] = [];
   /** What `pick_table` answers (null is a cancelled dialog); `read_table_sheet` reads it too. */
@@ -48,6 +52,7 @@ class FakeBackend {
     this.network = emptyNetwork();
     this.suggestions = [];
     this.importProblems = [];
+    this.planPreview = null;
     this.table = null;
     this.failures.clear();
     this.holds.clear();
@@ -109,6 +114,22 @@ class FakeBackend {
         return structuredClone(this.network);
       case "suggest_assignments":
         return structuredClone(this.suggestions);
+      case "preview_plan":
+        return structuredClone(
+          this.planPreview ?? {
+            assignments: args?.assignments as TaskAssignment[],
+            delays: [],
+            splits: [],
+            moves: [],
+            late: [],
+            overallocated: [],
+          },
+        );
+      case "apply_plan": {
+        const assignments = args?.assignments as TaskAssignment[];
+        if (assignments.length > 0) this.apply({ type: "assign_tasks", assignments });
+        return structuredClone(this.snapshot);
+      }
       case "check_import":
         return structuredClone(this.importProblems);
       case "pick_table":

@@ -273,6 +273,37 @@ export interface TaskAssignment {
   units: number;
 }
 
+/** Mirror of `command::LevelingDelay`. */
+export interface LevelingDelay {
+  uid: number;
+  minutes: number;
+}
+
+/** Mirror of `command::LevelingSplits`: all the leveling splits of one task. */
+export interface LevelingSplits {
+  uid: number;
+  splits: Split[];
+}
+
+/** Mirror of `plan::PlanMove`: a task whose dates the plan changes. */
+export interface PlanMove {
+  uid: number;
+  start_before: number;
+  finish_before: number;
+  start: number;
+  finish: number;
+}
+
+/** Mirror of `plan::PlanPreview`, what `preview_plan` returns and `apply_plan` takes back. */
+export interface PlanPreview {
+  assignments: TaskAssignment[];
+  delays: LevelingDelay[];
+  splits: LevelingSplits[];
+  moves: PlanMove[];
+  late: number[];
+  overallocated: number[];
+}
+
 /** Mirror of `import::ImportResource`, one person or machine of `import_rows`. */
 export interface ImportResource {
   name: string;
@@ -493,9 +524,9 @@ export type Command =
   | { type: "level_resources" }
   | {
       type: "apply_leveling";
-      delays: { uid: number; minutes: number }[];
+      delays: LevelingDelay[];
       /** Tasks whose leveling splits changed, each with all of them. */
-      splits?: { uid: number; splits: Split[] }[];
+      splits?: LevelingSplits[];
     }
   | { type: "clear_leveling" }
   | { type: "reschedule_uncompleted" }
@@ -531,7 +562,8 @@ export type Command =
   | { type: "set_resource_skills"; uid: number; skills: number[] }
   | { type: "set_assignment_rules"; rules: AssignmentRule[] }
   | { type: "assign_tasks"; assignments: TaskAssignment[] }
-  | { type: "import_rows"; after_uid: number | null; resources: ImportResource[]; tasks: ImportTask[] };
+  | { type: "import_rows"; after_uid: number | null; resources: ImportResource[]; tasks: ImportTask[] }
+  | { type: "apply_plan"; assignments: TaskAssignment[]; delays: LevelingDelay[]; splits: LevelingSplits[] };
 
 /** Mirror of `clipboard::TaskCopy`: one copied task, its level relative to the copy. */
 export interface TaskCopy {

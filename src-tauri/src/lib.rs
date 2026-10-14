@@ -19,7 +19,10 @@ use sheafly_engine::mspdi::{read_mspdi_with_report, write_mspdi};
 use sheafly_engine::network::{self, NetworkLayout, NetworkOptions};
 use sheafly_engine::store;
 use sheafly_engine::suggest::{self, Suggestion};
+use sheafly_engine::command::{LevelingDelay, LevelingSplits};
 use sheafly_engine::import::{self, ImportColumn, ImportResource, ImportTable, ImportTask};
+use sheafly_engine::plan::{self, PlanPreview};
+use sheafly_engine::skills::TaskAssignment;
 use sheafly_engine::{Command, Document, EngineError, Lang, Snapshot};
 use tauri::menu::{AboutMetadata, CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::path::BaseDirectory;
@@ -58,6 +61,9 @@ struct AppState {
     /// The table the user last picked to import, so the frontend can read another sheet
     /// of it without naming a path itself.
     import_table: Mutex<Option<PathBuf>>,
+    /// The project as `preview_plan` last saw it: `apply_plan` refuses a plan made for
+    /// another state (an edit, undo or redo since, which a cursor alone cannot tell).
+    plan_base: Mutex<Option<(sheafly_engine::Project, PlanPreview)>>,
 }
 
 impl AppState {
@@ -78,6 +84,7 @@ impl AppState {
             pending_open: Mutex::new(VecDeque::new()),
             settings_lock: Mutex::new(()),
             import_table: Mutex::new(None),
+            plan_base: Mutex::new(None),
         }
     }
 }
@@ -527,6 +534,41 @@ fn check_import(
             column: problem.column,
         })
         .collect()
+}
+
+/// What assigning `assignments` and leveling would do, without changing the project.
+#[tauri::command(async)]
+fn preview_plan(state: State<'_, AppState>, assignments: Vec<TaskAssignment>) -> Result<PlanPreview, String> {
+    let project = lock(&state).project.clone();
+    let preview = plan::preview_plan(&project, &assignments).map_err(engine_message(&state))?;
+    *state.plan_base.lock().unwrap_or_else(|err| err.into_inner()) = Some((project, preview.clone()));
+    Ok(preview)
+}
+
+/// Apply the plan last previewed, as one undo step; refused when the project changed since.
+#[tauri::command(async)]
+fn apply_plan(
+    state: State<'_, AppState>,
+    assignments: Vec<TaskAssignment>,
+    delays: Vec<LevelingDelay>,
+    splits: Vec<LevelingSplits>,
+) -> Result<Snapshot, String> {
+    let mut doc = lock(&state);
+    ensure_no_dialog(&state)?;
+    let mut base = state.plan_base.lock().unwrap_or_else(|err| err.into_inner());
+    // The plan must be the one previewed, for the project as it still is.
+    let matches = base.as_ref().is_some_and(|(project, preview)| {
+        *project == doc.project && preview.assignments == assignments && preview.delays == delays && preview.splits == splits
+    });
+    if !matches {
+        return Err(i18n::text(lang(&state)).plan_outdated.to_string());
+    }
+    let snapshot = doc
+        .apply(Command::ApplyPlan { assignments, delays, splits })
+        .map_err(engine_message(&state))?;
+    *base = None;
+    mark_edited(&state);
+    Ok(snapshot)
 }
 
 #[tauri::command(async)]
@@ -1259,6 +1301,8 @@ pub fn run() {
             pick_table,
             read_table_sheet,
             check_import,
+            preview_plan,
+            apply_plan,
             export_mspdi,
             save_pdf,
             check_autosave,
