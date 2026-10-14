@@ -21,6 +21,7 @@ pub mod lang;
 pub mod level;
 mod level_cycle;
 pub mod level_order;
+pub mod load_map;
 pub mod model;
 pub mod mspdi;
 mod mspdi_availability;

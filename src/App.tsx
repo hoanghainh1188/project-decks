@@ -40,6 +40,7 @@ import { StatusBar } from "./components/StatusBar";
 import { TaskEditDialog } from "./components/TaskEditDialog";
 import { TaskSheet } from "./components/TaskSheet";
 import { TaskUsage } from "./components/TaskUsage";
+import { LoadMapView } from "./components/load/LoadMapView";
 import { Toolbar } from "./components/Toolbar";
 import { VIEW_PANEL_ID, ViewBar, viewTabId } from "./components/ViewBar";
 import { instantToDateKey, normalizePredecessorText, todayInstant } from "./format";
@@ -665,6 +666,16 @@ export default function App() {
               />
             )}
             {project && view === "usage" && <TaskUsage project={project} />}
+            {project && view === "load" && (
+              <LoadMapView
+                project={project}
+                onPickResource={(uid) => {
+                  setRowFilter("resource");
+                  setFilterResource(uid);
+                  setView("gantt");
+                }}
+              />
+            )}
             {project && view === "network" && (
               <NetworkDiagram
                 project={project}

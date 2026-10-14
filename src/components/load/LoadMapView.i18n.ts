@@ -1,0 +1,46 @@
+import { defineMessages } from "../../i18n";
+
+export const loadMapMessages = defineMessages(
+  {
+    bucket: "Theo",
+    day: "Ngày",
+    week: "Tuần",
+    from: "Từ ngày",
+    weeks: "Số tuần",
+    grid: (people: number, buckets: number) => `Tải theo người: ${people} người, ${buckets} cột. Bấm một ô để xem công việc của người đó.`,
+    person: "Người",
+    loading: "Đang tính tải…",
+    nobody: "Dự án chưa có nguồn lực.",
+    pick: (name: string) => `Xem công việc của ${name}`,
+    weekOf: (date: string) => `tuần ${date}`,
+    tip: (name: string, when: string, work: string, capacity: string, share: string) =>
+      `${name} · ${when}: ${work} giờ việc / ${capacity} giờ năng lực${share ? ` (${share})` : ""}`,
+    legend: "Chú giải",
+    free: "Rảnh",
+    light: "Dưới 80%",
+    full: "80–100%",
+    over: "Quá tải",
+    off: "Không làm việc",
+  },
+  {
+    bucket: "By",
+    day: "Days",
+    week: "Weeks",
+    from: "From",
+    weeks: "Weeks",
+    grid: (people: number, buckets: number) => `Load by person: ${people} people, ${buckets} columns. Click a cell to see that person's tasks.`,
+    person: "Person",
+    loading: "Working out the load…",
+    nobody: "The project has no resources yet.",
+    pick: (name: string) => `See the tasks of ${name}`,
+    weekOf: (date: string) => `week of ${date}`,
+    tip: (name: string, when: string, work: string, capacity: string, share: string) =>
+      `${name} · ${when}: ${work} hrs of work / ${capacity} hrs available${share ? ` (${share})` : ""}`,
+    legend: "Legend",
+    free: "Free",
+    light: "Under 80%",
+    full: "80–100%",
+    over: "Overallocated",
+    off: "No working time",
+  },
+);
