@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::{EngineError, Invalid};
 use crate::level_order;
 use crate::model::Project;
+use crate::skills;
 
 /// Text and choice fields a project can have (Microsoft Project's Text1–Text30).
 pub const MAX_TEXT_FIELDS: usize = 30;
@@ -106,15 +107,18 @@ pub(crate) fn update_field(
             task.values.insert(id, value);
         }
     }
+    skills::field_changed(project, id, &kind, &renames);
     project.fields[position] = FieldDef { id, name, kind };
     Ok(())
 }
 
-/// Remove a field, every task's value for it, and its place in the leveling order.
+/// Remove a field, every task's value for it, its place in the leveling order, and the
+/// assignment rules with a condition on it.
 pub(crate) fn delete_field(project: &mut Project, id: u32) -> Result<(), EngineError> {
     let position = position_of(project, id)?;
     project.fields.remove(position);
     level_order::drop_field(project, id);
+    skills::drop_field(project, id);
     for task in &mut project.tasks {
         task.values.remove(&id);
     }
@@ -277,7 +281,7 @@ fn check_room(project: &Project, own: Option<u32>, kind: &FieldKind) -> Result<(
 }
 
 /// The value as stored, or `None` for empty text; an error when it does not fit `kind`.
-fn checked_value(kind: &FieldKind, value: &FieldValue) -> Result<Option<FieldValue>, EngineError> {
+pub(crate) fn checked_value(kind: &FieldKind, value: &FieldValue) -> Result<Option<FieldValue>, EngineError> {
     let value = match value {
         FieldValue::Text(text) if text.trim().is_empty() => return Ok(None),
         FieldValue::Text(text) => {

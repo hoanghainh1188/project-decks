@@ -333,7 +333,7 @@ fn movable(task: &Task) -> bool {
 }
 
 /// A task leveling may delay: movable, and not marked "do not level" (priority 1000).
-fn levelable(task: &Task) -> bool {
+pub(crate) fn levelable(task: &Task) -> bool {
     movable(task) && task.priority < 1000
 }
 
@@ -597,9 +597,9 @@ struct Checked<'a> {
 }
 
 /// The first start from the task's current start at which its work fits next to the
-/// placed work of every resource. A resource the task alone overloads (more units than
-/// it will ever have from the task's start on) cannot be fixed by waiting and is left
-/// out of the check.
+/// placed work of every resource, or the current start when it does not fit in four
+/// years. A resource the task alone overloads (more units than it will ever have from the
+/// task's start on) cannot be fixed by waiting and is left out of the check.
 fn earliest_fit(
     project: &Project,
     lookup: &Lookup,
@@ -607,6 +607,17 @@ fn earliest_fit(
     resources: &[(u32, f64)],
     busy: &BTreeMap<u32, Busy>,
 ) -> i64 {
+    fit_from(project, lookup, task, resources, busy).unwrap_or(task.start)
+}
+
+/// `earliest_fit`, or `None` when the work does not fit in four years.
+fn fit_from(
+    project: &Project,
+    lookup: &Lookup,
+    task: &Task,
+    resources: &[(u32, f64)],
+    busy: &BTreeMap<u32, Busy>,
+) -> Option<i64> {
     let calendar = project.task_calendar(task);
     let duration = task.duration.max(0);
     let empty = Busy::default();
@@ -654,7 +665,7 @@ fn earliest_fit(
             })
             .min();
         let Some((from, room)) = clash else {
-            return start;
+            return Some(start);
         };
         if cycle.came_round(start, || steady(calendar, &checked)) {
             break;
@@ -664,7 +675,7 @@ fn earliest_fit(
         let shift = calendar.working_between(from, room).max(1);
         start = calendar.add_lag(start, shift);
     }
-    task.start
+    None
 }
 
 /// Where the placed work of every checked resource is over.
@@ -770,6 +781,10 @@ fn first_clash(resource: &Checked, pieces: &[Piece]) -> Option<(i64, i64)> {
     }
     None
 }
+
+#[path = "level_loads.rs"]
+mod loads;
+pub(crate) use loads::Loads;
 
 #[cfg(test)]
 #[path = "level_tests.rs"]

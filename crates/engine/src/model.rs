@@ -7,6 +7,7 @@ use crate::calendar::Calendar;
 use crate::fields::{FieldDef, FieldValue};
 use crate::level_order::SortKey;
 use crate::recurrence::Recurrence;
+use crate::skills::{AssignmentRule, SkillDef};
 use crate::split::{Segment, Split};
 use crate::timeutil::MINUTES_PER_DAY;
 
@@ -290,6 +291,9 @@ pub struct Resource {
     /// Days with other units than `max_units` (`availability.rs`), in date order.
     #[serde(default)]
     pub availability: Vec<AvailabilityPeriod>,
+    /// Ids of the project's skills this resource has, ascending.
+    #[serde(default)]
+    pub skills: Vec<u32>,
 }
 
 impl Resource {
@@ -304,6 +308,7 @@ impl Resource {
             overtime_rate: 0.0,
             cost_per_use: 0.0,
             availability: Vec::new(),
+            skills: Vec::new(),
         }
     }
 }
@@ -382,6 +387,17 @@ pub struct Project {
     /// The order leveling places tasks in (`level_order.rs`); empty for the default.
     #[serde(default)]
     pub leveling_order: Vec<SortKey>,
+    /// Skills resources can have (`skills.rs`), in the order the user added them.
+    #[serde(default)]
+    pub skills: Vec<SkillDef>,
+    /// The id the next skill gets; ids are never reused, like field ids. 0 in files
+    /// written before it existed: the next id is then one past the largest.
+    #[serde(default)]
+    pub next_skill_id: u32,
+    /// Ordered rules from custom field values to a person or a skill; the first that
+    /// matches a task is used. Only suggestions read them.
+    #[serde(default)]
+    pub assignment_rules: Vec<AssignmentRule>,
 }
 
 impl Project {
@@ -410,6 +426,9 @@ impl Project {
             fields: Vec::new(),
             next_field_id: 1,
             leveling_order: Vec::new(),
+            skills: Vec::new(),
+            next_skill_id: 1,
+            assignment_rules: Vec::new(),
         }
     }
 

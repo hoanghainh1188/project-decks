@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- Handwritten to the public MSPDI schema; not exported from Microsoft Project. -->
+<Project xmlns="http://schemas.microsoft.com/project">
+  <Name>Handwritten skills</Name>
+  <StartDate>2026-01-05T08:00:00</StartDate>
+  <CalendarUID>1</CalendarUID>
+  <ExtendedAttributes>
+    <ExtendedAttribute>
+      <FieldID>205520905</FieldID><FieldName>Text2</FieldName><CFType>7</CFType>
+      <Alias>Skills</Alias>
+    </ExtendedAttribute>
+    <ExtendedAttribute>
+      <FieldID>205520926</FieldID><FieldName>Text3</FieldName><CFType>7</CFType>
+      <Alias>Phòng</Alias>
+    </ExtendedAttribute>
+  </ExtendedAttributes>
+  <Calendars>
+    <Calendar>
+      <UID>1</UID><Name>Standard</Name><IsBaseCalendar>1</IsBaseCalendar>
+      <WeekDays>
+        <WeekDay><DayType>1</DayType><DayWorking>0</DayWorking></WeekDay>
+        <WeekDay><DayType>2</DayType><DayWorking>1</DayWorking>
+          <WorkingTimes>
+            <WorkingTime><FromTime>08:00:00</FromTime><ToTime>12:00:00</ToTime></WorkingTime>
+            <WorkingTime><FromTime>13:00:00</FromTime><ToTime>17:00:00</ToTime></WorkingTime>
+          </WorkingTimes></WeekDay>
+        <WeekDay><DayType>3</DayType><DayWorking>1</DayWorking>
+          <WorkingTimes>
+            <WorkingTime><FromTime>08:00:00</FromTime><ToTime>12:00:00</ToTime></WorkingTime>
+            <WorkingTime><FromTime>13:00:00</FromTime><ToTime>17:00:00</ToTime></WorkingTime>
+          </WorkingTimes></WeekDay>
+        <WeekDay><DayType>4</DayType><DayWorking>1</DayWorking>
+          <WorkingTimes>
+            <WorkingTime><FromTime>08:00:00</FromTime><ToTime>12:00:00</ToTime></WorkingTime>
+            <WorkingTime><FromTime>13:00:00</FromTime><ToTime>17:00:00</ToTime></WorkingTime>
+          </WorkingTimes></WeekDay>
+        <WeekDay><DayType>5</DayType><DayWorking>1</DayWorking>
+          <WorkingTimes>
+            <WorkingTime><FromTime>08:00:00</FromTime><ToTime>12:00:00</ToTime></WorkingTime>
+            <WorkingTime><FromTime>13:00:00</FromTime><ToTime>17:00:00</ToTime></WorkingTime>
+          </WorkingTimes></WeekDay>
+        <WeekDay><DayType>6</DayType><DayWorking>1</DayWorking>
+          <WorkingTimes>
+            <WorkingTime><FromTime>08:00:00</FromTime><ToTime>12:00:00</ToTime></WorkingTime>
+            <WorkingTime><FromTime>13:00:00</FromTime><ToTime>17:00:00</ToTime></WorkingTime>
+          </WorkingTimes></WeekDay>
+        <WeekDay><DayType>7</DayType><DayWorking>0</DayWorking></WeekDay>
+      </WeekDays>
+    </Calendar>
+  </Calendars>
+  <Tasks>
+    <Task><UID>1</UID><ID>1</ID><Name>Việc</Name><OutlineLevel>1</OutlineLevel>
+      <Start>2026-01-05T08:00:00</Start><Finish>2026-01-05T17:00:00</Finish><Duration>PT8H0M0S</Duration></Task>
+  </Tasks>
+  <Resources>
+    <Resource><UID>1</UID><Name>An</Name><Type>1</Type><MaxUnits>1</MaxUnits>
+      <ExtendedAttribute><FieldID>205520905</FieldID><Value>Backend, Kiểm thử, , backend</Value></ExtendedAttribute>
+    </Resource>
+    <Resource><UID>2</UID><Name>Bình</Name><Type>1</Type><MaxUnits>1</MaxUnits>
+      <ExtendedAttribute><FieldID>205520905</FieldID><Value>Thiết kế,BACKEND</Value></ExtendedAttribute>
+      <ExtendedAttribute><FieldID>205520926</FieldID><Value>Kho</Value></ExtendedAttribute>
+    </Resource>
+    <Resource><UID>3</UID><Name>Chi</Name><Type>1</Type><MaxUnits>1</MaxUnits>
+      <ExtendedAttribute><FieldID>205520926</FieldID><Value>Backend</Value></ExtendedAttribute>
+    </Resource>
+  </Resources>
+</Project>

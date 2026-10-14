@@ -85,6 +85,16 @@ pub enum Invalid {
     AvailabilityUnits,
     AvailabilityOverlaps,
     TooManyAvailabilityPeriods,
+    SkillName,
+    SkillNameTaken,
+    NoSuchSkill,
+    TooManySkills,
+    TooManyRules,
+    TooManyConditions,
+    RuleUnits,
+    EmptyCondition,
+    DuplicateCondition,
+    NoAssignments,
 }
 
 impl EngineError {
@@ -313,6 +323,40 @@ impl Invalid {
                 "Một nguồn lực có tối đa 500 khoảng khả dụng",
                 "A resource can have at most 500 availability periods",
             ),
+            Self::SkillName => fixed(
+                "Tên kỹ năng phải có từ 1 đến 50 ký tự và không có dấu phẩy",
+                "A skill name must have 1 to 50 characters and no comma",
+            ),
+            Self::SkillNameTaken => fixed(
+                "Đã có kỹ năng cùng tên",
+                "There is already a skill with that name",
+            ),
+            Self::NoSuchSkill => fixed("Không có kỹ năng này", "That skill does not exist"),
+            Self::TooManySkills => fixed(
+                "Dự án có tối đa 200 kỹ năng",
+                "A project can have at most 200 skills",
+            ),
+            Self::TooManyRules => fixed(
+                "Dự án có tối đa 200 quy tắc giao việc",
+                "A project can have at most 200 assignment rules",
+            ),
+            Self::TooManyConditions => fixed(
+                "Một quy tắc có tối đa 8 điều kiện",
+                "A rule can have at most 8 conditions",
+            ),
+            Self::RuleUnits => fixed(
+                "Đơn vị của quy tắc phải lớn hơn 0 và không quá 1.000",
+                "A rule's units must be above 0 and at most 1,000",
+            ),
+            Self::EmptyCondition => fixed(
+                "Mỗi điều kiện cần ít nhất một giá trị",
+                "Each condition needs at least one value",
+            ),
+            Self::DuplicateCondition => fixed(
+                "Một quy tắc chỉ có một điều kiện cho mỗi trường",
+                "A rule can have only one condition per field",
+            ),
+            Self::NoAssignments => fixed("Không có việc nào để giao", "There is nothing to assign"),
         }
     }
 }
@@ -380,6 +424,16 @@ mod tests {
             AvailabilityUnits,
             AvailabilityOverlaps,
             TooManyAvailabilityPeriods,
+            SkillName,
+            SkillNameTaken,
+            NoSuchSkill,
+            TooManySkills,
+            TooManyRules,
+            TooManyConditions,
+            RuleUnits,
+            EmptyCondition,
+            DuplicateCondition,
+            NoAssignments,
         ];
         for reason in all {
             let (vi, en) = (reason.message(Lang::Vi), reason.message(Lang::En));

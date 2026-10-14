@@ -14,6 +14,7 @@ use std::collections::BTreeMap;
 
 use crate::fields::{self, FieldDef, FieldKind, FieldValue, MAX_NAME_CHARS, MAX_TEXT_CHARS};
 use crate::mspdi::escape_text;
+use crate::mspdi_skills;
 use crate::mspdi_report::ImportNote;
 use crate::model::Project;
 
@@ -67,9 +68,10 @@ fn slots(project: &Project) -> BTreeMap<u32, u32> {
         .collect()
 }
 
-/// `<ExtendedAttributes>`, which goes before `<Calendars>`; nothing without fields.
+/// `<ExtendedAttributes>`, which goes before `<Calendars>`; nothing without fields or
+/// skills (`mspdi_skills.rs` declares its resource field here too).
 pub(crate) fn write_definitions(xml: &mut String, project: &Project) {
-    if project.fields.is_empty() {
+    if project.fields.is_empty() && !mspdi_skills::any(project) {
         return;
     }
     let slots = slots(project);
@@ -98,6 +100,7 @@ pub(crate) fn write_definitions(xml: &mut String, project: &Project) {
         }
         xml.push_str("</ExtendedAttribute>\n");
     }
+    mspdi_skills::write_definition(xml, project);
     xml.push_str("</ExtendedAttributes>\n");
 }
 
