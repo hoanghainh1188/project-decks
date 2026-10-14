@@ -259,7 +259,7 @@ fn leveling_is_logged_as_the_delays_it_chose() {
     assign(&mut doc, 1, 1, 1.0);
     assign(&mut doc, 2, 1, 1.0);
     doc.apply(Command::LevelResources).unwrap();
-    let Some(Command::ApplyLeveling { delays }) = doc.commands.last() else {
+    let Some(Command::ApplyLeveling { delays, .. }) = doc.commands.last() else {
         panic!("{:?}", doc.commands.last());
     };
     assert_eq!(delays.len(), 1);

@@ -18,6 +18,10 @@ pub struct Split {
     pub offset: i64,
     /// Gap length in working minutes on the task calendar.
     pub gap: i64,
+    /// Made by leveling to let an urgent task in (`level_interrupt.rs`); Clear Leveling and
+    /// the next leveling run remove it. Not written when false, so older files read the same.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub leveling: bool,
 }
 
 /// One scheduled piece of work, as instants.
@@ -39,14 +43,18 @@ pub fn span(task: &Task) -> i64 {
     task.duration.max(0) + total_gap(&task.splits)
 }
 
-/// Sort, merge equal offsets, and drop splits outside the work or with no gap.
+/// Sort, merge equal offsets, and drop splits outside the work or with no gap. A split of
+/// the user's and one of leveling's at the same offset stay apart (the user's first), so
+/// clearing leveling takes back only its own gap; `layout` lays them out as one gap.
 pub fn normalize(splits: &mut Vec<Split>, duration: i64) {
     splits.retain(|split| split.gap > 0 && split.offset > 0 && split.offset < duration);
-    splits.sort_by_key(|split| split.offset);
+    splits.sort_by_key(|split| (split.offset, split.leveling));
     let mut merged: Vec<Split> = Vec::with_capacity(splits.len());
     for split in splits.drain(..) {
         match merged.last_mut() {
-            Some(last) if last.offset == split.offset => last.gap += split.gap,
+            Some(last) if last.offset == split.offset && last.leveling == split.leveling => {
+                last.gap += split.gap
+            }
             _ => merged.push(split),
         }
     }
@@ -68,6 +76,11 @@ pub fn layout(cal: &Calendar, start: i64, duration: i64, splits: &[Split]) -> Ve
     let mut cursor = cal.next_work_start(start);
     let mut done = 0i64;
     for split in splits {
+        // A second gap at the same point (the user's and leveling's): one longer gap.
+        if split.offset == done && !segments.is_empty() {
+            cursor = cal.next_work_start(cal.add_working(cursor, split.gap));
+            continue;
+        }
         let finish = cal.add_working(cursor, split.offset - done);
         segments.push(Segment {
             start: cursor,
@@ -214,7 +227,7 @@ pub fn split_task(project: &mut Project, uid: u32, at: i64, gap: i64) -> Result<
         return Err(outside_work());
     }
     let task = project.task_mut(uid).ok_or(EngineError::TaskNotFound)?;
-    task.splits.push(Split { offset, gap });
+    task.splits.push(Split { offset, gap, leveling: false });
     normalize(&mut task.splits, task.duration);
     refresh_manual_finish(project, uid);
     Ok(())
@@ -269,7 +282,9 @@ pub fn move_segment(
     };
     let task = project.task_mut(uid).ok_or(EngineError::TaskNotFound)?;
     if gap > 0 {
+        // Dragged by hand, the gap is the user's now, whoever made it.
         task.splits[split_index].gap = gap;
+        task.splits[split_index].leveling = false;
     } else {
         task.splits.remove(split_index);
     }
@@ -301,19 +316,23 @@ mod tests {
             Split {
                 offset: 240,
                 gap: 60,
+                leveling: false,
             },
-            Split { offset: 0, gap: 60 },
+            Split { offset: 0, gap: 60, leveling: false },
             Split {
                 offset: 240,
                 gap: 120,
+                leveling: false,
             },
             Split {
                 offset: 900,
                 gap: 60,
+                leveling: false,
             },
             Split {
                 offset: 120,
                 gap: 0,
+                leveling: false,
             },
         ];
         normalize(&mut splits, 480);
@@ -321,7 +340,7 @@ mod tests {
             splits,
             vec![Split {
                 offset: 240,
-                gap: 180
+                gap: 180, leveling: false
             }]
         );
     }

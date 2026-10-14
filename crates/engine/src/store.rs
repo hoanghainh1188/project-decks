@@ -28,8 +28,10 @@ use crate::recovery::{self, Damage, OpenReport, Recovery};
 /// field of `FillDown` (phase 18); version 12 `SetLevelingOrder`, version 13
 /// `SetResourceAvailability`, version 14 the skill and rule commands (`AddSkill`,
 /// `RenameSkill`, `DeleteSkill`, `SetResourceSkills`, `SetAssignmentRules`) and
-/// `AssignTasks`. None of them changes how older commands schedule.
-pub const FORMAT_VERSION: u32 = 14;
+/// `AssignTasks`, version 15 `SetInterrupts` and the leveling splits of `ApplyLeveling` (an
+/// older app would drop them and replay other dates). None of them changes how older
+/// commands schedule.
+pub const FORMAT_VERSION: u32 = 15;
 
 /// Checkpoints a file keeps below the cursor, besides the one at the cursor. Each is
 /// a whole scheduled project (about 1 MB for 1,000 tasks), so only a few nearby ones.

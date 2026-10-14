@@ -79,7 +79,7 @@ fn split_keeps_duration_and_moves_finish_by_the_gap() {
         a.splits,
         vec![Split {
             offset: 240,
-            gap: 480
+            gap: 480, leveling: false
         }]
     );
     assert_eq!(
@@ -133,11 +133,11 @@ fn split_changes_slack_and_critical_path() {
         vec![
             Split {
                 offset: 240,
-                gap: 480
+                gap: 480, leveling: false
             },
             Split {
                 offset: 480,
-                gap: 960
+                gap: 960, leveling: false
             }
         ]
     );
@@ -170,7 +170,7 @@ fn remove_split_joins_segments() {
         a.splits,
         vec![Split {
             offset: 480,
-            gap: 480
+            gap: 480, leveling: false
         }]
     );
     assert_eq!(a.finish, at(2, 17, 0));
@@ -206,7 +206,7 @@ fn split_inside_a_gap_lengthens_it() {
         a.splits,
         vec![Split {
             offset: 240,
-            gap: 960
+            gap: 960, leveling: false
         }]
     );
     assert_eq!(a.finish, at(3, 17, 0));
@@ -294,7 +294,7 @@ fn moving_the_start_keeps_segment_positions() {
         a.splits,
         vec![Split {
             offset: 240,
-            gap: 480
+            gap: 480, leveling: false
         }]
     );
     assert_eq!(
@@ -320,7 +320,7 @@ fn resizing_extends_the_last_segment() {
         a.splits,
         vec![Split {
             offset: 240,
-            gap: 480
+            gap: 480, leveling: false
         }]
     );
     assert_eq!(a.segments[0], seg(at(0, 8, 0), at(0, 12, 0)));
@@ -389,7 +389,7 @@ fn split_and_join_undo_redo() {
         task(&doc, 1).splits,
         vec![Split {
             offset: 240,
-            gap: 480
+            gap: 480, leveling: false
         }]
     );
     assert_eq!(task(&doc, 1).finish, at(2, 17, 0));
@@ -429,7 +429,7 @@ fn splits_survive_save_and_load() {
         a.splits,
         vec![Split {
             offset: 240,
-            gap: 480
+            gap: 480, leveling: false
         }]
     );
     assert_eq!(a.baselines[0].segments, a.segments);
@@ -724,7 +724,7 @@ fn splitting_an_occurrence_detaches_it() {
         kept.splits,
         vec![Split {
             offset: 60,
-            gap: 60
+            gap: 60, leveling: false
         }]
     );
     assert_eq!(

@@ -86,7 +86,7 @@ fn unfinished_work_of_a_started_task_resumes_at_the_status_date() {
         moved.splits,
         vec![Split {
             offset: DAY,
-            gap: DAY
+            gap: DAY, leveling: false
         }]
     );
     assert_eq!(
