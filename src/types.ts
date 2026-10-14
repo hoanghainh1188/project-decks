@@ -338,6 +338,8 @@ export interface ImportSheet {
   sheets: string[];
   sheet: string | null;
   rows: string[][];
+  /** The file's line or row number (from 1) of each row; blank rows are left out of `rows`. */
+  lines: number[];
 }
 
 /**

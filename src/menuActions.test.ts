@@ -23,6 +23,7 @@ function context(overrides: Partial<MenuContext> = {}): MenuContext {
     openLevelingOrder: vi.fn(),
     openAssignmentRules: vi.fn(),
     openAssignByRules: vi.fn(),
+    openImportTable: vi.fn(),
     openWorkingTime: vi.fn(),
     openBaseline: vi.fn(),
     openRecurring: vi.fn(),
@@ -106,6 +107,12 @@ describe("handleMenuAction", () => {
       handleMenuAction(id, ctx);
     }
     expect(ctx.startFileDialog).toHaveBeenCalledTimes(8);
+  });
+
+  it("opens the table import", () => {
+    const ctx = context();
+    handleMenuAction("import-table", ctx);
+    expect(ctx.openImportTable).toHaveBeenCalledOnce();
   });
 
   it("stops undo at the state Thông tin dự án opened with", () => {
