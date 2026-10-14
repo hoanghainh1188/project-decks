@@ -135,6 +135,7 @@ export function makeProject(overrides: Partial<Project> = {}): Project {
     usage: [],
     editable_actual_costs: false,
     fields: [],
+    leveling_order: [],
     ...overrides,
   };
 }

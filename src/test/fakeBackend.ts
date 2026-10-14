@@ -219,6 +219,9 @@ class FakeBackend {
       }
       case "delete_field": {
         project.fields = project.fields.filter((field) => field.id !== command.id);
+        project.leveling_order = project.leveling_order.filter(
+          (key) => !(key.criterion.type === "field" && key.criterion.id === command.id),
+        );
         for (const task of project.tasks) setValue(task, command.id, null);
         return;
       }
@@ -227,6 +230,20 @@ class FakeBackend {
         if (!task) throw `Không có công việc ${command.uid}`;
         if (!project.fields.some((field) => field.id === command.field_id)) throw "Không có trường này";
         setValue(task, command.field_id, command.value);
+        return;
+      }
+      case "set_leveling_order": {
+        // The engine's checks: fields that exist, no criterion twice, at most 8.
+        const seen = new Set<string>();
+        for (const key of command.order) {
+          const c = key.criterion;
+          if (c.type === "field" && !project.fields.some((field) => field.id === c.id)) throw "Không có trường này";
+          const name = c.type === "field" ? `field:${c.id}` : c.type;
+          if (seen.has(name)) throw "Mỗi tiêu chí chỉ có một lần trong thứ tự cân bằng";
+          seen.add(name);
+        }
+        if (command.order.length > 8) throw "Thứ tự cân bằng có tối đa 8 tiêu chí";
+        project.leveling_order = structuredClone(command.order);
         return;
       }
       case "create_calendar": {

@@ -8,12 +8,13 @@ import type { Command, Project, ProjectStatistics, Snapshot } from "../types";
 import { Button } from "./Button";
 import { DateTimeField } from "./DateTimeField";
 import { FieldsTab } from "./FieldsTab";
+import { LevelingTab } from "./LevelingTab";
 import { Modal } from "./Modal";
 import { projectDialogMessages } from "./ProjectDialog.i18n";
 
-export type ProjectTab = "general" | "statistics" | "fields";
+export type ProjectTab = "general" | "statistics" | "fields" | "leveling";
 type Tab = ProjectTab;
-const TABS: Tab[] = ["general", "statistics", "fields"];
+const TABS: Tab[] = ["general", "statistics", "fields", "leveling"];
 
 /**
  * Changes apply as they are made, so the Gantt previews them; Lưu keeps them and Hủy
@@ -39,7 +40,7 @@ export function ProjectDialog({
   onCancel: () => void;
   send: (command: Command) => Promise<Snapshot | void>;
   onOpenWorkingTime: () => void;
-  /** The tab the dialog opens on (Dự án → Trường tùy chỉnh opens on its tab). */
+  /** The tab the dialog opens on (Dự án → Trường tùy chỉnh and Thứ tự cân bằng open on theirs). */
   initialTab?: Tab;
   /** The last edit the engine refused, shown in the footer since the banner is behind the dialog. */
   error?: string | null;
@@ -47,7 +48,7 @@ export function ProjectDialog({
   const m = useMessages(appMessages);
   const p = useMessages(projectDialogMessages);
   const [tab, setTab] = useState<Tab>(initialTab);
-  const tabRefs = useRef<Record<Tab, HTMLButtonElement | null>>({ general: null, statistics: null, fields: null });
+  const tabRefs = useRef<Record<Tab, HTMLButtonElement | null>>({ general: null, statistics: null, fields: null, leveling: null });
 
   function onTabKey(event: KeyboardEvent) {
     const index = TABS.indexOf(tab);
@@ -107,6 +108,8 @@ export function ProjectDialog({
           <GeneralTab project={project} send={send} onOpenWorkingTime={onOpenWorkingTime} />
         ) : tab === "fields" ? (
           <FieldsTab project={project} send={send} />
+        ) : tab === "leveling" ? (
+          <LevelingTab project={project} send={send} />
         ) : (
           <StatisticsTab statistics={statistics} />
         )}

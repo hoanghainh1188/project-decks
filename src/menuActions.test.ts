@@ -20,6 +20,7 @@ function context(overrides: Partial<MenuContext> = {}): MenuContext {
     setEvmOpen: vi.fn(),
     openProjectInfo: vi.fn(),
     openCustomFields: vi.fn(),
+    openLevelingOrder: vi.fn(),
     openWorkingTime: vi.fn(),
     openBaseline: vi.fn(),
     openRecurring: vi.fn(),
@@ -145,6 +146,13 @@ describe("custom fields", () => {
     const ctx = context();
     handleMenuAction("custom-fields", ctx);
     expect(ctx.openCustomFields).toHaveBeenCalled();
+    expect(ctx.openProjectInfo).not.toHaveBeenCalled();
+  });
+
+  it("opens Thông tin dự án on its leveling tab", () => {
+    const ctx = context();
+    handleMenuAction("leveling-order", ctx);
+    expect(ctx.openLevelingOrder).toHaveBeenCalled();
     expect(ctx.openProjectInfo).not.toHaveBeenCalled();
   });
 

@@ -714,6 +714,10 @@ button.dialog-close:hover:not(:disabled) { background: var(--surface-hover); col
 .choices li { display: flex; align-items: center; gap: 2px; }
 .choices li input { width: 140px; }
 .btn-icon { padding-inline: 4px; }
+.dialog .sort-keys { list-style: none; margin: 10px 0; padding: 0; display: grid; gap: 6px; }
+.dialog .sort-keys > li { display: flex; align-items: center; gap: 6px; margin: 0; flex-wrap: wrap; justify-content: flex-start; }
+.sort-keys select { flex: 1 1 180px; }
+.sort-rank { min-width: 1.5em; text-align: right; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 input.bad { color: var(--critical-text); border-color: var(--critical-text); font-weight: 400; }
 .fields-group { flex: 1 1 260px; }
 .week-day-head { display: flex; align-items: baseline; gap: 8px; }
