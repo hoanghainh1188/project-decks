@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { setCurrentLang } from "./i18n";
-import { makeProject, makeTask, outlineProject } from "./test/fixtures";
+import { makeAssignment, makeProject, makeResource, makeTask, outlineProject } from "./test/fixtures";
 import {
   buildViewRows,
   type FilterMode,
@@ -90,6 +90,33 @@ describe("buildViewRows grouped by person", () => {
       "# NL 11", "3", "7",
       "# Chưa gán", "1", "4", "5", "6", "8",
     ]);
+  });
+
+  it("lists a task once per person and leaves assignments to unknown resources out", () => {
+    const project = makeProject({
+      tasks: [makeTask({ uid: 1 }), makeTask({ uid: 2 })],
+      resources: [makeResource({ uid: 10, name: "An" })],
+      assignments: [
+        makeAssignment({ uid: 1, task_uid: 1, resource_uid: 10 }),
+        makeAssignment({ uid: 2, task_uid: 1, resource_uid: 10 }),
+        makeAssignment({ uid: 3, task_uid: 2, resource_uid: 99 }),
+      ],
+    });
+    expect(shape(buildViewRows(project, "none", null, "resource", "none"))).toEqual(["# An", "1", "# Chưa gán", "2"]);
+  });
+
+  it("groups 5,000 tasks over 500 people quickly", () => {
+    const tasks = Array.from({ length: 5000 }, (_, i) => makeTask({ uid: i + 1 }));
+    const resources = Array.from({ length: 500 }, (_, i) => makeResource({ uid: i + 1 }));
+    const assignments = tasks.map((task, i) => makeAssignment({ uid: i + 1, task_uid: task.uid, resource_uid: (i % 500) + 1 }));
+    const project = makeProject({ tasks, resources, assignments });
+    const started = performance.now();
+    const rows = buildViewRows(project, "resource", 7, "resource", "none");
+    const grouped = buildViewRows(project, "none", null, "resource", "none");
+    // Scanning every assignment for every task and person took seconds here.
+    expect(performance.now() - started).toBeLessThan(2000);
+    expect(rows).toHaveLength(11);
+    expect(grouped).toHaveLength(5500);
   });
 
   it("skips resources without tasks", () => {

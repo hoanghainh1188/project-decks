@@ -64,11 +64,12 @@ function visibleTasks(project: Project, filter: FilterMode, resourceUid: number 
   if (filter === "none" || (filter.startsWith("field:") && !field)) return project.tasks;
   const byUid = new Map(project.tasks.map((task) => [task.uid, task]));
   const direct = new Set<number>();
+  const assignedTo = filter === "resource" ? tasksAssignedTo(project.assignments, resourceUid) : new Set<number>();
   for (const task of project.tasks) {
     // A summary with no value matches nothing: it shows above its matching tasks only.
     const matches = field
       ? valueKey(valueOf(task, field)) === fieldValue && !(fieldValue === "" && task.summary)
-      : matchesFilter(task, project.assignments, filter, resourceUid);
+      : matchesFilter(task, assignedTo, filter, resourceUid);
     if (matches) direct.add(task.uid);
   }
   const keep = new Set(direct);
@@ -86,7 +87,7 @@ function visibleTasks(project: Project, filter: FilterMode, resourceUid: number 
 
 function matchesFilter(
   task: Task,
-  assignments: Assignment[],
+  assignedTo: ReadonlySet<number>,
   filter: FilterMode,
   resourceUid: number | null,
 ): boolean {
@@ -95,7 +96,7 @@ function matchesFilter(
   if (filter === "interrupts") return task.interrupts;
   if (filter === "resource") {
     if (resourceUid == null) return false;
-    return assignments.some((item) => item.task_uid === task.uid && item.resource_uid === resourceUid);
+    return assignedTo.has(task.uid);
   }
   return true;
 }
@@ -114,8 +115,9 @@ function taskRow(key: string, task: Task, highlight: HighlightMode): TaskViewRow
 function groupByResource(project: Project, tasks: Task[], highlight: HighlightMode): ViewRow[] {
   const buckets = new Map<number, Task[]>();
   const unassigned: Task[] = [];
+  const assignees = assigneesByTask(project.resources, project.assignments);
   for (const task of tasks) {
-    const ids = assignedResourceIds(task, project.resources, project.assignments);
+    const ids = assignees.get(task.uid) ?? [];
     if (ids.length === 0) {
       unassigned.push(task);
       continue;
@@ -229,10 +231,20 @@ function summaryLabel(summary: Task): string {
   return summary.wbs ? `${summary.wbs} ${name}` : name;
 }
 
-function assignedResourceIds(task: Task, resources: Resource[], assignments: Assignment[]): number[] {
-  return resources
-    .filter((resource) =>
-      assignments.some((item) => item.task_uid === task.uid && item.resource_uid === resource.uid),
-    )
-    .map((resource) => resource.uid);
+/** Each task's assignees, once each and only those the project has, in one pass. */
+function assigneesByTask(resources: Resource[], assignments: Assignment[]): Map<number, number[]> {
+  const known = new Set(resources.map((resource) => resource.uid));
+  const byTask = new Map<number, number[]>();
+  for (const item of assignments) {
+    if (!known.has(item.resource_uid)) continue;
+    const ids = byTask.get(item.task_uid) ?? [];
+    if (!ids.includes(item.resource_uid)) ids.push(item.resource_uid);
+    byTask.set(item.task_uid, ids);
+  }
+  return byTask;
+}
+
+/** The tasks assigned to `resourceUid`, for the resource filter. */
+function tasksAssignedTo(assignments: Assignment[], resourceUid: number | null): Set<number> {
+  return new Set(assignments.filter((item) => item.resource_uid === resourceUid).map((item) => item.task_uid));
 }
