@@ -1,4 +1,4 @@
-import type { Command, FieldValue, NetworkLayout, ProjectMetrics, Snapshot, Task, TaskClipboard } from "../types";
+import type { Command, FieldValue, NetworkLayout, ProjectMetrics, Snapshot, Suggestion, Task, TaskClipboard } from "../types";
 import { makeMetrics, makeSnapshot, makeTask } from "./fixtures";
 
 export interface InvokeCall {
@@ -15,6 +15,8 @@ class FakeBackend {
   snapshot: Snapshot = makeSnapshot();
   metrics: ProjectMetrics = makeMetrics();
   network: NetworkLayout = emptyNetwork();
+  /** What `suggest_assignments` answers: made up by the test, the engine ranks people. */
+  suggestions: Suggestion[] = [];
   /** What `check_autosave` restores; null when there is no autosave. */
   autosave: Snapshot | null = null;
   /** The remembered interface language (`get_language`); null follows the system. */
@@ -29,6 +31,7 @@ class FakeBackend {
     this.snapshot = structuredClone(snapshot);
     this.metrics = structuredClone(metrics);
     this.network = emptyNetwork();
+    this.suggestions = [];
     this.failures.clear();
     this.holds.clear();
     this.autosave = null;
@@ -87,6 +90,8 @@ class FakeBackend {
         return structuredClone(this.metrics);
       case "network_layout":
         return structuredClone(this.network);
+      case "suggest_assignments":
+        return structuredClone(this.suggestions);
       case "export_mspdi":
       case "save_pdf":
         return undefined;
@@ -317,6 +322,34 @@ class FakeBackend {
           if (!(rule.units > 0 && rule.units <= 1000)) throw "Đơn vị của quy tắc phải lớn hơn 0 và không quá 1.000";
         }
         project.assignment_rules = structuredClone(command.rules);
+        return;
+      }
+      case "assign_tasks": {
+        if (command.assignments.length === 0) throw "Không có việc nào để giao";
+        for (const row of command.assignments) {
+          if (!project.tasks.some((task) => task.uid === row.task_uid)) throw `Không có công việc ${row.task_uid}`;
+          if (!project.resources.some((item) => item.uid === row.resource_uid)) throw "Không tìm thấy nguồn lực";
+          if (!(row.units > 0)) throw "Đơn vị nguồn lực phải lớn hơn 0";
+        }
+        let uid = Math.max(0, ...project.assignments.map((item) => item.uid));
+        for (const row of command.assignments) {
+          project.assignments.push({
+            uid: ++uid,
+            task_uid: row.task_uid,
+            resource_uid: row.resource_uid,
+            units: row.units,
+            work: 480 * row.units,
+            overtime_work: 0,
+            actual_work: 0,
+            remaining_work: 480 * row.units,
+            cost: 0,
+            actual_cost: 0,
+            manual_actual_cost: null,
+          });
+        }
+        this.suggestions = this.suggestions.filter(
+          (suggestion) => !command.assignments.some((row) => row.task_uid === suggestion.task_uid),
+        );
         return;
       }
       case "create_calendar": {

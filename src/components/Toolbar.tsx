@@ -14,6 +14,7 @@ import {
   Trash2,
   Undo2,
   Unlink2,
+  UserCheck,
   type LucideIcon,
 } from "lucide-react";
 import type { ButtonHTMLAttributes } from "react";
@@ -37,6 +38,7 @@ export interface ToolbarActions {
   onSplit: () => void;
   onDelete: () => void;
   onProjectInfo: () => void;
+  onAssignByRules: () => void;
   onToggleEvm: () => void;
   onExportPdf: () => void;
 }
@@ -187,6 +189,14 @@ export function Toolbar({ states, evmOpen, ...actions }: Props) {
           disabled={!states.project.enabled}
           title={tip("project", m.projectInfoTip)}
           onClick={actions.onProjectInfo}
+        />
+        <Tool
+          tone="project"
+          Icon={UserCheck}
+          label={m.assignByRules}
+          disabled={!states.assignByRules.enabled}
+          title={tip("assignByRules", m.assignByRulesTip)}
+          onClick={actions.onAssignByRules}
         />
       </div>
       <span className="spacer" />

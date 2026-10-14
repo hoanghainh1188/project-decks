@@ -20,6 +20,7 @@ function actions(): ToolbarActions {
     onSplit: vi.fn(),
     onDelete: vi.fn(),
     onProjectInfo: vi.fn(),
+    onAssignByRules: vi.fn(),
     onToggleEvm: vi.fn(),
     onExportPdf: vi.fn(),
   };
@@ -30,6 +31,21 @@ const second = makeTask({ uid: 2 });
 const snap = { ...makeSnapshot(makeProject({ tasks: [first, second] })), can_undo: true };
 
 describe("Toolbar", () => {
+  it("assigns by rules from the project group, or says why it cannot", async () => {
+    const handlers = actions();
+    const rule = { conditions: [], target: { type: "resource" as const, uid: 1 }, units: 1 };
+    const ruled = makeSnapshot(makeProject({ tasks: [first], assignment_rules: [rule] }));
+    const { rerender } = render(
+      <Toolbar states={toolbarStates({ snap, task: null, view: "gantt", fileDialogBusy: false })} evmOpen={false} {...handlers} />,
+    );
+    const button = screen.getByRole("button", { name: "Giao theo quy tắc…" });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute("title", "Dự án chưa có quy tắc giao việc; tạo ở Dự án → Quy tắc giao việc…");
+    rerender(<Toolbar states={toolbarStates({ snap: ruled, task: null, view: "gantt", fileDialogBusy: false })} evmOpen={false} {...handlers} />);
+    await userEvent.setup().click(screen.getByRole("button", { name: "Giao theo quy tắc…" }));
+    expect(handlers.onAssignByRules).toHaveBeenCalled();
+  });
+
   it("groups the commands and disables those that cannot run, saying why", () => {
     render(<Toolbar states={toolbarStates({ snap, task: null, view: "gantt", fileDialogBusy: false })} evmOpen={false} {...actions()} />);
     for (const group of ["Lịch sử", "Tạo công việc", "Công việc đang chọn", "Dự án", "Báo cáo"]) {

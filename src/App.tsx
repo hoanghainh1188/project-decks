@@ -9,6 +9,7 @@ import {
   loadMetrics,
   loadNetworkLayout,
   loadState,
+  suggestAssignments,
   onMenu,
   onOpenFile,
   openPending,
@@ -29,6 +30,7 @@ import { WorkingTimeDialog } from "./components/WorkingTimeDialog";
 import { RecurringDialog, recurringCommand } from "./components/RecurringDialog";
 import { ResourceAvailabilityDialog } from "./components/ResourceAvailabilityDialog";
 import { AssignmentDialog } from "./components/AssignmentDialog";
+import { AssignPreviewDialog } from "./components/AssignPreviewDialog";
 import { ResourceSheet } from "./components/ResourceSheet";
 import { SplitDialog } from "./components/SplitDialog";
 import { StatusBar } from "./components/StatusBar";
@@ -42,7 +44,7 @@ import { pick, useLang, useMessages, useSetLang } from "./i18n";
 import { buildGanttPdf, pdfSuggestedName } from "./ganttPdf";
 import { handleMenuAction } from "./menuActions";
 import { buildNetworkPdf } from "./networkPdf";
-import type { Command, FillField, NetworkLayout, ProjectMetrics, Scale, Snapshot, TaskClipboard, ViewId } from "./types";
+import type { Command, FillField, NetworkLayout, ProjectMetrics, Scale, Snapshot, Suggestion, TaskClipboard, ViewId } from "./types";
 import {
   commitFocusedField,
   isEditableTarget,
@@ -86,6 +88,8 @@ export default function App() {
   const [availability, setAvailability] = useState<{ uid: number; start: number } | null>(null);
   // Giao việc (skills and assignment rules): the history cursor to roll back to.
   const [assignmentStart, setAssignmentStart] = useState<number | null>(null);
+  // Giao việc theo quy tắc: the suggestions being reviewed, null while closed.
+  const [suggestions, setSuggestions] = useState<Suggestion[] | null>(null);
   const [rowFilter, setRowFilter] = useState<FilterMode>("none");
   const [filterResource, setFilterResource] = useState<number | null>(null);
   const [filterValue, setFilterValue] = useState("");
@@ -203,6 +207,21 @@ export default function App() {
     setAssignmentStart(state ? state.history_cursor : (snap?.history_cursor ?? 0));
   }, [run, snap]);
 
+  // Suggestions are a read; reading them waits for queued edits, as every read does.
+  const openAssignByRules = useCallback(async () => {
+    if (!inTauri()) {
+      setError(pick(appMessages).needsTauri);
+      return;
+    }
+    try {
+      const found = await suggestAssignments();
+      setDialogError(null);
+      setSuggestions(found);
+    } catch (err) {
+      setError(errorMessage(err));
+    }
+  }, []);
+
   // Undo every command applied since `cursor`. Queued edits (a field committed on
   // close) land first, because loadState waits for them.
   const rollbackTo = useCallback(
@@ -275,6 +294,7 @@ export default function App() {
         openCustomFields: () => void openProjectInfo("fields"),
         openLevelingOrder: () => void openProjectInfo("leveling"),
         openAssignmentRules: () => void openAssignmentRules(),
+        openAssignByRules: () => void openAssignByRules(),
         openWorkingTime: () => void openWorkingTime(snap?.project.calendar_id ?? 1),
         openBaseline: () => setBaselineOpen(true),
         openRecurring: () => setSeriesDialog(0),
@@ -290,7 +310,7 @@ export default function App() {
         setClipboard,
         fillField,
       }),
-    [run, send, startFileDialog, task, snap, view, fileDialogBusy, openProjectInfo, openWorkingTime, openAssignmentRules, infoStart, workingTime, availability, assignmentStart, setLang, changeTheme, selection, clipboard, fillField],
+    [run, send, startFileDialog, task, snap, view, fileDialogBusy, openProjectInfo, openWorkingTime, openAssignmentRules, openAssignByRules, infoStart, workingTime, availability, assignmentStart, setLang, changeTheme, selection, clipboard, fillField],
   );
   menuRef.current = handleMenu;
 
@@ -506,6 +526,7 @@ export default function App() {
         onSplit={() => task && setSplitDialog(task.uid)}
         onDelete={() => task && void send({ type: "delete_task", uid: task.uid })}
         onProjectInfo={() => void openProjectInfo()}
+        onAssignByRules={() => void openAssignByRules()}
         onToggleEvm={() => {
           if (!evmOpen && view !== "gantt" && view !== "tracking") setView("gantt");
           setEvmOpen((open) => !open);
@@ -733,6 +754,18 @@ export default function App() {
             });
           }}
           send={sendInDialog}
+        />
+      )}
+      {suggestions && project && (
+        <AssignPreviewDialog
+          project={project}
+          suggestions={suggestions}
+          error={dialogError}
+          send={sendInDialog}
+          onClose={() => {
+            setDialogError(null);
+            setSuggestions(null);
+          }}
         />
       )}
       {seriesDialog != null && project && (

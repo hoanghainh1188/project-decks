@@ -7,7 +7,7 @@ import { setCurrentLang } from "./i18n";
 import { Root } from "./Root";
 import { applyTheme } from "./theme";
 import { fakeBackend } from "./test/fakeBackend";
-import { makeProject, makeResource, makeSnapshot } from "./test/fixtures";
+import { makeProject, makeResource, makeSnapshot, makeTask } from "./test/fixtures";
 
 describe("Root", () => {
   beforeEach(() => {
@@ -199,6 +199,36 @@ describe("Root", () => {
       "add_skill",
       "set_resource_skills",
       "set_assignment_rules",
+    ]);
+  });
+
+  it("previews the suggestions, applies them as one command and levels", async () => {
+    vi.spyOn(navigator, "languages", "get").mockReturnValue(["vi-VN"]);
+    const rule = { conditions: [], target: { type: "resource" as const, uid: 1 }, units: 1 };
+    fakeBackend.reset(
+      makeSnapshot(
+        makeProject({
+          tasks: [makeTask({ uid: 1, name: "Viết API" })],
+          resources: [makeResource({ uid: 1, name: "An" })],
+          assignment_rules: [rule],
+        }),
+      ),
+    );
+    fakeBackend.suggestions = [
+      { task_uid: 1, rule: 0, units: 1, picks: [{ resource_uid: 1, start: 0, finish: 0 }], reason: null },
+    ];
+    render(<Root />);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Giao theo quy tắc…" }));
+    expect(await screen.findByRole("dialog", { name: "Giao việc theo quy tắc" })).toBeInTheDocument();
+    expect(fakeBackend.calls.some((call) => call.cmd === "suggest_assignments")).toBe(true);
+    await user.click(screen.getByRole("button", { name: "Áp dụng (1)" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Đã giao 1 công việc");
+    await user.click(screen.getByRole("button", { name: "Cân bằng nguồn lực" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Giao việc theo quy tắc" })).not.toBeInTheDocument());
+    expect(fakeBackend.commands()).toEqual([
+      { type: "assign_tasks", assignments: [{ task_uid: 1, resource_uid: 1, units: 1 }] },
+      { type: "level_resources" },
     ]);
   });
 

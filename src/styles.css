@@ -753,6 +753,18 @@ input.bad { color: var(--critical-text); border-color: var(--critical-text); fon
 .rule-choices { display: flex; flex-wrap: wrap; gap: 4px 10px; }
 .rule-values { width: 220px; }
 .rule-target select { flex: 0 1 240px; }
+/* Dự án → Giao việc theo quy tắc: one row per suggested task, the rest by reason. */
+.suggestion-wrap { max-height: 50vh; overflow: auto; margin: 10px 0; border: 1px solid var(--border-subtle); border-radius: 6px; }
+.suggestions { border-collapse: collapse; width: 100%; }
+.suggestions th, .suggestions td { padding: 4px 8px; border-bottom: 1px solid var(--border-subtle); text-align: left; vertical-align: middle; }
+.suggestions thead th { position: sticky; top: 0; z-index: 1; background: var(--surface); color: var(--text-muted); font-weight: 500; }
+.suggestions tbody th { font-weight: 500; }
+.suggestions tr.off th, .suggestions tr.off td { color: var(--text-muted); }
+.suggestions select { max-width: 280px; }
+.suggestions .num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dialog-subhead { font-size: 13px; font-weight: 600; margin: 12px 0 4px; }
+.unmatched summary { cursor: pointer; padding: 2px 0; }
+.unmatched .meta { margin: 2px 0 6px 16px; }
 .skills-cell { color: var(--text-muted); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .week-day-head { display: flex; align-items: baseline; gap: 8px; }
 .week-day-head .check { flex: none; white-space: nowrap; }

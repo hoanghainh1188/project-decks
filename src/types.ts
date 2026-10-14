@@ -241,6 +241,27 @@ export interface AssignmentRule {
   units: number;
 }
 
+/** Mirror of `suggest::Pick`: one person offered for a task, with estimated dates. */
+export interface Pick {
+  resource_uid: number;
+  start: number;
+  finish: number;
+}
+
+/** Mirror of `suggest::NoPick`: why a task has no one to offer. */
+export type NoPick = "no_rule" | "no_one_with_skill" | "no_room";
+
+/** Mirror of `suggest::Suggestion`: the people offered for one unassigned task, best first. */
+export interface Suggestion {
+  task_uid: number;
+  /** Index of the rule that matched. */
+  rule: number | null;
+  /** Units the assignment would have: the rule's. */
+  units: number;
+  picks: Pick[];
+  reason: NoPick | null;
+}
+
 /** Mirror of `skills::TaskAssignment`, one row of `assign_tasks`. */
 export interface TaskAssignment {
   task_uid: number;
