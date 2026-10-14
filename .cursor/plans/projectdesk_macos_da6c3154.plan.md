@@ -1,6 +1,6 @@
 ---
 name: Sheafly macOS
-overview: "Sheafly là ứng dụng desktop Tauri (Rust + React) quản lý dự án theo hướng Microsoft Project. Pha 1–13 và 15–17 đã xong; Pha 14 xong phần không cần tài khoản Apple. Sau pha 10 đã thêm: bản cài đa nền tảng (PR #17), test frontend (PR #18), phần còn lại của pha 9–10 (PR #19), sơ đồ mạng (PR #20), tách công việc (PR #21), CLAUDE.md (PR #22), an toàn dữ liệu (PR #23), giao diện cơ bản (Pha 11, PR #25), nền tệp và hiệu năng (Pha 12, PR #28–#30), theo dõi tiến độ (Pha 13, PR #31–#32) và sửa giao diện sau khi chụp màn hình dự án mẫu (PR #33). Sau đó là Pha 14 (cài đặt), 15 và 17 (PR #34–#60: dọn dẹp, sơ đồ mạng, thanh công cụ, giao diện tối, copy/paste, MSPDI đầy đủ). Việc tiếp theo là ký số của Pha 14 (cần tài khoản Apple Developer) và phần còn lại của Pha 15, rồi Pha 18 (lập kế hoạch theo năng lực; P1 xong) ở mục Lộ trình; còn nợ vài bước kiểm tra thủ công trong app thật (xem đầu mục Lộ trình)."
+overview: "Sheafly là ứng dụng desktop Tauri (Rust + React) quản lý dự án theo hướng Microsoft Project. Pha 1–13 và 15–17 đã xong; Pha 14 xong phần không cần tài khoản Apple. Sau pha 10 đã thêm: bản cài đa nền tảng (PR #17), test frontend (PR #18), phần còn lại của pha 9–10 (PR #19), sơ đồ mạng (PR #20), tách công việc (PR #21), CLAUDE.md (PR #22), an toàn dữ liệu (PR #23), giao diện cơ bản (Pha 11, PR #25), nền tệp và hiệu năng (Pha 12, PR #28–#30), theo dõi tiến độ (Pha 13, PR #31–#32) và sửa giao diện sau khi chụp màn hình dự án mẫu (PR #33). Sau đó là Pha 14 (cài đặt), 15 và 17 (PR #34–#60: dọn dẹp, sơ đồ mạng, thanh công cụ, giao diện tối, copy/paste, MSPDI đầy đủ). Việc tiếp theo là ký số của Pha 14 (cần tài khoản Apple Developer) và phần còn lại của Pha 15, rồi Pha 18 (lập kế hoạch theo năng lực; P1, P2 xong) ở mục Lộ trình; còn nợ vài bước kiểm tra thủ công trong app thật (xem đầu mục Lộ trình)."
 todos:
   - id: scaffold
     content: Tauri 2 + React + crate engine
@@ -78,7 +78,7 @@ todos:
     content: "Pha 17: UX ngang MS Project (copy/paste, tách App.tsx, bàn phím, giao diện còn lại). PR A (dọn dẹp, tiêu đề, EVM, README), B (sơ đồ mạng), C (thanh công cụ, focus, bàn phím Gantt, EVM phóng to, tab, màu và biểu tượng), D (copy/paste, điền xuống, kéo từng đoạn) và E (token màu, giao diện tối, tách App.tsx, test còn thiếu) xong"
     status: completed
   - id: capacity-scheduling
-    content: "Pha 18: lập kế hoạch theo năng lực cho hàng trăm người, hàng ngàn task (leveling nhanh, trường tùy chỉnh, khóa sắp xếp nhiều tầng, năng lực theo ngày, kỹ năng và quy tắc giao việc có gợi ý, chen ngang, nhập CSV/Excel, xem trước đề xuất, dự báo khoảng ước lượng). P1 (leveling nhanh), P2 bước 1–4 (trường tùy chỉnh, thứ tự cân bằng, năng lực theo ngày, kỹ năng và quy tắc giao việc có gợi ý) xong; tiếp P2 bước 5"
+    content: "Pha 18: lập kế hoạch theo năng lực cho hàng trăm người, hàng ngàn task (leveling nhanh, trường tùy chỉnh, khóa sắp xếp nhiều tầng, năng lực theo ngày, kỹ năng và quy tắc giao việc có gợi ý, chen ngang, nhập CSV/Excel, xem trước đề xuất, dự báo khoảng ước lượng). P1 (leveling nhanh), P2 bước 1–5 (trường tùy chỉnh, thứ tự cân bằng, năng lực theo ngày, kỹ năng và quy tắc giao việc có gợi ý, chen ngang) xong; tiếp P3"
     status: in_progress
 isProject: false
 ---
@@ -505,7 +505,7 @@ Chia 5 PR: (A) dọn dẹp và chỉnh nhỏ, (B) sơ đồ mạng, (C) thanh c�
 - Dọn 9 warning clippy của engine. (PR A)
 - Viết lại README: tính năng, cách cài bản phát hành, cách build; bỏ đường dẫn cứng. (PR A)
 
-### Pha 18 — lập kế hoạch theo năng lực (L, tách 4 PR) — đang làm (P1, P2 bước 1–4 xong)
+### Pha 18 — lập kế hoạch theo năng lực (L, tách 4 PR) — đang làm (P1, P2 xong)
 
 **Nhu cầu (13/10/2026, từ một nhóm dùng thử).** Hàng trăm người, hàng ngàn task mỗi sprint. Mỗi người ôm vài PG (nhóm sản phẩm); trong một PG, task BE giao cho một người, FE cho một người. Input là PIC, năng lực của PIC theo từng ngày, effort của task và thứ tự ưu tiên; muốn engine tự xếp từng người làm lần lượt theo ưu tiên. Với Microsoft Project họ phải gán từng người vào từng task, đặt ràng buộc, rồi tự bấm leveling. Thêm nữa, task đặt duration dài hơn effort (ví dụ 3 ngày cho 3 giờ việc) chiếm chỗ cả 3 ngày, nên task sau bị đẩy ra sau 3 ngày. Con số đó thật ra là cửa sổ hoặc hạn chót; trong Sheafly nó nên là `deadline`, còn duration suy ra từ effort chia năng lực (task Fixed Work).
 
