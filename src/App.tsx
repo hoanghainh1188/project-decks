@@ -62,6 +62,7 @@ import { linkFromAbove, toolbarStates } from "./toolbarState";
 import { undoTo } from "./undoTo";
 import { useFileDialog } from "./useFileDialog";
 import { distinctValues, valueKey } from "./fieldValues";
+import { lastFinish, spanEndInstant, type SpanEnd } from "./spanFit";
 import { buildViewRows, fieldOfMode, type FilterMode, type GroupMode, type HighlightMode } from "./viewRows";
 import { windowTitle } from "./windowTitle";
 import { selectionRange } from "./taskSelection";
@@ -100,6 +101,8 @@ export default function App() {
   const [filterValue, setFilterValue] = useState("");
   const [rowGroup, setRowGroup] = useState<GroupMode>("none");
   const [rowHighlight, setRowHighlight] = useState<HighlightMode>("none");
+  // Where the span of "Không vừa khoảng" ends; view state, not saved.
+  const [spanEnd, setSpanEnd] = useState<SpanEnd>({ kind: "date", date: "" });
   // null: closed; 0: create a new series; otherwise the summary UID being edited.
   const [seriesDialog, setSeriesDialog] = useState<number | null>(null);
   // UID of the task the split dialog is open for.
@@ -280,9 +283,12 @@ export default function App() {
   const task = project?.tasks.find((item) => item.uid === selected) ?? null;
   const editTask = project?.tasks.find((item) => item.uid === editUid) ?? null;
   const rows = useMemo(
-    () => (project ? buildViewRows(project, rowFilter, filterResource, rowGroup, rowHighlight, filterValue) : []),
+    () =>
+      project
+        ? buildViewRows(project, rowFilter, filterResource, rowGroup, rowHighlight, filterValue, spanEndInstant(project, spanEnd))
+        : [],
     // Group headers ("Chưa gán" / "Unassigned") are text, so they follow the language.
-    [project, rowFilter, filterResource, rowGroup, rowHighlight, filterValue, lang],
+    [project, rowFilter, filterResource, rowGroup, rowHighlight, filterValue, spanEnd, lang],
   );
   // Ranges exist only in the sheet; the network diagram selects one box.
   const selection = useMemo(
@@ -378,7 +384,11 @@ export default function App() {
     if (typeof fillField === "object" && fillField && !project.fields.some((field) => field.id === fillField.field)) {
       setFillField(null);
     }
-  }, [project, rowFilter, rowGroup, filterValue, fillField]);
+    // A span ending at a milestone that is gone ends at the last finish instead.
+    if (spanEnd.kind === "milestone" && spanEndInstant(project, spanEnd) == null) {
+      setSpanEnd({ kind: "date", date: lastFinish(project) });
+    }
+  }, [project, rowFilter, rowGroup, filterValue, fillField, spanEnd]);
 
   const dispatchFocused = useCallback((id: string) => dispatchAction(id, document.activeElement), [dispatchAction]);
   useClipboardEvents(dispatchFocused, () =>
@@ -476,9 +486,9 @@ export default function App() {
   const networkRows = useMemo(
     () =>
       project && view === "network"
-        ? buildViewRows(project, rowFilter, filterResource, "none", rowHighlight, filterValue)
+        ? buildViewRows(project, rowFilter, filterResource, "none", rowHighlight, filterValue, spanEndInstant(project, spanEnd))
         : [],
-    [project, view, rowFilter, filterResource, rowHighlight, filterValue, lang],
+    [project, view, rowFilter, filterResource, rowHighlight, filterValue, spanEnd, lang],
   );
   const networkVisible = useMemo(
     () => (rowFilter === "none" ? null : networkRows.flatMap((row) => (row.kind === "task" ? [row.task.uid] : []))),
@@ -588,6 +598,8 @@ export default function App() {
         onNetworkSummaries={setNetworkSummaries}
         interruptsColumn={interruptsColumn}
         onInterruptsColumn={setInterruptsColumn}
+        spanEnd={spanEnd}
+        onSpanEnd={setSpanEnd}
       />
       {error && <div className="banner">{error}</div>}
       {/* EVM sits beside the Gantt and the inspector so its burn-down chart keeps the full height. */}

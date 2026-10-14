@@ -1,8 +1,9 @@
 import { ChartGantt, Grid3x3, ListChecks, Network, Table2, Users, type LucideIcon } from "lucide-react";
-import { useMemo, useRef, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, type KeyboardEvent } from "react";
 
 import { distinctValues, formatFieldValue, valueKey } from "../fieldValues";
 import { useMessages } from "../i18n";
+import { lastFinish, type SpanEnd } from "../spanFit";
 import type { Project, Scale, ViewId } from "../types";
 import { fieldMode, fieldOfMode, type FilterMode, type GroupMode, type HighlightMode } from "../viewRows";
 import { viewBarMessages } from "./ViewBar.i18n";
@@ -47,6 +48,9 @@ interface Props {
   /** Whether the task sheet shows the interrupt flag as a column. */
   interruptsColumn: boolean;
   onInterruptsColumn: (show: boolean) => void;
+  /** Where the span of "Không vừa khoảng" ends. */
+  spanEnd: SpanEnd;
+  onSpanEnd: (end: SpanEnd) => void;
 }
 
 /**
@@ -66,6 +70,13 @@ export function ViewBar(props: Props) {
   );
   const tabsRef = useRef<HTMLDivElement>(null);
   const m = useMessages(viewBarMessages);
+
+  // An empty end starts at the last finish, so the span shows something at once.
+  const startSpan = (mode: string) => {
+    if (mode === "span" && project && props.spanEnd.kind === "date" && props.spanEnd.date === "") {
+      props.onSpanEnd({ kind: "date", date: lastFinish(project) });
+    }
+  };
 
   const onTabKey = (event: KeyboardEvent<HTMLDivElement>) => {
     const at = VIEWS.findIndex((item) => item.id === view);
@@ -138,6 +149,7 @@ export function ViewBar(props: Props) {
                 const field = fieldOfMode(project, next);
                 // Start on the first value tasks have, so the filter shows something.
                 if (field) props.onFilterValue(valueKey(distinctValues(field, project.tasks)[0]));
+                startSpan(next);
               }}
             >
               <option value="none">{m.filterNone}</option>
@@ -145,6 +157,7 @@ export function ViewBar(props: Props) {
               <option value="resource">{m.byPerson}</option>
               <option value="late">{m.late}</option>
               <option value="interrupts">{m.interrupts}</option>
+              <option value="span">{m.outsideSpan}</option>
               {project.fields.map((field) => (
                 <option key={field.id} value={fieldMode(field)}>
                   {m.byField(field.name)}
@@ -213,14 +226,22 @@ export function ViewBar(props: Props) {
             <select
               aria-label={m.highlight}
               value={props.highlight}
-              onChange={(event) => props.onHighlight(event.target.value as HighlightMode)}
+              onChange={(event) => {
+                const next = event.target.value as HighlightMode;
+                props.onHighlight(next);
+                startSpan(next);
+              }}
             >
               <option value="none">{m.highlightNone}</option>
               <option value="critical">{m.critical}</option>
               <option value="late">{m.late}</option>
               <option value="interrupts">{m.interrupts}</option>
+              <option value="span">{m.outsideSpan}</option>
             </select>
           </label>
+          {(props.filter === "span" || props.highlight === "span") && (
+            <SpanEndControl project={project} end={props.spanEnd} onEnd={props.onSpanEnd} />
+          )}
           {chart && (
             <label className="view-control">
               <input
@@ -234,5 +255,45 @@ export function ViewBar(props: Props) {
         </div>
       )}
     </div>
+  );
+}
+
+/** The end of the span: a date, or a milestone of the project (its finish). */
+function SpanEndControl({ project, end, onEnd }: { project: Project; end: SpanEnd; onEnd: (end: SpanEnd) => void }) {
+  const m = useMessages(viewBarMessages);
+  const milestones = project.tasks.filter((task) => task.milestone);
+  // The date typed last, so going to a milestone and back keeps it.
+  const lastDate = useRef(end.kind === "date" ? end.date : "");
+  useEffect(() => {
+    if (end.kind === "date" && end.date) lastDate.current = end.date;
+  }, [end]);
+  return (
+    <label className="view-control">
+      {m.spanEnd}
+      <select
+        aria-label={m.spanEnd}
+        value={end.kind === "milestone" ? `milestone:${end.uid}` : "date"}
+        onChange={(event) => {
+          const value = event.target.value;
+          if (value === "date") onEnd({ kind: "date", date: lastDate.current || lastFinish(project) });
+          else onEnd({ kind: "milestone", uid: Number(value.slice("milestone:".length)) });
+        }}
+      >
+        <option value="date">{m.spanByDate}</option>
+        {milestones.map((task) => (
+          <option key={task.uid} value={`milestone:${task.uid}`}>
+            {task.name.trim() || m.taskFallback(task.id)}
+          </option>
+        ))}
+      </select>
+      {end.kind === "date" && (
+        <input
+          type="date"
+          aria-label={m.spanDate}
+          value={end.date}
+          onChange={(event) => event.target.value && onEnd({ kind: "date", date: event.target.value })}
+        />
+      )}
+    </label>
   );
 }
