@@ -1,5 +1,6 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { listen } from "@tauri-apps/api/event";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { setCurrentLang } from "./i18n";
@@ -171,6 +172,34 @@ describe("Root", () => {
     await act(async () => screen.getByRole("button", { name: "Lưu" }).click());
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Khả dụng: An" })).not.toBeInTheDocument());
     expect(await screen.findByText("theo ngày")).toBeInTheDocument();
+  });
+
+  it("gives people skills and adds a rule in the Giao việc dialog", async () => {
+    vi.spyOn(navigator, "languages", "get").mockReturnValue(["vi-VN"]);
+    fakeBackend.reset(makeSnapshot(makeProject({ resources: [makeResource({ uid: 1, name: "An" })] })));
+    render(<Root />);
+    await screen.findByRole("button", { name: "Hoàn tác" });
+    const menu = await menuHandler();
+    await act(async () => menu("assignment-rules"));
+    expect(await screen.findByRole("dialog", { name: "Giao việc" })).toBeInTheDocument();
+    await act(async () => screen.getByRole("tab", { name: "Kỹ năng" }).click());
+    const name = screen.getByRole("textbox", { name: "Kỹ năng mới" });
+    const user = userEvent.setup();
+    await user.type(name, "Kiểm thử{Enter}");
+    await user.click(await screen.findByRole("checkbox", { name: "An có Kiểm thử" }));
+    await waitFor(() => expect(screen.getByRole("checkbox", { name: "An có Kiểm thử" })).toBeChecked());
+    await user.click(screen.getByRole("tab", { name: "Quy tắc" }));
+    await user.click(screen.getByRole("button", { name: "Thêm quy tắc" }));
+    expect(await screen.findByRole("combobox", { name: "Giao cho, quy tắc 1" })).toHaveValue("skill:1");
+    await user.click(screen.getByRole("button", { name: "Lưu" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Giao việc" })).not.toBeInTheDocument());
+    await act(async () => menu("view-resources"));
+    expect(await screen.findByRole("cell", { name: "Kiểm thử" })).toBeInTheDocument();
+    expect(fakeBackend.commands().map((command) => command.type)).toEqual([
+      "add_skill",
+      "set_resource_skills",
+      "set_assignment_rules",
+    ]);
   });
 
   it("bases a resource's new calendar on the project calendar", async () => {

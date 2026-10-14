@@ -21,6 +21,7 @@ function context(overrides: Partial<MenuContext> = {}): MenuContext {
     openProjectInfo: vi.fn(),
     openCustomFields: vi.fn(),
     openLevelingOrder: vi.fn(),
+    openAssignmentRules: vi.fn(),
     openWorkingTime: vi.fn(),
     openBaseline: vi.fn(),
     openRecurring: vi.fn(),
@@ -154,6 +155,12 @@ describe("custom fields", () => {
     handleMenuAction("leveling-order", ctx);
     expect(ctx.openLevelingOrder).toHaveBeenCalled();
     expect(ctx.openProjectInfo).not.toHaveBeenCalled();
+  });
+
+  it("opens the assignment rules", () => {
+    const ctx = context();
+    handleMenuAction("assignment-rules", ctx);
+    expect(ctx.openAssignmentRules).toHaveBeenCalled();
   });
 
   it("fills a custom field column down", () => {

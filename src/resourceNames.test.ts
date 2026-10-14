@@ -14,6 +14,7 @@ function resource(uid: number, name: string): Resource {
     overtime_rate: 0,
     cost_per_use: 0,
     availability: [],
+    skills: [],
   };
 }
 

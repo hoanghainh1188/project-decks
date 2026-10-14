@@ -28,6 +28,8 @@ export const resourceSheetMessages = defineMessages(
     availability: "Khả dụng…",
     availabilityOf: (name: string) => `Khả dụng của ${name}`,
     availabilityTip: "Những ngày nguồn lực có đơn vị khác đơn vị tối đa: nghỉ phép, nửa thời gian…",
+    skills: "Kỹ năng",
+    skillsTip: "Sửa ở Dự án → Quy tắc giao việc…",
   },
   {
     addPerson: "Add person",
@@ -56,5 +58,7 @@ export const resourceSheetMessages = defineMessages(
     availability: "Availability…",
     availabilityOf: (name: string) => `Availability of ${name}`,
     availabilityTip: "Days when the resource's units differ from its max units: leave, half time…",
+    skills: "Skills",
+    skillsTip: "Edit them in Project → Assignment Rules…",
   },
 );

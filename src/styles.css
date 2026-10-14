@@ -730,5 +730,29 @@ button.dialog-close:hover:not(:disabled) { background: var(--surface-hover); col
 .sort-rank { min-width: 1.5em; text-align: right; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 input.bad { color: var(--critical-text); border-color: var(--critical-text); font-weight: 400; }
 .fields-group { flex: 1 1 260px; }
+/* Dự án → Quy tắc giao việc: skills as a list and a people × skills grid, rules as cards. */
+.dialog .skill-list { list-style: none; margin: 10px 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 12px; }
+.dialog .skill-list > li { display: flex; align-items: center; gap: 2px; margin: 0; }
+.skill-list input { width: 160px; }
+.skill-grid-wrap { max-height: 320px; overflow: auto; margin: 12px 0; border: 1px solid var(--border-subtle); border-radius: 6px; }
+.skill-grid { border-collapse: collapse; width: max-content; min-width: 100%; }
+.skill-grid th, .skill-grid td { padding: 4px 10px; border-bottom: 1px solid var(--border-subtle); }
+.skill-grid thead th { position: sticky; top: 0; background: var(--surface); color: var(--text-muted); font-weight: 500; text-align: center; }
+.skill-grid thead th:first-child, .skill-grid tbody th { text-align: left; font-weight: 500; }
+.skill-grid td { text-align: center; }
+.skill-grid tbody tr:hover { background: var(--surface-hover); }
+.dialog .rule-list { list-style: none; margin: 10px 0; padding: 0; display: grid; gap: 8px; }
+.dialog .rule-list > li { display: block; margin: 0; }
+.rule-card { border: 1px solid var(--border-subtle); border-radius: 8px; padding: 8px 10px; background: var(--surface); }
+.rule-card .row { margin-top: 0; align-items: center; flex-wrap: wrap; justify-content: flex-start; gap: 6px; }
+.rule-title { flex: 1 1 auto; font-weight: 600; }
+.rule-when { display: grid; gap: 6px; margin: 6px 0; padding-left: 12px; border-left: 2px solid var(--border-subtle); }
+.rule-field { font-weight: 500; }
+.rule-word { color: var(--text-secondary); }
+.rule-adder { margin-top: 2px; }
+.rule-choices { display: flex; flex-wrap: wrap; gap: 4px 10px; }
+.rule-values { width: 220px; }
+.rule-target select { flex: 0 1 240px; }
+.skills-cell { color: var(--text-muted); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .week-day-head { display: flex; align-items: baseline; gap: 8px; }
 .week-day-head .check { flex: none; white-space: nowrap; }

@@ -212,6 +212,40 @@ export interface Resource {
   cost_per_use: number;
   /** Days with other units than `max_units`, in date order. */
   availability: AvailabilityPeriod[];
+  /** Ids of the project's skills this resource has, ascending. */
+  skills: number[];
+}
+
+/** Mirror of `skills::SkillDef`. */
+export interface SkillDef {
+  id: number;
+  name: string;
+}
+
+/** Mirror of `skills::Condition`: the task's value of `field` is one of `values`. */
+export interface Condition {
+  field: number;
+  values: FieldValue[];
+}
+
+/** Mirror of `skills::RuleTarget`: one person, or everyone with a skill. */
+export type RuleTarget = { type: "resource"; uid: number } | { type: "skill"; id: number };
+
+/**
+ * Mirror of `skills::AssignmentRule`: all conditions must hold (none matches every task);
+ * the first rule that matches a task is used.
+ */
+export interface AssignmentRule {
+  conditions: Condition[];
+  target: RuleTarget;
+  units: number;
+}
+
+/** Mirror of `skills::TaskAssignment`, one row of `assign_tasks`. */
+export interface TaskAssignment {
+  task_uid: number;
+  resource_uid: number;
+  units: number;
 }
 
 /**
@@ -280,6 +314,11 @@ export interface Project {
   fields: FieldDef[];
   /** The order leveling places tasks in; empty for the default (start, priority, slack). */
   leveling_order: SortKey[];
+  /** Skills resources can have, in the order they were added. */
+  skills: SkillDef[];
+  next_skill_id: number;
+  /** Ordered rules from custom field values to a person or a skill. */
+  assignment_rules: AssignmentRule[];
 }
 
 export interface Snapshot {
@@ -385,7 +424,13 @@ export type Command =
   | { type: "delete_field"; id: number }
   | { type: "set_field_value"; uid: number; field_id: number; value: FieldValue | null }
   | { type: "set_leveling_order"; order: SortKey[] }
-  | { type: "set_resource_availability"; uid: number; periods: AvailabilityPeriod[] };
+  | { type: "set_resource_availability"; uid: number; periods: AvailabilityPeriod[] }
+  | { type: "add_skill"; name: string }
+  | { type: "rename_skill"; id: number; name: string }
+  | { type: "delete_skill"; id: number }
+  | { type: "set_resource_skills"; uid: number; skills: number[] }
+  | { type: "set_assignment_rules"; rules: AssignmentRule[] }
+  | { type: "assign_tasks"; assignments: TaskAssignment[] };
 
 /** Mirror of `clipboard::TaskCopy`: one copied task, its level relative to the copy. */
 export interface TaskCopy {
