@@ -96,6 +96,20 @@ pub enum Invalid {
     DuplicateCondition,
     NoAssignments,
     InterruptsLeaf,
+    NothingToImport,
+    ImportHasErrors,
+    TooManyImportRows,
+    ImportName,
+    ImportNameRepeated,
+    ImportRate,
+    ImportLevel,
+    ImportNegative,
+    ImportWorkAndDuration,
+    ImportGroupWork,
+    ImportPriority,
+    ImportUnknownPerson,
+    ImportLinkRow,
+    ImportLinkLoop,
 }
 
 impl EngineError {
@@ -362,6 +376,62 @@ impl Invalid {
                 "Chỉ công việc có thời lượng mới chen ngang được, không phải tóm tắt hay mốc",
                 "Only a task with a duration can interrupt, not a summary or a milestone",
             ),
+            Self::NothingToImport => fixed(
+                "Không có dòng nào để nhập",
+                "There are no rows to import",
+            ),
+            Self::ImportHasErrors => fixed(
+                "Bảng nhập còn dòng lỗi",
+                "Some rows of the import have problems",
+            ),
+            Self::TooManyImportRows => fixed(
+                "Một lần nhập có tối đa 20.000 dòng",
+                "An import can have at most 20,000 rows",
+            ),
+            Self::ImportName => fixed(
+                "Tên trống",
+                "The name is empty",
+            ),
+            Self::ImportNameRepeated => fixed(
+                "Tên này đã có ở dòng trên",
+                "This name is already on a row above",
+            ),
+            Self::ImportRate => fixed(
+                "Đơn giá không được âm",
+                "The rate cannot be negative",
+            ),
+            Self::ImportLevel => fixed(
+                "Cấp chỉ được sâu hơn dòng trên một bậc",
+                "A level can be at most one deeper than the row above",
+            ),
+            Self::ImportNegative => fixed(
+                "Effort và thời lượng không được âm",
+                "Effort and duration cannot be negative",
+            ),
+            Self::ImportWorkAndDuration => fixed(
+                "Chỉ ghi effort hoặc thời lượng, không cả hai",
+                "Give either the effort or the duration, not both",
+            ),
+            Self::ImportGroupWork => fixed(
+                "Dòng nhóm (có dòng con) không có effort, thời lượng hay người",
+                "A group row (one with rows under it) takes no effort, duration or people",
+            ),
+            Self::ImportPriority => fixed(
+                "Ưu tiên từ 0 đến 1.000",
+                "The priority must be from 0 to 1,000",
+            ),
+            Self::ImportUnknownPerson => fixed(
+                "Dự án không có người tên này",
+                "The project has no one by this name",
+            ),
+            Self::ImportLinkRow => fixed(
+                "Chờ một dòng không có trong bảng hoặc chính dòng này",
+                "Waits for a row that is not in the table, or for itself",
+            ),
+            Self::ImportLinkLoop => fixed(
+                "Các dòng chờ nhau thành vòng",
+                "These rows wait for each other in a loop",
+            ),
         }
     }
 }
@@ -440,6 +510,20 @@ mod tests {
             DuplicateCondition,
             NoAssignments,
             InterruptsLeaf,
+            NothingToImport,
+            ImportHasErrors,
+            TooManyImportRows,
+            ImportName,
+            ImportNameRepeated,
+            ImportRate,
+            ImportLevel,
+            ImportNegative,
+            ImportWorkAndDuration,
+            ImportGroupWork,
+            ImportPriority,
+            ImportUnknownPerson,
+            ImportLinkRow,
+            ImportLinkLoop,
         ];
         for reason in all {
             let (vi, en) = (reason.message(Lang::Vi), reason.message(Lang::En));

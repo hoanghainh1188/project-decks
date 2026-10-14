@@ -17,6 +17,10 @@
 //! `-- suggest [<people> <tasks>]` times the assignment suggestions for an unassigned
 //! backlog (default 500 people, 5000 tasks): twenty skills, one to three per person, and
 //! twenty rules from the values of a list field to the skills.
+//!
+//! `-- import [<tasks>]` times `check_import` and `ImportRows` for a table of people and
+//! tasks (default 5000 tasks in groups of ten, one person per ten tasks, each leaf with
+//! effort, one person and, every other row, a wait on the row above).
 
 use std::time::{Duration, Instant};
 
@@ -25,6 +29,7 @@ use chrono::NaiveDate;
 use sheafly_engine::availability::AvailabilityPeriod;
 use sheafly_engine::command::Command;
 use sheafly_engine::fields::{FieldDef, FieldKind, FieldValue};
+use sheafly_engine::import::{check_import, ImportAssignee, ImportResource, ImportTask};
 use sheafly_engine::level::level_project;
 use sheafly_engine::level_order::{Criterion, SortKey};
 use sheafly_engine::model::{Assignment, ConstraintType, DepKind, Resource, ResourceKind, Task, TaskType};
@@ -314,9 +319,61 @@ fn suggestions(people: u32, tasks: u32) {
     println!("{:<28} {:>10.1} ngày", "xong muộn nhất (ước tính)", days);
 }
 
+fn import(tasks: u32) {
+    let people = (tasks / 10).max(1);
+    let resources: Vec<ImportResource> = (1..=people)
+        .map(|uid| ImportResource {
+            name: format!("Người {uid}"),
+            kind: ResourceKind::Person,
+            skills: vec![format!("Kỹ năng {}", uid % 20)],
+            ..ImportResource::default()
+        })
+        .collect();
+    let rows: Vec<ImportTask> = (0..tasks)
+        .map(|row| {
+            if row % GROUP == 0 {
+                return ImportTask {
+                    name: format!("Nhóm {row}"),
+                    ..ImportTask::default()
+                };
+            }
+            ImportTask {
+                name: format!("Việc {row}"),
+                level: 1,
+                work: Some(60 * i64::from(1 + row % 16)),
+                priority: Some(100 + (row % 800) as i32),
+                assignees: vec![ImportAssignee {
+                    name: format!("Người {}", 1 + row % people),
+                    units: 1.0,
+                }],
+                after: if row % GROUP >= 2 && row % 2 == 0 { vec![row - 1] } else { vec![] },
+                ..ImportTask::default()
+            }
+        })
+        .collect();
+    println!("nhập {people} người, {tasks} công việc");
+    let mut doc = Document::from_project(Project::new("Nhập", timestamp(2026, 1, 5, 8, 0)));
+    let (errors, _) = timed("check_import", || check_import(&doc.project, Some(1), &resources, &rows));
+    assert!(errors.is_empty(), "{:?}", errors.first());
+    timed("ImportRows", || {
+        doc.apply(Command::ImportRows {
+            after_uid: Some(1),
+            resources: resources.clone(),
+            tasks: rows.clone(),
+        })
+        .expect("import applies")
+    });
+    timed("undo", || doc.undo().expect("undo"));
+    timed("redo", || doc.redo().expect("redo"));
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let numbers: Vec<usize> = args.iter().filter_map(|arg| arg.parse().ok()).collect();
+    if args.iter().any(|arg| arg == "import") {
+        import(numbers.first().copied().unwrap_or(5000).max(1) as u32);
+        return;
+    }
     if args.iter().any(|arg| arg == "leveling") {
         leveling(500);
         return;

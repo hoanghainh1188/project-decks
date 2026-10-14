@@ -1,5 +1,16 @@
-import type { Command, FieldValue, NetworkLayout, ProjectMetrics, Snapshot, Suggestion, Task, TaskClipboard } from "../types";
-import { makeMetrics, makeSnapshot, makeTask } from "./fixtures";
+import type {
+  Command,
+  FieldValue,
+  ImportProblem,
+  ImportSheet,
+  NetworkLayout,
+  ProjectMetrics,
+  Snapshot,
+  Suggestion,
+  Task,
+  TaskClipboard,
+} from "../types";
+import { makeMetrics, makeResource, makeSnapshot, makeTask } from "./fixtures";
 
 export interface InvokeCall {
   cmd: string;
@@ -17,6 +28,10 @@ class FakeBackend {
   network: NetworkLayout = emptyNetwork();
   /** What `suggest_assignments` answers: made up by the test, the engine ranks people. */
   suggestions: Suggestion[] = [];
+  /** What `check_import` answers. */
+  importProblems: ImportProblem[] = [];
+  /** What `pick_table` answers (null is a cancelled dialog); `read_table_sheet` reads it too. */
+  table: ImportSheet | null = null;
   /** What `check_autosave` restores; null when there is no autosave. */
   autosave: Snapshot | null = null;
   /** The remembered interface language (`get_language`); null follows the system. */
@@ -32,6 +47,8 @@ class FakeBackend {
     this.metrics = structuredClone(metrics);
     this.network = emptyNetwork();
     this.suggestions = [];
+    this.importProblems = [];
+    this.table = null;
     this.failures.clear();
     this.holds.clear();
     this.autosave = null;
@@ -92,6 +109,13 @@ class FakeBackend {
         return structuredClone(this.network);
       case "suggest_assignments":
         return structuredClone(this.suggestions);
+      case "check_import":
+        return structuredClone(this.importProblems);
+      case "pick_table":
+        return structuredClone(this.table);
+      case "read_table_sheet":
+        if (!this.table?.sheets.includes(args?.sheet as string)) throw "Không có trang này trong tệp";
+        return { ...structuredClone(this.table), sheet: args?.sheet as string };
       case "export_mspdi":
       case "save_pdf":
         return undefined;
@@ -352,6 +376,26 @@ class FakeBackend {
         this.suggestions = this.suggestions.filter(
           (suggestion) => !command.assignments.some((row) => row.task_uid === suggestion.task_uid),
         );
+        return;
+      }
+      case "import_rows": {
+        if (command.resources.length === 0 && command.tasks.length === 0) throw "Không có dòng nào để nhập";
+        // Only names and order: the fake does not schedule or assign.
+        for (const row of command.resources) {
+          if (project.resources.some((item) => item.name.toLowerCase() === row.name.trim().toLowerCase())) continue;
+          project.resources.push(makeResource({ uid: project.next_resource_uid++, name: row.name.trim(), kind: row.kind }));
+        }
+        let at = project.tasks.length;
+        if (command.after_uid != null) {
+          const anchor = project.tasks.findIndex((task) => task.uid === command.after_uid);
+          if (anchor < 0) throw "Không tìm thấy công việc";
+          // After the anchor's subtree, as the engine does.
+          const level = project.tasks[anchor].outline_level;
+          at = anchor + 1;
+          while (at < project.tasks.length && project.tasks[at].outline_level > level) at++;
+        }
+        const added = command.tasks.map((row) => makeTask({ uid: project.next_task_uid++, name: row.name.trim() }));
+        project.tasks.splice(at, 0, ...added);
         return;
       }
       case "create_calendar": {

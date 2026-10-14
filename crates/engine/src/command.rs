@@ -6,6 +6,7 @@ use crate::calendar_base;
 use crate::clipboard::{self, FillField, TaskClipboard};
 use crate::error::{EngineError, Invalid};
 use crate::fields::{self, FieldKind, FieldValue, OptionRename};
+use crate::import::{self, ImportResource, ImportTask};
 use crate::level_order::{self, SortKey};
 use crate::level::level_project;
 use crate::model::{
@@ -371,6 +372,15 @@ pub enum Command {
     /// fails them all.
     AssignTasks {
         assignments: Vec<TaskAssignment>,
+    },
+    /// Add people and tasks read from a table, in one undo step (`import.rs`). The tasks
+    /// go after `after_uid`'s subtree, or at the end; a row with a problem fails it all.
+    ImportRows {
+        after_uid: Option<u32>,
+        #[serde(default)]
+        resources: Vec<ImportResource>,
+        #[serde(default)]
+        tasks: Vec<ImportTask>,
     },
 }
 
@@ -1083,6 +1093,11 @@ fn apply_inner(project: &mut Project, command: &Command) -> Result<(), EngineErr
                 apply_one(project, &command)?;
             }
         }
+        Command::ImportRows {
+            after_uid,
+            resources,
+            tasks,
+        } => import::import_rows(project, *after_uid, resources, tasks)?,
     }
     Ok(())
 }

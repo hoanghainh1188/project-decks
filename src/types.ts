@@ -273,6 +273,73 @@ export interface TaskAssignment {
   units: number;
 }
 
+/** Mirror of `import::ImportResource`, one person or machine of `import_rows`. */
+export interface ImportResource {
+  name: string;
+  kind: ResourceKind;
+  max_units?: number | null;
+  standard_rate?: number | null;
+  skills?: string[];
+}
+
+/** Mirror of `import::ImportAssignee`: a person by name, letter case aside. */
+export interface ImportAssignee {
+  name: string;
+  units: number;
+}
+
+/**
+ * Mirror of `import::ImportTask`, one task of `import_rows`. `work` and `duration` are
+ * working minutes (a task with `work` is Fixed Work); instants are project wall-clock
+ * milliseconds; `values` pairs a field name with its value; `after` lists rows of the same
+ * import (0 for the first task) this one waits for.
+ */
+export interface ImportTask {
+  name: string;
+  level?: number;
+  work?: number | null;
+  duration?: number | null;
+  priority?: number | null;
+  deadline?: number | null;
+  start_no_earlier?: number | null;
+  values?: [string, FieldValue][];
+  assignees?: ImportAssignee[];
+  after?: number[];
+}
+
+/** Mirror of `import::ImportColumn` (serde's external tagging). */
+export type ImportColumn =
+  | "row"
+  | "name"
+  | "kind"
+  | "max_units"
+  | "rate"
+  | "skills"
+  | "level"
+  | "work"
+  | "duration"
+  | "priority"
+  | "deadline"
+  | "start_no_earlier"
+  | "assignees"
+  | "after"
+  | { field: string };
+
+/** One problem `check_import` found; `row` counts from 0 within its table, null is the whole import. */
+export interface ImportProblem {
+  table: "resources" | "tasks";
+  row: number | null;
+  column: ImportColumn;
+  message: string;
+}
+
+/** A table read for import (`pick_table`, `read_table_sheet`): every cell as text. */
+export interface ImportSheet {
+  sheets: string[];
+  sheet: string | null;
+  rows: string[][];
+}
+
 /**
  * Mirror of `availability::AvailabilityPeriod`: `units` on every day from `from` to `to`
  * (both "YYYY-MM-DD", both included); `null` is no limit on that side.
@@ -461,7 +528,8 @@ export type Command =
   | { type: "delete_skill"; id: number }
   | { type: "set_resource_skills"; uid: number; skills: number[] }
   | { type: "set_assignment_rules"; rules: AssignmentRule[] }
-  | { type: "assign_tasks"; assignments: TaskAssignment[] };
+  | { type: "assign_tasks"; assignments: TaskAssignment[] }
+  | { type: "import_rows"; after_uid: number | null; resources: ImportResource[]; tasks: ImportTask[] };
 
 /** Mirror of `clipboard::TaskCopy`: one copied task, its level relative to the copy. */
 export interface TaskCopy {

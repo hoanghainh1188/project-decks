@@ -3,7 +3,19 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 import { defineMessages, isLang, pick, type Lang } from "./i18n";
 import { isThemeChoice, type ThemeChoice } from "./theme";
-import type { Command, NetworkLayout, NetworkOptions, ProjectMetrics, Snapshot, Suggestion, TaskClipboard } from "./types";
+import type {
+  Command,
+  ImportProblem,
+  ImportResource,
+  ImportSheet,
+  ImportTask,
+  NetworkLayout,
+  NetworkOptions,
+  ProjectMetrics,
+  Snapshot,
+  Suggestion,
+  TaskClipboard,
+} from "./types";
 
 const apiMessages = defineMessages(
   { failed: "Không thực hiện được thao tác" },
@@ -78,6 +90,21 @@ export function loadNetworkLayout(options: NetworkOptions): Promise<NetworkLayou
 /** Who the assignment rules would give each unassigned task to; a read, never logged. */
 export function suggestAssignments(): Promise<Suggestion[]> {
   return inOrder(() => invoke<Suggestion[]>("suggest_assignments"));
+}
+
+/** Ask for a CSV or workbook and read its first sheet; null when cancelled. */
+export function pickTable(): Promise<ImportSheet | null> {
+  return afterQueued(() => invoke<ImportSheet | null>("pick_table"));
+}
+
+/** Another sheet of the workbook `pickTable` read. */
+export function readTableSheet(sheet: string): Promise<ImportSheet> {
+  return invoke<ImportSheet>("read_table_sheet", { sheet });
+}
+
+/** What `import_rows` would refuse, row by row; empty when it would succeed. */
+export function checkImport(afterUid: number | null, resources: ImportResource[], tasks: ImportTask[]): Promise<ImportProblem[]> {
+  return inOrder(() => invoke<ImportProblem[]>("check_import", { afterUid, resources, tasks }));
 }
 
 /** The tasks `uids` with their subtrees, ready for a `paste_tasks` command. */
