@@ -19,6 +19,7 @@ function context(overrides: Partial<MenuContext> = {}): MenuContext {
     setScale: vi.fn(),
     setEvmOpen: vi.fn(),
     openProjectInfo: vi.fn(),
+    openCustomFields: vi.fn(),
     openWorkingTime: vi.fn(),
     openBaseline: vi.fn(),
     openRecurring: vi.fn(),
@@ -136,5 +137,20 @@ describe("working time", () => {
     const ctx = context();
     handleMenuAction("working-time", ctx);
     expect(ctx.openWorkingTime).toHaveBeenCalled();
+  });
+});
+
+describe("custom fields", () => {
+  it("opens Thông tin dự án on its custom fields tab", () => {
+    const ctx = context();
+    handleMenuAction("custom-fields", ctx);
+    expect(ctx.openCustomFields).toHaveBeenCalled();
+    expect(ctx.openProjectInfo).not.toHaveBeenCalled();
+  });
+
+  it("fills a custom field column down", () => {
+    const ctx = context({ selection: [1, 2, 3], fillField: { field: 4 } });
+    handleMenuAction("fill-down", ctx);
+    expect(ctx.send).toHaveBeenCalledWith({ type: "fill_down", from_uid: 1, to_uids: [2, 3], field: { field: 4 } });
   });
 });

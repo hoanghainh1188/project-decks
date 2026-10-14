@@ -1,7 +1,9 @@
 import { formatDuration, formatMoney, parseDuration } from "../../format";
 import { useMessages } from "../../i18n";
 import type { Accrual, Command, ConstraintType, Project, Task, TaskType } from "../../types";
+import { valueOf } from "../../fieldValues";
 import { DateTimeField } from "../DateTimeField";
+import { FieldInput } from "../FieldInput";
 import { AssignmentEditor } from "./AssignmentEditor";
 import { canSplit, SplitSection } from "./SplitSection";
 import { inspectorMessages } from "./Inspector.i18n";
@@ -67,6 +69,7 @@ export function Inspector(props: Props) {
               <AssignmentEditor project={props.project} task={task} send={props.send} />
             </fieldset>
           )}
+          <FieldsGroup {...props} />
           <fieldset className="inspector-group notes-group">
             <legend>{m.notes}</legend>
             <input
@@ -79,6 +82,31 @@ export function Inspector(props: Props) {
         </div>
       )}
     </section>
+  );
+}
+
+/** The project's custom fields, one row each; a summary task takes values too. */
+function FieldsGroup({ project, task, send }: Props) {
+  const m = useMessages(inspectorMessages);
+  if (project.fields.length === 0) return null;
+  return (
+    <fieldset className="inspector-group fields-group">
+      <legend>{m.fields}</legend>
+      {project.fields.map((field) => (
+        <div key={field.id}>
+          <label htmlFor={`field-${field.id}`}>{field.name}</label>
+          <FieldInput
+            // Another task starts fresh: no text typed for the one before.
+            key={task.uid}
+            id={`field-${field.id}`}
+            field={field}
+            value={valueOf(task, field)}
+            ariaLabel={field.name}
+            onCommit={(value) => send({ type: "set_field_value", uid: task.uid, field_id: field.id, value })}
+          />
+        </div>
+      ))}
+    </fieldset>
   );
 }
 

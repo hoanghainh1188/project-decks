@@ -252,3 +252,31 @@ describe("Inspector in English", () => {
     expect(screen.getByRole("button", { name: "Join all parts" })).toBeInTheDocument();
   });
 });
+
+describe("Inspector custom fields", () => {
+  beforeEach(() => window.localStorage.clear());
+
+  it("lists the project's fields and sets a value, on a summary task too", async () => {
+    const group = makeTask({ uid: 1, name: "Nhóm", summary: true, values: { 3: "BE" } });
+    const project = makeProject({
+      tasks: [group],
+      fields: [
+        { id: 3, name: "Mảng", kind: { type: "choice", options: ["BE", "FE"] } },
+        { id: 4, name: "Khách", kind: { type: "text" } },
+      ],
+    });
+    const { send, user } = renderInspector(group, project);
+    const fields = screen.getByRole("group", { name: "Trường tùy chỉnh" });
+    expect(within(fields).getByLabelText("Mảng")).toHaveValue("BE");
+    await user.selectOptions(within(fields).getByLabelText("Mảng"), "");
+    expect(send).toHaveBeenCalledWith({ type: "set_field_value", uid: 1, field_id: 3, value: null });
+    await user.type(within(fields).getByLabelText("Khách"), "ACME");
+    await user.tab();
+    expect(send).toHaveBeenCalledWith({ type: "set_field_value", uid: 1, field_id: 4, value: "ACME" });
+  });
+
+  it("has no custom fields group without fields", () => {
+    renderInspector(leaf);
+    expect(screen.queryByRole("group", { name: "Trường tùy chỉnh" })).not.toBeInTheDocument();
+  });
+});

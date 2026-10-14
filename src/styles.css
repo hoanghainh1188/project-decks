@@ -701,5 +701,20 @@ button.dialog-close:hover:not(:disabled) { background: var(--surface-hover); col
 .dialog input.full { width: 100%; box-sizing: border-box; }
 /* Both tabs keep one height, so the dialog does not jump when switching. */
 .dialog-tabpanel { min-height: 300px; }
+/* Thông tin dự án → Trường tùy chỉnh: one card per field, its choices as chips. */
+/* `.dialog ul` and `.dialog li` lay out short lists; these cards and chips need their own. */
+.dialog .field-list { list-style: none; margin: 10px 0; padding: 0; display: grid; gap: 8px; }
+.dialog .field-list > li { display: block; margin: 0; }
+.dialog .choices li { margin: 0; justify-content: flex-start; }
+.field-editor { border: 1px solid var(--border-subtle); border-radius: 8px; padding: 8px 10px; background: var(--surface); }
+.field-editor .row { margin-top: 0; align-items: center; flex-wrap: wrap; }
+.field-editor .field-name { flex: 1 1 180px; font-weight: 600; }
+.choices { margin: 8px 0 0 12px; }
+.choices ul { list-style: none; margin: 0 0 6px; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.choices li { display: flex; align-items: center; gap: 2px; }
+.choices li input { width: 140px; }
+.btn-icon { padding-inline: 4px; }
+input.bad { color: var(--critical-text); border-color: var(--critical-text); font-weight: 400; }
+.fields-group { flex: 1 1 260px; }
 .week-day-head { display: flex; align-items: baseline; gap: 8px; }
 .week-day-head .check { flex: none; white-space: nowrap; }

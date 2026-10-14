@@ -24,7 +24,7 @@ import { EvmPanel } from "./components/EvmPanel";
 import { GanttChart } from "./components/GanttChart";
 import { Inspector } from "./components/inspector/Inspector";
 import { NetworkDiagram } from "./components/NetworkDiagram";
-import { ProjectDialog } from "./components/ProjectDialog";
+import { ProjectDialog, type ProjectTab } from "./components/ProjectDialog";
 import { WorkingTimeDialog } from "./components/WorkingTimeDialog";
 import { RecurringDialog, recurringCommand } from "./components/RecurringDialog";
 import { ResourceSheet } from "./components/ResourceSheet";
@@ -53,7 +53,8 @@ import { applyTheme, themeChoice, type ThemeChoice } from "./theme";
 import { linkFromAbove, toolbarStates } from "./toolbarState";
 import { undoTo } from "./undoTo";
 import { useFileDialog } from "./useFileDialog";
-import { buildViewRows, type FilterMode, type GroupMode, type HighlightMode } from "./viewRows";
+import { distinctValues, valueKey } from "./fieldValues";
+import { buildViewRows, fieldOfMode, type FilterMode, type GroupMode, type HighlightMode } from "./viewRows";
 import { windowTitle } from "./windowTitle";
 import { selectionRange } from "./taskSelection";
 import { useClipboardEvents } from "./useClipboardEvents";
@@ -75,11 +76,13 @@ export default function App() {
   // Thông tin dự án is a transaction: the history cursor when it opened, so Hủy can
   // undo back to it. null while the dialog is closed.
   const [infoStart, setInfoStart] = useState<number | null>(null);
+  const [infoTab, setInfoTab] = useState<ProjectTab>("general");
   const [baselineOpen, setBaselineOpen] = useState(false);
   // The calendar Lịch làm việc opened on and the history cursor to roll back to.
   const [workingTime, setWorkingTime] = useState<{ id: number; start: number } | null>(null);
   const [rowFilter, setRowFilter] = useState<FilterMode>("none");
   const [filterResource, setFilterResource] = useState<number | null>(null);
+  const [filterValue, setFilterValue] = useState("");
   const [rowGroup, setRowGroup] = useState<GroupMode>("none");
   const [rowHighlight, setRowHighlight] = useState<HighlightMode>("none");
   // null: closed; 0: create a new series; otherwise the summary UID being edited.
@@ -116,6 +119,24 @@ export default function App() {
   }, []);
 
   const send = useCallback((command: Command) => run(() => applyCommand(command)), [run]);
+  // Thông tin dự án shows what the engine refused of its own edits in its footer, not in
+  // the banner behind the dialog (where it would outlive the dialog after Lưu). Errors
+  // from anything else stay in the banner.
+  const [dialogError, setDialogError] = useState<string | null>(null);
+  const sendInDialog = useCallback(
+    (command: Command) =>
+      run(async () => {
+        try {
+          const state = await applyCommand(command);
+          setDialogError(null);
+          return state;
+        } catch (err) {
+          setDialogError(errorMessage(err));
+          return undefined;
+        }
+      }),
+    [run],
+  );
 
   const { startFileDialog, openFileWhenFree, fileDialogBusy } = useFileDialog(run, setError);
 
@@ -137,12 +158,17 @@ export default function App() {
 
   // Read the cursor through the queue: a cell committed by the click that opened the
   // dialog may still be in flight, and must count as before the dialog, not inside it.
-  const openProjectInfo = useCallback(async () => {
-    const state = await run(loadState);
-    // Statistics from an earlier opening would show as current until the new ones load.
-    setMetrics(null);
-    setInfoStart(state ? state.history_cursor : (snap?.history_cursor ?? 0));
-  }, [run, snap]);
+  const openProjectInfo = useCallback(
+    async (tab: ProjectTab = "general") => {
+      const state = await run(loadState);
+      // Statistics from an earlier opening would show as current until the new ones load.
+      setMetrics(null);
+      setInfoTab(tab);
+      setDialogError(null);
+      setInfoStart(state ? state.history_cursor : (snap?.history_cursor ?? 0));
+    },
+    [run, snap],
+  );
 
   // Lịch làm việc is a transaction like Thông tin dự án, from the same kind of cursor.
   const openWorkingTime = useCallback(
@@ -173,9 +199,9 @@ export default function App() {
   const task = project?.tasks.find((item) => item.uid === selected) ?? null;
   const editTask = project?.tasks.find((item) => item.uid === editUid) ?? null;
   const rows = useMemo(
-    () => (project ? buildViewRows(project, rowFilter, filterResource, rowGroup, rowHighlight) : []),
+    () => (project ? buildViewRows(project, rowFilter, filterResource, rowGroup, rowHighlight, filterValue) : []),
     // Group headers ("Chưa gán" / "Unassigned") are text, so they follow the language.
-    [project, rowFilter, filterResource, rowGroup, rowHighlight, lang],
+    [project, rowFilter, filterResource, rowGroup, rowHighlight, filterValue, lang],
   );
   // Ranges exist only in the sheet; the network diagram selects one box.
   const selection = useMemo(
@@ -218,6 +244,7 @@ export default function App() {
         setScale,
         setEvmOpen,
         openProjectInfo: () => void openProjectInfo(),
+        openCustomFields: () => void openProjectInfo("fields"),
         openWorkingTime: () => void openWorkingTime(snap?.project.calendar_id ?? 1),
         openBaseline: () => setBaselineOpen(true),
         openRecurring: () => setSeriesDialog(0),
@@ -251,6 +278,22 @@ export default function App() {
   );
 
   useEffect(() => trackCommittedText(document), []);
+
+  // A field the filter, the grouping or fill-down uses can be deleted (or undone away),
+  // and the value a filter keeps can go: fall back rather than act on what is gone.
+  useEffect(() => {
+    if (!project) return;
+    if (rowFilter.startsWith("field:") && !fieldOfMode(project, rowFilter)) setRowFilter("none");
+    if (rowGroup.startsWith("field:") && !fieldOfMode(project, rowGroup)) setRowGroup("none");
+    const filterField = fieldOfMode(project, rowFilter);
+    if (filterField && filterValue !== "") {
+      const keys = distinctValues(filterField, project.tasks).map(valueKey);
+      if (!keys.includes(filterValue)) setFilterValue(keys[0] ?? "");
+    }
+    if (typeof fillField === "object" && fillField && !project.fields.some((field) => field.id === fillField.field)) {
+      setFillField(null);
+    }
+  }, [project, rowFilter, rowGroup, filterValue, fillField]);
 
   const dispatchFocused = useCallback((id: string) => dispatchAction(id, document.activeElement), [dispatchAction]);
   useClipboardEvents(dispatchFocused, () =>
@@ -346,8 +389,11 @@ export default function App() {
 
   // The network diagram ignores grouping; filters choose the boxes and highlight tints them.
   const networkRows = useMemo(
-    () => (project && view === "network" ? buildViewRows(project, rowFilter, filterResource, "none", rowHighlight) : []),
-    [project, view, rowFilter, filterResource, rowHighlight, lang],
+    () =>
+      project && view === "network"
+        ? buildViewRows(project, rowFilter, filterResource, "none", rowHighlight, filterValue)
+        : [],
+    [project, view, rowFilter, filterResource, rowHighlight, filterValue, lang],
   );
   const networkVisible = useMemo(
     () => (rowFilter === "none" ? null : networkRows.flatMap((row) => (row.kind === "task" ? [row.task.uid] : []))),
@@ -446,6 +492,8 @@ export default function App() {
         onFilter={setRowFilter}
         filterResource={filterResource}
         onFilterResource={setFilterResource}
+        filterValue={filterValue}
+        onFilterValue={setFilterValue}
         group={rowGroup}
         onGroup={setRowGroup}
         highlight={rowHighlight}
@@ -465,6 +513,7 @@ export default function App() {
                 <TaskSheet
                   rows={rows}
                   calendars={project.calendars}
+                  fields={project.fields}
                   assignments={project.assignments}
                   resources={project.resources}
                   selected={selected}
@@ -484,6 +533,7 @@ export default function App() {
                   onRemainingWork={(uid, minutes) => send({ type: "set_remaining_work", uid, minutes })}
                   onOvertime={(uid, minutes) => send({ type: "set_overtime_work", uid, minutes })}
                   onCalendar={(uid, calendarId) => send({ type: "set_task_calendar", uid, calendar_id: calendarId })}
+                  onFieldValue={(uid, fieldId, value) => send({ type: "set_field_value", uid, field_id: fieldId, value })}
                   onEditSeries={(uid) => {
                     selectOne(uid);
                     setSeriesDialog(uid);
@@ -574,6 +624,8 @@ export default function App() {
           project={project}
           statistics={metrics?.statistics ?? null}
           changed={(snap?.history_cursor ?? 0) !== infoStart}
+          initialTab={infoTab}
+          error={dialogError}
           onSave={() => {
             commitFocusedField();
             setInfoStart(null);
@@ -586,7 +638,7 @@ export default function App() {
               else setError(m.rollbackFailed);
             });
           }}
-          send={send}
+          send={sendInDialog}
           onOpenWorkingTime={() => {
             // Keep what was changed here, then edit working time in its own transaction.
             commitFocusedField();

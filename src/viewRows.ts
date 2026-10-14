@@ -1,10 +1,24 @@
+import { distinctValues, formatFieldValue, valueKey, valueOf } from "./fieldValues";
 import { pick } from "./i18n";
-import type { Assignment, Project, Resource, Task } from "./types";
+import type { Assignment, FieldDef, Project, Resource, Task } from "./types";
 import { viewRowsMessages } from "./viewRows.i18n";
 
-export type FilterMode = "none" | "critical" | "resource" | "late";
-export type GroupMode = "none" | "resource" | "summary";
+/** A custom field, by id, as a filter or group mode. */
+export type FieldMode = `field:${number}`;
+export type FilterMode = "none" | "critical" | "resource" | "late" | FieldMode;
+export type GroupMode = "none" | "resource" | "summary" | FieldMode;
 export type HighlightMode = "none" | "critical" | "late";
+
+export function fieldMode(field: FieldDef): FieldMode {
+  return `field:${field.id}`;
+}
+
+/** The custom field a mode names, or null for another mode or a field that is gone. */
+export function fieldOfMode(project: Project, mode: string): FieldDef | null {
+  if (!mode.startsWith("field:")) return null;
+  const id = Number(mode.slice("field:".length));
+  return project.fields.find((field) => field.id === id) ?? null;
+}
 
 export interface TaskViewRow {
   kind: "task";
@@ -25,7 +39,9 @@ export type ViewRow = TaskViewRow | GroupViewRow;
  * Filter hides non-matching rows but keeps a summary when any descendant matches.
  * Highlight only tints rows that remain visible. Group then reorders those rows.
  * None of this rewrites WBS codes or the saved task order. Group headers it names itself
- * are in the current interface language.
+ * are in the current interface language. A custom field filter keeps tasks whose value
+ * has `fieldValue` as its key (see `valueKey`; "" keeps tasks with no value), and a
+ * mode naming a field that no longer exists does nothing.
  */
 export function buildViewRows(
   project: Project,
@@ -33,19 +49,27 @@ export function buildViewRows(
   resourceUid: number | null,
   group: GroupMode,
   highlight: HighlightMode,
+  fieldValue = "",
 ): ViewRow[] {
-  const visible = visibleTasks(project, filter, resourceUid);
+  const visible = visibleTasks(project, filter, resourceUid, fieldValue);
   if (group === "resource") return groupByResource(project, visible, highlight);
   if (group === "summary") return groupBySummary(project, visible, highlight);
+  const field = fieldOfMode(project, group);
+  if (field) return groupByField(field, visible, highlight);
   return visible.map((task) => taskRow(`task-${task.uid}`, task, highlight));
 }
 
-function visibleTasks(project: Project, filter: FilterMode, resourceUid: number | null): Task[] {
-  if (filter === "none") return project.tasks;
+function visibleTasks(project: Project, filter: FilterMode, resourceUid: number | null, fieldValue: string): Task[] {
+  const field = fieldOfMode(project, filter);
+  if (filter === "none" || (filter.startsWith("field:") && !field)) return project.tasks;
   const byUid = new Map(project.tasks.map((task) => [task.uid, task]));
   const direct = new Set<number>();
   for (const task of project.tasks) {
-    if (matchesFilter(task, project.assignments, filter, resourceUid)) direct.add(task.uid);
+    // A summary with no value matches nothing: it shows above its matching tasks only.
+    const matches = field
+      ? valueKey(valueOf(task, field)) === fieldValue && !(fieldValue === "" && task.summary)
+      : matchesFilter(task, project.assignments, filter, resourceUid);
+    if (matches) direct.add(task.uid);
   }
   const keep = new Set(direct);
   for (const uid of direct) {
@@ -156,6 +180,34 @@ function groupBySummary(project: Project, tasks: Task[], highlight: HighlightMod
       rows.push(taskRow(`group-no-summary-task-${task.uid}`, task, highlight));
     }
   }
+  return rows;
+}
+
+/**
+ * One group per value tasks have, in the order `distinctValues` gives (a list field's own
+ * order), then the tasks with no value. A summary with no value is left out: its tasks
+ * are listed on their own.
+ */
+function groupByField(field: FieldDef, tasks: Task[], highlight: HighlightMode): ViewRow[] {
+  const buckets = new Map<string, Task[]>();
+  for (const task of tasks) {
+    const key = valueKey(valueOf(task, field));
+    if (key === "" && task.summary) continue;
+    const list = buckets.get(key) ?? [];
+    list.push(task);
+    buckets.set(key, list);
+  }
+  const rows: ViewRow[] = [];
+  // Row keys use the group's place, not its value: a value like "x-task-3" must not
+  // make a key another row already has.
+  const push = (key: string, label: string, place: string) => {
+    const list = buckets.get(key);
+    if (!list || list.length === 0) return;
+    rows.push({ kind: "group", key: `group-field-${place}`, label });
+    for (const task of list) rows.push(taskRow(`group-field-${place}-task-${task.uid}`, task, highlight));
+  };
+  distinctValues(field, tasks).forEach((value, index) => push(valueKey(value), formatFieldValue(value), String(index)));
+  push("", pick(viewRowsMessages).noValue(field.name), "none");
   return rows;
 }
 

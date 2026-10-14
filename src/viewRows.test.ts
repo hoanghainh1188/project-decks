@@ -209,3 +209,64 @@ describe("buildViewRows group headers in English", () => {
     expect(labels).toEqual(["# 1 Thiết kế", "# 1.3 Kiểm thử", "# 2 Thi công", "# No summary task"]);
   });
 });
+
+describe("buildViewRows by custom field", () => {
+  /** The outline project with a list field "Mảng": BE on 2 and 5, FE on 3 and on summary 6. */
+  function fieldProject() {
+    const project = outlineProject();
+    const values: Record<number, string> = { 2: "BE", 3: "FE", 5: "BE", 6: "FE" };
+    return {
+      ...project,
+      fields: [{ id: 5, name: "Mảng", kind: { type: "choice" as const, options: ["FE", "BE"] } }],
+      tasks: project.tasks.map((task) => (values[task.uid] ? { ...task, values: { 5: values[task.uid] } } : task)),
+    };
+  }
+
+  it("filters on one value and keeps summaries above the matches", () => {
+    expect(shape(buildViewRows(fieldProject(), "field:5", null, "none", "none", "BE"))).toEqual(["1", "2", "4", "5"]);
+  });
+
+  it("filters on no value with the empty key", () => {
+    // Summaries 1 and 4 have no value but only show when a task under them has none.
+    expect(shape(buildViewRows(fieldProject(), "field:5", null, "none", "none", ""))).toEqual(["6", "7", "8"]);
+  });
+
+  it("groups by value in the list's order, then the tasks with none", () => {
+    expect(shape(buildViewRows(fieldProject(), "none", null, "field:5", "none"))).toEqual([
+      "# FE",
+      "3",
+      "6",
+      "# BE",
+      "2",
+      "5",
+      "# Chưa có Mảng",
+      "7",
+      "8",
+    ]);
+  });
+
+  it("ignores a mode whose field is gone", () => {
+    const all = shape(buildViewRows(fieldProject(), "none", null, "none", "none"));
+    expect(shape(buildViewRows(fieldProject(), "field:99", null, "field:99", "none", "BE"))).toEqual(all);
+  });
+});
+
+describe("buildViewRows group keys", () => {
+  it("stay unique whatever the values look like", () => {
+    const project = outlineProject();
+    const values: Record<number, string> = { 2: "x", 3: "x-task-2", 5: "-task-7" };
+    const rows = buildViewRows(
+      {
+        ...project,
+        fields: [{ id: 1, name: "Mã", kind: { type: "text" as const } }],
+        tasks: project.tasks.map((task) => (values[task.uid] ? { ...task, values: { 1: values[task.uid] } } : task)),
+      },
+      "none",
+      null,
+      "field:1",
+      "none",
+    );
+    const keys = rows.map((row) => row.key);
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+});

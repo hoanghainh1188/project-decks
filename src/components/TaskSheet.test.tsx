@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 
 import { I18nProvider, setCurrentLang, type Lang } from "../i18n";
 import { at, makeAssignment, makeResource, makeTask, outlineProject, standardCalendar } from "../test/fixtures";
-import type { Task } from "../types";
+import type { FieldDef, Task } from "../types";
 import { buildViewRows, type ViewRow } from "../viewRows";
 import { TaskSheet } from "./TaskSheet";
 
@@ -23,11 +23,15 @@ const HANDLERS = [
   "onRemainingWork",
   "onOvertime",
   "onCalendar",
+  "onFieldValue",
   "onEditSeries",
   "onScroll",
 ] as const;
 
-function renderSheet(rows: ViewRow[], options: { tracking?: boolean; selected?: number | null; lang?: Lang } = {}) {
+function renderSheet(
+  rows: ViewRow[],
+  options: { tracking?: boolean; selected?: number | null; lang?: Lang; fields?: FieldDef[] } = {},
+) {
   const handlers = Object.fromEntries(HANDLERS.map((name) => [name, vi.fn<(...args: unknown[]) => void>()])) as Record<
     (typeof HANDLERS)[number],
     Mock<(...args: unknown[]) => void>
@@ -37,6 +41,7 @@ function renderSheet(rows: ViewRow[], options: { tracking?: boolean; selected?: 
     <TaskSheet
       rows={rows}
       calendars={[standardCalendar(1), standardCalendar(2, "Ca đêm")]}
+      fields={options.fields ?? []}
       assignments={[
         makeAssignment({ uid: 1, task_uid: 2, resource_uid: 10, overtime_work: 60 }),
         makeAssignment({ uid: 2, task_uid: 2, resource_uid: 11, overtime_work: 30, units: 0.5 }),
@@ -366,5 +371,76 @@ describe("TaskSheet in English", () => {
       "title",
       "One occurrence of a recurring series",
     );
+  });
+});
+
+describe("TaskSheet custom field columns", () => {
+  const fields: FieldDef[] = [
+    { id: 1, name: "Tên", kind: { type: "text" } },
+    { id: 2, name: "Điểm", kind: { type: "number" } },
+    { id: 3, name: "Mảng", kind: { type: "choice", options: ["BE", "FE"] } },
+  ];
+  const task = makeTask({ uid: 1, name: "Việc", values: { 1: "cũ", 2: 7.5 } });
+  const rows: ViewRow[] = [{ kind: "task", key: "task-1", task, highlighted: false }];
+
+  it("adds a column per field after the built-in ones, even with a built-in label", () => {
+    const { head } = renderSheet(rows, { fields });
+    const labels = [...head.children].map((cell) => cell.textContent);
+    expect(labels.slice(-3)).toEqual(["Tên", "Điểm", "Mảng"]);
+    expect(labels.filter((label) => label === "Tên")).toHaveLength(2);
+    expect(screen.getByRole("textbox", { name: "Điểm" })).toHaveValue("7,5");
+  });
+
+  it("commits values, and empty text clears one", async () => {
+    const { handlers, user } = renderSheet(rows, { fields });
+    const score = screen.getByRole("textbox", { name: "Điểm" });
+    await user.clear(score);
+    await user.type(score, "12,25");
+    await user.tab();
+    expect(handlers.onFieldValue).toHaveBeenCalledWith(1, 2, 12.25);
+    await user.selectOptions(screen.getByRole("combobox", { name: "Mảng" }), "FE");
+    expect(handlers.onFieldValue).toHaveBeenCalledWith(1, 3, "FE");
+    const names = screen.getAllByRole("textbox", { name: "Tên" });
+    await user.clear(names[names.length - 1]);
+    await user.tab();
+    expect(handlers.onFieldValue).toHaveBeenCalledWith(1, 1, null);
+  });
+
+  it("marks a number it cannot read and sends nothing", async () => {
+    const { handlers, user } = renderSheet(rows, { fields });
+    const score = screen.getByRole("textbox", { name: "Điểm" });
+    await user.clear(score);
+    await user.type(score, "bảy");
+    await user.tab();
+    expect(handlers.onFieldValue).not.toHaveBeenCalled();
+    expect(score).toHaveAttribute("aria-invalid", "true");
+    expect(score).toHaveValue("7,5");
+  });
+
+  it("sends nothing when the text means the value it had", async () => {
+    const { handlers, user } = renderSheet(rows, { fields });
+    const score = screen.getByRole("textbox", { name: "Điểm" });
+    await user.click(score);
+    await user.tab();
+    await user.clear(score);
+    await user.type(score, "7,50");
+    await user.tab();
+    expect(handlers.onFieldValue).not.toHaveBeenCalled();
+  });
+
+  it("keeps focus on a list after its value changes", async () => {
+    const { handlers, user } = renderSheet(rows, { fields });
+    const area = screen.getByRole("combobox", { name: "Mảng" });
+    area.focus();
+    await user.selectOptions(area, "BE");
+    expect(handlers.onFieldValue).toHaveBeenCalledWith(1, 3, "BE");
+    expect(screen.getByRole("combobox", { name: "Mảng" })).toBe(area);
+    expect(area).toHaveFocus();
+  });
+
+  it("tells fill-down which field column has focus", async () => {
+    const { handlers, user } = renderSheet(rows, { fields });
+    await user.click(screen.getByRole("textbox", { name: "Điểm" }));
+    expect(handlers.onFillField).toHaveBeenLastCalledWith({ field: 2 });
   });
 });

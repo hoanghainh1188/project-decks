@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 
 import { DateTimeField } from "./DateTimeField";
+import { FieldInput } from "./FieldInput";
+import { valueOf } from "../fieldValues";
 import { formatDuration, formatInstant, parseDuration } from "../format";
 import { useMessages } from "../i18n";
 import { resourceNamesByTask } from "../resourceNames";
-import type { Assignment, Calendar, FillField, Resource, Task } from "../types";
+import type { Assignment, Calendar, FieldDef, FieldValue, FillField, Resource, Task } from "../types";
 import type { ViewRow } from "../viewRows";
 import { taskSheetMessages } from "./TaskSheet.i18n";
 
@@ -17,14 +19,19 @@ const NAME_WIDTH = 200;
 type SheetMessages = (typeof taskSheetMessages)["vi"];
 
 interface SheetColumn {
+  /** Unique in the sheet; a custom field may share a built-in column's label. */
+  key: string;
   label: string;
   width: number;
   /** The field fill-down copies when this column's cell had focus last. */
   fill?: FillField;
 }
 
-function sheetColumns(m: SheetMessages, tracking: boolean, nameWidth: number): SheetColumn[] {
-  return [
+/** Column width of a custom field by kind; numbers are short, text gets the most room. */
+const FIELD_WIDTH = { text: 140, number: 90, choice: 120 } as const;
+
+function sheetColumns(m: SheetMessages, tracking: boolean, nameWidth: number, fields: FieldDef[]): SheetColumn[] {
+  const built: Omit<SheetColumn, "key">[] = [
     { label: m.id, width: 42 },
     { label: m.wbs, width: 72 },
     { label: m.name, width: nameWidth, fill: "name" },
@@ -50,6 +57,16 @@ function sheetColumns(m: SheetMessages, tracking: boolean, nameWidth: number): S
     { label: m.resources, width: 160 },
     { label: m.slack, width: 80 },
   ];
+  // Custom fields follow the built-in columns, in the order they were added.
+  return [
+    ...built.map((column) => ({ ...column, key: column.label })),
+    ...fields.map((field) => ({
+      key: `field-${field.id}`,
+      label: field.name,
+      width: FIELD_WIDTH[field.kind.type],
+      fill: { field: field.id },
+    })),
+  ];
 }
 
 function sheetWidthOf(columns: SheetColumn[]): number {
@@ -60,6 +77,8 @@ function sheetWidthOf(columns: SheetColumn[]): number {
 interface Props {
   rows: ViewRow[];
   calendars: Calendar[];
+  /** Custom fields, each shown as a column after the built-in ones. */
+  fields: FieldDef[];
   assignments: Assignment[];
   resources: Resource[];
   selected: number | null;
@@ -82,6 +101,8 @@ interface Props {
   onRemainingWork: (uid: number, minutes: number) => void;
   onOvertime: (uid: number, minutes: number) => void;
   onCalendar: (uid: number, calendarId: number | null) => void;
+  /** A custom field value, or null to clear it. */
+  onFieldValue: (uid: number, fieldId: number, value: FieldValue | null) => void;
   onEditSeries: (uid: number) => void;
   onScroll: () => void;
 }
@@ -91,10 +112,10 @@ export function TaskSheet(props: Props) {
   const headRef = useRef<HTMLDivElement>(null);
   const [windowRange, setWindowRange] = useState({ start: 0, end: 40 });
   const [paneWidth, setPaneWidth] = useState(0);
-  const baseColumns = sheetColumns(m, props.tracking, NAME_WIDTH);
+  const baseColumns = sheetColumns(m, props.tracking, NAME_WIDTH, props.fields);
   const baseWidth = sheetWidthOf(baseColumns);
   const nameWidth = NAME_WIDTH + Math.max(0, paneWidth - baseWidth);
-  const columns = sheetColumns(m, props.tracking, nameWidth);
+  const columns = sheetColumns(m, props.tracking, nameWidth, props.fields);
   const template = columns.map((column) => `${column.width}px`).join(" ");
   // Header and body use this same pixel width so tracks, including columns past the viewport, stay aligned.
   const sheetWidth = sheetWidthOf(columns);
@@ -129,7 +150,9 @@ export function TaskSheet(props: Props) {
       <div className="sheet-head-clip" ref={headRef}>
         <div className="sheet-head" style={{ gridTemplateColumns: template, width: sheetWidth, minWidth: sheetWidth }}>
           {columns.map((column) => (
-            <span key={column.label}>{column.label}</span>
+            <span key={column.key} title={column.label}>
+              {column.label}
+            </span>
           ))}
         </div>
       </div>
@@ -254,6 +277,15 @@ export function TaskSheet(props: Props) {
               />
               <ResourceCell names={names.get(task.uid) ?? ""} />
               <span className={`ro${task.total_slack < 0 ? " bad" : ""}`}>{formatDuration(task.total_slack)}</span>
+              {props.fields.map((field) => (
+                <FieldInput
+                  key={field.id}
+                  field={field}
+                  value={valueOf(task, field)}
+                  ariaLabel={field.name}
+                  onCommit={(value) => props.onFieldValue(task.uid, field.id, value)}
+                />
+              ))}
             </div>
             );
           })}
