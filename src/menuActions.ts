@@ -38,6 +38,7 @@ export interface MenuContext {
   /** Thông tin dự án, on its custom fields tab. */
   openCustomFields: () => void;
   openLevelingOrder: () => void;
+  openAssignmentRules: () => void;
   /** Lịch làm việc, on the project calendar. */
   openWorkingTime: () => void;
   openBaseline: () => void;
@@ -145,6 +146,9 @@ function viewAction(id: string, ctx: MenuContext): boolean {
       return true;
     case "leveling-order":
       ctx.openLevelingOrder();
+      return true;
+    case "assignment-rules":
+      ctx.openAssignmentRules();
       return true;
     case "working-time":
       ctx.openWorkingTime();

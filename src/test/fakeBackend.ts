@@ -219,6 +219,9 @@ class FakeBackend {
       }
       case "delete_field": {
         project.fields = project.fields.filter((field) => field.id !== command.id);
+        project.assignment_rules = project.assignment_rules.filter((rule) =>
+          rule.conditions.every((condition) => condition.field !== command.id),
+        );
         project.leveling_order = project.leveling_order.filter(
           (key) => !(key.criterion.type === "field" && key.criterion.id === command.id),
         );
@@ -263,6 +266,57 @@ class FakeBackend {
           }
         }
         resource.availability = periods;
+        return;
+      }
+      case "add_skill": {
+        const name = command.name.trim();
+        if (!name || name.includes(",")) throw "Tên kỹ năng phải có từ 1 đến 50 ký tự và không có dấu phẩy";
+        if (project.skills.some((skill) => skill.name.toLowerCase() === name.toLowerCase())) throw "Đã có kỹ năng cùng tên";
+        const id = Math.max(project.next_skill_id, ...project.skills.map((skill) => skill.id + 1));
+        project.skills.push({ id, name });
+        project.next_skill_id = id + 1;
+        return;
+      }
+      case "rename_skill": {
+        const skill = project.skills.find((item) => item.id === command.id);
+        if (!skill) throw "Không có kỹ năng này";
+        const name = command.name.trim();
+        if (!name || name.includes(",")) throw "Tên kỹ năng phải có từ 1 đến 50 ký tự và không có dấu phẩy";
+        if (project.skills.some((item) => item.id !== skill.id && item.name.toLowerCase() === name.toLowerCase())) {
+          throw "Đã có kỹ năng cùng tên";
+        }
+        skill.name = name;
+        return;
+      }
+      case "delete_skill": {
+        if (!project.skills.some((item) => item.id === command.id)) throw "Không có kỹ năng này";
+        project.skills = project.skills.filter((item) => item.id !== command.id);
+        for (const resource of project.resources) resource.skills = resource.skills.filter((id) => id !== command.id);
+        project.assignment_rules = project.assignment_rules.filter(
+          (rule) => !(rule.target.type === "skill" && rule.target.id === command.id),
+        );
+        return;
+      }
+      case "set_resource_skills": {
+        const resource = project.resources.find((item) => item.uid === command.uid);
+        if (!resource) throw "Không tìm thấy nguồn lực";
+        if (command.skills.some((id) => !project.skills.some((skill) => skill.id === id))) throw "Không có kỹ năng này";
+        resource.skills = [...new Set(command.skills)].sort((a, b) => a - b);
+        return;
+      }
+      case "set_assignment_rules": {
+        // The engine's checks that the dialogs can run into.
+        for (const rule of command.rules) {
+          const fields = rule.conditions.map((condition) => condition.field);
+          if (new Set(fields).size !== fields.length) throw "Một quy tắc chỉ có một điều kiện cho mỗi trường";
+          if (rule.conditions.some((condition) => condition.values.length === 0)) throw "Mỗi điều kiện cần ít nhất một giá trị";
+          if (fields.some((id) => !project.fields.some((field) => field.id === id))) throw "Không có trường này";
+          const target = rule.target;
+          if (target.type === "skill" && !project.skills.some((skill) => skill.id === target.id)) throw "Không có kỹ năng này";
+          if (target.type === "resource" && !project.resources.some((item) => item.uid === target.uid)) throw "Không tìm thấy nguồn lực";
+          if (!(rule.units > 0 && rule.units <= 1000)) throw "Đơn vị của quy tắc phải lớn hơn 0 và không quá 1.000";
+        }
+        project.assignment_rules = structuredClone(command.rules);
         return;
       }
       case "create_calendar": {

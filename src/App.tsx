@@ -28,6 +28,7 @@ import { ProjectDialog, type ProjectTab } from "./components/ProjectDialog";
 import { WorkingTimeDialog } from "./components/WorkingTimeDialog";
 import { RecurringDialog, recurringCommand } from "./components/RecurringDialog";
 import { ResourceAvailabilityDialog } from "./components/ResourceAvailabilityDialog";
+import { AssignmentDialog } from "./components/AssignmentDialog";
 import { ResourceSheet } from "./components/ResourceSheet";
 import { SplitDialog } from "./components/SplitDialog";
 import { StatusBar } from "./components/StatusBar";
@@ -83,6 +84,8 @@ export default function App() {
   const [workingTime, setWorkingTime] = useState<{ id: number; start: number } | null>(null);
   // The resource Khả dụng is open for and the history cursor to roll back to.
   const [availability, setAvailability] = useState<{ uid: number; start: number } | null>(null);
+  // Giao việc (skills and assignment rules): the history cursor to roll back to.
+  const [assignmentStart, setAssignmentStart] = useState<number | null>(null);
   const [rowFilter, setRowFilter] = useState<FilterMode>("none");
   const [filterResource, setFilterResource] = useState<number | null>(null);
   const [filterValue, setFilterValue] = useState("");
@@ -193,6 +196,13 @@ export default function App() {
     [run, snap],
   );
 
+  // Giao việc is a transaction too.
+  const openAssignmentRules = useCallback(async () => {
+    const state = await run(loadState);
+    setDialogError(null);
+    setAssignmentStart(state ? state.history_cursor : (snap?.history_cursor ?? 0));
+  }, [run, snap]);
+
   // Undo every command applied since `cursor`. Queued edits (a field committed on
   // close) land first, because loadState waits for them.
   const rollbackTo = useCallback(
@@ -253,7 +263,7 @@ export default function App() {
         view,
         fileDialogBusy,
         // Undo stops where the open transaction began, in any of the dialogs.
-        infoStart: infoStart ?? workingTime?.start ?? availability?.start ?? null,
+        infoStart: infoStart ?? workingTime?.start ?? availability?.start ?? assignmentStart ?? null,
         run,
         send,
         startFileDialog,
@@ -264,6 +274,7 @@ export default function App() {
         openProjectInfo: () => void openProjectInfo(),
         openCustomFields: () => void openProjectInfo("fields"),
         openLevelingOrder: () => void openProjectInfo("leveling"),
+        openAssignmentRules: () => void openAssignmentRules(),
         openWorkingTime: () => void openWorkingTime(snap?.project.calendar_id ?? 1),
         openBaseline: () => setBaselineOpen(true),
         openRecurring: () => setSeriesDialog(0),
@@ -279,7 +290,7 @@ export default function App() {
         setClipboard,
         fillField,
       }),
-    [run, send, startFileDialog, task, snap, view, fileDialogBusy, openProjectInfo, openWorkingTime, infoStart, workingTime, availability, setLang, changeTheme, selection, clipboard, fillField],
+    [run, send, startFileDialog, task, snap, view, fileDialogBusy, openProjectInfo, openWorkingTime, openAssignmentRules, infoStart, workingTime, availability, assignmentStart, setLang, changeTheme, selection, clipboard, fillField],
   );
   menuRef.current = handleMenu;
 
@@ -580,6 +591,7 @@ export default function App() {
               <ResourceSheet
                 resources={project.resources}
                 calendars={project.calendars}
+                skills={project.skills}
                 overallocations={project.overallocations}
                 onAdd={(kind) => send({ type: "add_resource", name: m.newResource(project.next_resource_uid), kind })}
                 onChange={(resource) => send(resourceCommand(resource))}
@@ -701,6 +713,22 @@ export default function App() {
             const start = availability.start;
             void rollbackTo(start).then((state) => {
               if (state && state.history_cursor <= start) setAvailability(null);
+              else setError(m.rollbackFailed);
+            });
+          }}
+          send={sendInDialog}
+        />
+      )}
+      {assignmentStart != null && project && (
+        <AssignmentDialog
+          project={project}
+          changed={(snap?.history_cursor ?? 0) !== assignmentStart}
+          error={dialogError}
+          onSave={() => setAssignmentStart(null)}
+          onCancel={() => {
+            const start = assignmentStart;
+            void rollbackTo(start).then((state) => {
+              if (state && state.history_cursor <= start) setAssignmentStart(null);
               else setError(m.rollbackFailed);
             });
           }}

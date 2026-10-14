@@ -21,6 +21,7 @@ function renderSheet(resources: Resource[], overallocations: Overallocation[] = 
       <ResourceSheet
         resources={resources}
         calendars={[standardCalendar(1)]}
+        skills={SKILLS}
         overallocations={overallocations}
         {...handlers}
       />
@@ -29,11 +30,21 @@ function renderSheet(resources: Resource[], overallocations: Overallocation[] = 
   return { handlers, user: userEvent.setup() };
 }
 
+const SKILLS = [
+  { id: 1, name: "Thiết kế" },
+  { id: 2, name: "Kiểm thử" },
+];
 const an = makeResource({ uid: 10, name: "An" });
 const crane = makeResource({ uid: 11, name: "Cẩu", kind: "machine" });
 const over: Overallocation[] = [{ resource_uid: 10, date: "2026-01-05", units: 1.5, max_units: 1 }];
 
 describe("ResourceSheet", () => {
+  it("shows each resource's skills by name, in the project's order", () => {
+    renderSheet([makeResource({ uid: 12, name: "Bình", skills: [1, 2] }), an]);
+    expect(screen.getByRole("columnheader", { name: "Kỹ năng" })).toBeInTheDocument();
+    expect(screen.getByText("Thiết kế, Kiểm thử")).toBeInTheDocument();
+  });
+
   it("reads max units with a comma or as hours per day", async () => {
     const { handlers, user } = renderSheet([an]);
     const units = screen.getByRole("textbox", { name: "Đơn vị tối đa của An" });
@@ -64,7 +75,7 @@ describe("ResourceSheet", () => {
     renderSheet([an, crane], over);
     const headers = screen.getAllByRole("columnheader").map((cell) => cell.textContent);
     expect(headers).toEqual([
-      "Tên", "Loại", "Đơn vị tối đa", "Lịch", "Giá chuẩn / giờ", "Giá tăng ca", "Chi phí mỗi lần", "Quá tải", "",
+      "Tên", "Loại", "Đơn vị tối đa", "Lịch", "Giá chuẩn / giờ", "Giá tăng ca", "Chi phí mỗi lần", "Kỹ năng", "Quá tải", "",
     ]);
     expect(screen.getByText("Có")).toBeInTheDocument();
     expect(screen.getByText("Không")).toBeInTheDocument();
@@ -135,7 +146,7 @@ describe("ResourceSheet in English", () => {
     renderSheet([an, crane], over, "en");
     const headers = screen.getAllByRole("columnheader").map((cell) => cell.textContent);
     expect(headers).toEqual([
-      "Name", "Type", "Max units", "Calendar", "Std. rate / hr", "Ovt. rate", "Cost/use", "Overallocated", "",
+      "Name", "Type", "Max units", "Calendar", "Std. rate / hr", "Ovt. rate", "Cost/use", "Skills", "Overallocated", "",
     ]);
     expect(screen.getByText("Yes")).toBeInTheDocument();
     expect(screen.getByText("No")).toBeInTheDocument();

@@ -1,11 +1,13 @@
 import { formatUnits, parseUnits, showsUnits } from "../assignmentUnits";
 import { useMessages } from "../i18n";
-import type { Calendar, Overallocation, Resource, ResourceKind } from "../types";
+import type { Calendar, Overallocation, Resource, ResourceKind, SkillDef } from "../types";
 import { resourceSheetMessages } from "./ResourceSheet.i18n";
 
 interface Props {
   resources: Resource[];
   calendars: Calendar[];
+  /** The project's skills; each resource's are shown by name, edited in Giao việc. */
+  skills: SkillDef[];
   overallocations: Overallocation[];
   onAdd: (kind: ResourceKind) => void;
   onChange: (resource: Resource) => void;
@@ -19,6 +21,7 @@ interface Props {
 export function ResourceSheet({
   resources,
   calendars,
+  skills,
   overallocations,
   onAdd,
   onChange,
@@ -29,6 +32,8 @@ export function ResourceSheet({
 }: Props) {
   const m = useMessages(resourceSheetMessages);
   const overloaded = new Set(overallocations.map((item) => item.resource_uid));
+  const skillNames = (resource: Resource) =>
+    skills.filter((skill) => resource.skills.includes(skill.id)).map((skill) => skill.name).join(", ");
   return (
     <div className="resource-sheet">
       <div className="resource-tools">
@@ -45,6 +50,7 @@ export function ResourceSheet({
             <th>{m.standardRate}</th>
             <th>{m.overtimeRate}</th>
             <th>{m.costPerUse}</th>
+            <th title={m.skillsTip}>{m.skills}</th>
             <th>{m.overallocated}</th>
             <th></th>
           </tr>
@@ -143,6 +149,7 @@ export function ResourceSheet({
                   onBlur={(event) => onChange({ ...resource, cost_per_use: Number(event.target.value) || 0 })}
                 />
               </td>
+              <td className="skills-cell">{skillNames(resource)}</td>
               <td className={overloaded.has(resource.uid) ? "bad" : ""}>
                 {overloaded.has(resource.uid) ? m.yes : m.no}
               </td>
@@ -153,7 +160,7 @@ export function ResourceSheet({
           ))}
           {resources.length === 0 && (
             <tr>
-              <td colSpan={9} className="empty">{m.empty}</td>
+              <td colSpan={10} className="empty">{m.empty}</td>
             </tr>
           )}
         </tbody>

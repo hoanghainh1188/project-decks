@@ -91,6 +91,7 @@ export function makeResource(overrides: Partial<Resource> & { uid: number }): Re
     overtime_rate: 0,
     cost_per_use: 0,
     availability: [],
+    skills: [],
     ...overrides,
   };
 }
@@ -137,6 +138,9 @@ export function makeProject(overrides: Partial<Project> = {}): Project {
     editable_actual_costs: false,
     fields: [],
     leveling_order: [],
+    skills: [],
+    next_skill_id: 1,
+    assignment_rules: [],
     ...overrides,
   };
 }
