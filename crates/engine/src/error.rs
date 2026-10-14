@@ -110,6 +110,7 @@ pub enum Invalid {
     ImportUnknownPerson,
     ImportLinkRow,
     ImportLinkLoop,
+    EmptyPlan,
 }
 
 impl EngineError {
@@ -428,6 +429,10 @@ impl Invalid {
                 "Chờ một dòng không có trong bảng hoặc chính dòng này",
                 "Waits for a row that is not in the table, or for itself",
             ),
+            Self::EmptyPlan => fixed(
+                "Kế hoạch không có gì để áp dụng",
+                "The plan has nothing to apply",
+            ),
             Self::ImportLinkLoop => fixed(
                 "Các dòng chờ nhau thành vòng",
                 "These rows wait for each other in a loop",
@@ -524,6 +529,7 @@ mod tests {
             ImportUnknownPerson,
             ImportLinkRow,
             ImportLinkLoop,
+            EmptyPlan,
         ];
         for reason in all {
             let (vi, en) = (reason.message(Lang::Vi), reason.message(Lang::En));

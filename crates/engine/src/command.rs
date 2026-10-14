@@ -7,6 +7,7 @@ use crate::clipboard::{self, FillField, TaskClipboard};
 use crate::error::{EngineError, Invalid};
 use crate::fields::{self, FieldKind, FieldValue, OptionRename};
 use crate::import::{self, ImportResource, ImportTask};
+use crate::plan;
 use crate::level_order::{self, SortKey};
 use crate::level::level_project;
 use crate::model::{
@@ -381,6 +382,16 @@ pub enum Command {
         resources: Vec<ImportResource>,
         #[serde(default)]
         tasks: Vec<ImportTask>,
+    },
+    /// A plan `plan::preview_plan` showed: assign, then the leveling it chose, in one undo
+    /// step. Replay applies the data and never reruns the heuristic.
+    ApplyPlan {
+        #[serde(default)]
+        assignments: Vec<TaskAssignment>,
+        #[serde(default)]
+        delays: Vec<LevelingDelay>,
+        #[serde(default)]
+        splits: Vec<LevelingSplits>,
     },
 }
 
@@ -1098,6 +1109,11 @@ fn apply_inner(project: &mut Project, command: &Command) -> Result<(), EngineErr
             resources,
             tasks,
         } => import::import_rows(project, *after_uid, resources, tasks)?,
+        Command::ApplyPlan {
+            assignments,
+            delays,
+            splits,
+        } => plan::apply_plan(project, assignments, delays, splits)?,
     }
     Ok(())
 }

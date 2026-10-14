@@ -1,36 +1,42 @@
-import { Check, Scale, X } from "lucide-react";
-import { memo, useCallback, useMemo, useRef, useState } from "react";
+import { Check, X } from "lucide-react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { errorMessage, previewPlan } from "../api";
 import { formatInstant } from "../format";
 import { useMessages } from "../i18n";
-import type { Command, NoPick, Project, Snapshot, Suggestion, TaskAssignment } from "../types";
+import type { NoPick, PlanPreview, Project, Snapshot, Suggestion, TaskAssignment } from "../types";
 import { assignPreviewMessages } from "./AssignPreviewDialog.i18n";
 import { Button } from "./Button";
 import { Modal } from "./Modal";
+import { PlanOutcome } from "./PlanOutcome";
 
 /** Task names listed under each reason before the rest are counted. */
 const LISTED = 20;
 const REASONS: NoPick[] = ["no_rule", "no_one_with_skill", "no_room"];
 
 /**
- * The suggestions of the assignment rules, to accept or change before anything is
- * assigned. Every task with a suggestion starts ticked with its first person chosen; the
- * person can be changed among those offered. Áp dụng sends one `assign_tasks`, a single
- * undo step, then offers to level, since the suggested dates were only estimates. Not a
- * transaction: nothing changes until Áp dụng.
+ * The suggestions of the assignment rules and what the whole plan would do. Every task
+ * with a suggestion starts ticked with its first person chosen; the person can be changed
+ * among those offered. Each change asks `preview_plan`, which assigns the ticked rows and
+ * levels on a copy, and the dialog shows what moves; Áp dụng kế hoạch sends that plan
+ * back (`apply_plan`, one undo step), refused if the project changed meanwhile. Not a
+ * transaction: nothing changes until then.
  */
 export function AssignPreviewDialog({
   project,
   suggestions,
   error,
-  send,
+  applyPlan,
+  clearError,
   onClose,
 }: {
   project: Project;
   suggestions: Suggestion[];
   /** The last command the engine refused. */
   error: string | null;
-  send: (command: Command) => Promise<Snapshot | void>;
+  applyPlan: (plan: PlanPreview) => Promise<Snapshot | void>;
+  /** Forget `error`: a new plan is being worked out. */
+  clearError?: () => void;
   onClose: () => void;
 }) {
   const p = useMessages(assignPreviewMessages);
@@ -52,7 +58,8 @@ export function AssignPreviewDialog({
     () => new Map(suggestions.flatMap((suggestion) => suggestion.picks.slice(0, 1).map((pick) => [suggestion.task_uid, pick.resource_uid]))),
   );
   const [unticked, setUnticked] = useState<Set<number>>(() => new Set());
-  const [assigned, setAssigned] = useState<number | null>(null);
+  const [plan, setPlan] = useState<PlanPreview | null>(null);
+  const [planError, setPlanError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   // Set at once, unlike `busy`: a second click in the same tick must not send again.
   const sending = useRef(false);
@@ -84,24 +91,39 @@ export function AssignPreviewDialog({
     setChosen((current) => new Map(current).set(task, person));
   }, []);
 
-  async function run(command: Command): Promise<boolean> {
-    if (sending.current) return false;
+  // The plan for the rows as they are now; only the latest answer counts.
+  const wanted = JSON.stringify(rows);
+  useEffect(() => {
+    let current = true;
+    setPlan(null);
+    setPlanError(null);
+    clearError?.();
+    previewPlan(JSON.parse(wanted) as TaskAssignment[])
+      .then((next) => {
+        if (!current) return;
+        setPlanError(null);
+        setPlan(next);
+      })
+      .catch((err) => current && setPlanError(errorMessage(err)));
+    return () => {
+      current = false;
+    };
+    // The project too: undo or redo under the dialog changes what leveling would do.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wanted, project]);
+
+  const empty = plan != null && plan.assignments.length === 0 && plan.delays.length === 0 && plan.splits.length === 0;
+
+  async function apply() {
+    if (sending.current || !plan || empty) return;
     sending.current = true;
     setBusy(true);
     try {
-      return Boolean(await send(command));
+      if (await applyPlan(plan)) onClose();
     } finally {
       sending.current = false;
       setBusy(false);
     }
-  }
-
-  async function apply() {
-    if (rows.length > 0 && (await run({ type: "assign_tasks", assignments: rows }))) setAssigned(rows.length);
-  }
-
-  async function level() {
-    if (await run({ type: "level_resources" })) onClose();
   }
 
   // Closing while a command is on its way would hide whether it landed.
@@ -109,39 +131,37 @@ export function AssignPreviewDialog({
     if (!sending.current) onClose();
   };
 
-  const note = error ? (
+  const status = error ?? planError;
+  const note = status ? (
     <span className="dialog-foot-note bad" role="alert">
-      {error}
+      {status}
     </span>
   ) : (
-    <span className="meta dialog-foot-note">
-      {assigned == null && offered.length > 0 ? p.chosen(rows.length, offered.length) : ""}
+    <span className="meta dialog-foot-note" role="status">
+      {[
+        offered.length > 0 ? p.chosen(rows.length, offered.length) : null,
+        plan == null ? p.planning : empty ? p.noChange : p.summary(plan.moves.length, plan.late.length),
+        plan != null && !empty && rows.length === 0 ? p.levelOnly : null,
+      ]
+        .filter(Boolean)
+        .join(" · ")}
     </span>
   );
-  const footer =
-    assigned == null ? (
-      <>
-        {note}
-        <Button Icon={X} disabled={busy} onClick={close}>{p.cancel}</Button>
-        <Button variant="primary" Icon={Check} disabled={rows.length === 0 || busy} onClick={() => void apply()}>
-          {p.apply(rows.length)}
-        </Button>
-      </>
-    ) : (
-      <>
-        {note}
-        <Button Icon={X} disabled={busy} onClick={close}>{p.close}</Button>
-        <Button variant="primary" Icon={Scale} disabled={busy} onClick={() => void level()}>
-          {p.level}
-        </Button>
-      </>
-    );
+  const footer = (
+    <>
+      {note}
+      <Button Icon={X} disabled={busy} onClick={close}>
+        {p.cancel}
+      </Button>
+      <Button variant="primary" Icon={Check} disabled={plan == null || empty || busy} onClick={() => void apply()}>
+        {p.apply}
+      </Button>
+    </>
+  );
 
   return (
     <Modal title={p.title} className="wide" onClose={close} footer={footer}>
-      {assigned != null ? (
-        <p role="status">{p.done(assigned)}</p>
-      ) : suggestions.length === 0 ? (
+      {suggestions.length === 0 ? (
         <p>{p.nothing}</p>
       ) : (
         <>
@@ -191,6 +211,7 @@ export function AssignPreviewDialog({
           <Unmatched suggestions={suggestions} taskName={taskName} />
         </>
       )}
+      {plan && <PlanOutcome project={project} plan={plan} />}
     </Modal>
   );
 }

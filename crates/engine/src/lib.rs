@@ -32,6 +32,7 @@ mod mspdi_skills;
 pub mod mspdi_report;
 mod mspdi_workweeks;
 pub mod network;
+pub mod plan;
 pub mod recovery;
 pub mod recurrence;
 mod ripple;

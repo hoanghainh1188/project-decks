@@ -11,9 +11,11 @@ import type {
   ImportTask,
   NetworkLayout,
   NetworkOptions,
+  PlanPreview,
   ProjectMetrics,
   Snapshot,
   Suggestion,
+  TaskAssignment,
   TaskClipboard,
 } from "./types";
 
@@ -90,6 +92,18 @@ export function loadNetworkLayout(options: NetworkOptions): Promise<NetworkLayou
 /** Who the assignment rules would give each unassigned task to; a read, never logged. */
 export function suggestAssignments(): Promise<Suggestion[]> {
   return inOrder(() => invoke<Suggestion[]>("suggest_assignments"));
+}
+
+/** What assigning `assignments` and leveling would do; the project does not change. */
+export function previewPlan(assignments: TaskAssignment[]): Promise<PlanPreview> {
+  return inOrder(() => invoke<PlanPreview>("preview_plan", { assignments }));
+}
+
+/** Apply the plan last previewed as one undo step; refused when the project changed since. */
+export function applyPlan(plan: PlanPreview): Promise<Snapshot> {
+  return inOrder(() =>
+    invoke<Snapshot>("apply_plan", { assignments: plan.assignments, delays: plan.delays, splits: plan.splits }),
+  );
 }
 
 /** Ask for a CSV or workbook and read its first sheet; null when cancelled. */
