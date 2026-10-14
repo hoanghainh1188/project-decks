@@ -5,6 +5,7 @@ use crate::calendar_base;
 use crate::clipboard::{self, FillField, TaskClipboard};
 use crate::error::{EngineError, Invalid};
 use crate::fields::{self, FieldKind, FieldValue, OptionRename};
+use crate::level_order::{self, SortKey};
 use crate::level::level_project;
 use crate::model::{
     Accrual, Baseline, ConstraintType, DepKind, Dependency, Project, Resource, ResourceKind, Task,
@@ -321,6 +322,11 @@ pub enum Command {
         uid: u32,
         field_id: u32,
         value: Option<FieldValue>,
+    },
+    /// Replace the order leveling places tasks in; an empty list is the default order.
+    /// Dates change only when the project is leveled again.
+    SetLevelingOrder {
+        order: Vec<SortKey>,
     },
 }
 
@@ -961,6 +967,7 @@ fn apply_inner(project: &mut Project, command: &Command) -> Result<(), EngineErr
         Command::SetFieldValue { uid, field_id, value } => {
             fields::set_value(project, *uid, *field_id, value.as_ref())?
         }
+        Command::SetLevelingOrder { order } => level_order::set_order(project, order)?,
     }
     Ok(())
 }

@@ -150,6 +150,8 @@ mod tests {
     use crate::calendar::TimeRange;
     use crate::command::{apply_one, Command};
     use crate::document::Document;
+    use crate::fields::{FieldKind, FieldValue};
+    use crate::level_order::{Criterion, SortKey};
     use crate::level::{level_with, CAME_ROUND, SEARCH_IN_FULL};
     use crate::model::{ConstraintType, DepKind, Project, ResourceKind};
     use crate::schedule::{prepare, schedule, schedule_dates};
@@ -334,8 +336,55 @@ mod tests {
                 apply(&mut project, Command::AssignResource { task_uid, resource_uid, units });
             }
         }
+        if random.chance(60) {
+            leveling_order(&mut project, &mut random, tasks);
+        }
         schedule(&mut project).expect("schedules");
         project
+    }
+
+    /// Custom fields with values on most tasks, and a leveling order of one to four
+    /// criteria among them and the built-in ones.
+    fn leveling_order(project: &mut Project, random: &mut Random, tasks: u32) {
+        let options: Vec<String> = ["Gấp", "Thường", "Để sau"].iter().map(|o| o.to_string()).collect();
+        let kinds = [FieldKind::Choice { options: options.clone() }, FieldKind::Number, FieldKind::Text];
+        for (name, kind) in ["Mức", "Điểm", "Mã"].into_iter().zip(kinds) {
+            apply(project, Command::AddField { name: name.into(), kind });
+        }
+        let ids: Vec<u32> = project.fields.iter().map(|field| field.id).collect();
+        for uid in 1..=tasks {
+            let values = [
+                FieldValue::Text(options[random.below(3) as usize].clone()),
+                FieldValue::Number(random.pick(&[-1.5, 0.0, 2.0, 2.0, 7.0])),
+                FieldValue::Text(random.pick(&["a", "B", "b", "Đ"]).into()),
+            ];
+            for (&field_id, value) in ids.iter().zip(values) {
+                if random.chance(80) {
+                    apply(project, Command::SetFieldValue { uid, field_id, value: Some(value) });
+                }
+            }
+        }
+        let mut criteria = vec![
+            Criterion::Start,
+            Criterion::Priority,
+            Criterion::Slack,
+            Criterion::Deadline,
+            Criterion::Duration,
+            Criterion::Id,
+        ];
+        criteria.extend(ids.iter().map(|&id| Criterion::Field { id }));
+        let mut order = Vec::new();
+        for _ in 0..1 + random.below(4) {
+            let criterion = criteria.remove(random.below(criteria.len() as u64) as usize);
+            order.push(SortKey { criterion, descending: random.chance(50) });
+        }
+        for uid in 1..=tasks {
+            if random.chance(30) {
+                let date = Some(project.start + random.below(15) as i64 * DAY_MS);
+                apply(project, Command::SetDeadline { uid, date });
+            }
+        }
+        apply(project, Command::SetLevelingOrder { order });
     }
 
     fn leveled(mut project: Project, quick: bool) -> Project {
@@ -351,6 +400,10 @@ mod tests {
         started: usize,
         manual: usize,
         links_into_groups: usize,
+        /// Projects whose leveling order has a custom field.
+        ordered_by_field: usize,
+        /// Projects their own leveling order levels differently from the default one.
+        reordered: usize,
     }
 
     impl Seen {
@@ -366,6 +419,8 @@ mod tests {
                 .iter()
                 .filter(|dep| before.task(dep.successor_uid).is_some_and(|task| task.summary))
                 .count();
+            let by_field = |key: &SortKey| matches!(key.criterion, Criterion::Field { .. });
+            self.ordered_by_field += usize::from(before.leveling_order.iter().any(by_field));
         }
     }
 
@@ -380,6 +435,8 @@ mod tests {
             schedule_dates(&mut base, &graph);
             let quick_path = Ripple::new(&base, &graph).is_some();
             assert!(quick_path || mix != Mix::OnePass, "seed {seed} should take the quick path");
+            let base_order = base.leveling_order.clone();
+            let before_leveling = base.clone();
             let quick = leveled(base.clone(), true);
             let full = leveled(base, false);
             for (a, b) in quick.tasks.iter().zip(&full.tasks) {
@@ -391,14 +448,26 @@ mod tests {
             }
             assert_eq!(quick.overallocations, full.overallocations, "seed {seed}");
             seen.count(&full, &quick);
+            if !base_order.is_empty() {
+                let mut default = before_leveling;
+                default.leveling_order.clear();
+                let default = leveled(default, true);
+                let delays = |project: &Project| -> Vec<i64> {
+                    project.tasks.iter().map(|task| task.leveling_delay).collect()
+                };
+                seen.reordered += usize::from(delays(&default) != delays(&quick));
+            }
         }
         // Without these the test would prove little: leveling must move many tasks,
-        // split ones among them, around started and manual tasks and links into groups.
+        // split ones among them, around started and manual tasks and links into groups,
+        // and many projects must level in an order of their own.
         assert!(seen.delayed >= 5 * SEEDS as usize, "only {} delayed", seen.delayed);
         assert!(seen.delayed_splits >= 20, "only {} split tasks delayed", seen.delayed_splits);
         assert!(seen.started >= 50, "only {} started tasks", seen.started);
         assert!(seen.manual >= 50, "only {} manual tasks", seen.manual);
         assert!(seen.links_into_groups >= 100, "only {} links into groups", seen.links_into_groups);
+        assert!(seen.ordered_by_field >= 40, "only {} ordered by a field", seen.ordered_by_field);
+        assert!(seen.reordered >= 50, "only {} leveled apart from the default", seen.reordered);
     }
 
     /// Projects for the check against searching four years: a search that never fits

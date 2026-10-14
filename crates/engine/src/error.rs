@@ -79,6 +79,8 @@ pub enum Invalid {
     TooManyNumberFields,
     ChoiceOptions,
     FieldValue,
+    DuplicateSortKey,
+    TooManySortKeys,
 }
 
 impl EngineError {
@@ -283,6 +285,14 @@ impl Invalid {
                 "Giá trị không hợp với trường này",
                 "That value does not fit this field",
             ),
+            Self::DuplicateSortKey => fixed(
+                "Mỗi tiêu chí chỉ có một lần trong thứ tự cân bằng",
+                "Each criterion can appear only once in the leveling order",
+            ),
+            Self::TooManySortKeys => fixed(
+                "Thứ tự cân bằng có tối đa 8 tiêu chí",
+                "The leveling order can have at most 8 criteria",
+            ),
         }
     }
 }
@@ -344,6 +354,8 @@ mod tests {
             TooManyNumberFields,
             ChoiceOptions,
             FieldValue,
+            DuplicateSortKey,
+            TooManySortKeys,
         ];
         for reason in all {
             let (vi, en) = (reason.message(Lang::Vi), reason.message(Lang::En));

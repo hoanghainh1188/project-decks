@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::calendar::Calendar;
 use crate::fields::{FieldDef, FieldValue};
+use crate::level_order::SortKey;
 use crate::recurrence::Recurrence;
 use crate::split::{Segment, Split};
 use crate::timeutil::MINUTES_PER_DAY;
@@ -373,6 +374,9 @@ pub struct Project {
     /// written before it existed: the next id is then one past the largest.
     #[serde(default)]
     pub next_field_id: u32,
+    /// The order leveling places tasks in (`level_order.rs`); empty for the default.
+    #[serde(default)]
+    pub leveling_order: Vec<SortKey>,
 }
 
 impl Project {
@@ -400,6 +404,7 @@ impl Project {
             editable_actual_costs: false,
             fields: Vec::new(),
             next_field_id: 1,
+            leveling_order: Vec::new(),
         }
     }
 
