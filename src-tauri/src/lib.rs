@@ -1,5 +1,6 @@
 mod i18n;
 mod settings;
+mod table;
 
 use settings::Theme;
 
@@ -18,6 +19,7 @@ use sheafly_engine::mspdi::{read_mspdi_with_report, write_mspdi};
 use sheafly_engine::network::{self, NetworkLayout, NetworkOptions};
 use sheafly_engine::store;
 use sheafly_engine::suggest::{self, Suggestion};
+use sheafly_engine::import::{self, ImportColumn, ImportResource, ImportTable, ImportTask};
 use sheafly_engine::{Command, Document, EngineError, Lang, Snapshot};
 use tauri::menu::{AboutMetadata, CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::path::BaseDirectory;
@@ -53,6 +55,9 @@ struct AppState {
     pending_open: Mutex<VecDeque<String>>,
     /// `settings.json` is read, changed and replaced from several threads; one at a time.
     settings_lock: Mutex<()>,
+    /// The table the user last picked to import, so the frontend can read another sheet
+    /// of it without naming a path itself.
+    import_table: Mutex<Option<PathBuf>>,
 }
 
 impl AppState {
@@ -72,6 +77,7 @@ impl AppState {
             settings,
             pending_open: Mutex::new(VecDeque::new()),
             settings_lock: Mutex::new(()),
+            import_table: Mutex::new(None),
         }
     }
 }
@@ -455,6 +461,66 @@ fn network_layout(state: State<'_, AppState>, options: NetworkOptions) -> Networ
 #[tauri::command(async)]
 fn suggest_assignments(state: State<'_, AppState>) -> Vec<Suggestion> {
     suggest::suggest(&lock(&state).project)
+}
+
+/// Ask for a CSV or workbook to import and read its first sheet; `None` when cancelled.
+#[tauri::command]
+async fn pick_table(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<Option<table::Table>, String> {
+    let Some(_permit) = begin_dialog(&state) else {
+        return Ok(None);
+    };
+    let picked = await_pick(
+        app.dialog()
+            .file()
+            .add_filter(i18n::text(lang(&state)).table_filter, &["csv", "txt", "xlsx", "xlsm", "xls", "xlsb", "ods"])
+            .set_title(i18n::text(lang(&state)).import_table_title),
+    )
+    .await;
+    let Some(path) = picked.and_then(path_from_dialog) else {
+        return Ok(None);
+    };
+    let path = PathBuf::from(path);
+    let table = table::read_table(&path, None).map_err(|error| error.message(lang(&state)))?;
+    *state.import_table.lock().unwrap_or_else(|err| err.into_inner()) = Some(path);
+    Ok(Some(table))
+}
+
+/// Another sheet of the workbook `pick_table` read.
+#[tauri::command(async)]
+fn read_table_sheet(state: State<'_, AppState>, sheet: String) -> Result<table::Table, String> {
+    let path = state.import_table.lock().unwrap_or_else(|err| err.into_inner()).clone();
+    let path = path.ok_or_else(|| table::TableError::NoSuchSheet.message(lang(&state)))?;
+    table::read_table(&path, Some(&sheet)).map_err(|error| error.message(lang(&state)))
+}
+
+/// One problem of an import, as the preview shows it.
+#[derive(serde::Serialize)]
+struct ImportProblem {
+    table: ImportTable,
+    row: Option<u32>,
+    column: ImportColumn,
+    message: String,
+}
+
+/// What `ImportRows` would refuse, row by row, without changing the project.
+#[tauri::command(async)]
+fn check_import(
+    state: State<'_, AppState>,
+    after_uid: Option<u32>,
+    resources: Vec<ImportResource>,
+    tasks: Vec<ImportTask>,
+) -> Vec<ImportProblem> {
+    let problems = import::check_import(&lock(&state).project, after_uid, &resources, &tasks);
+    let lang = lang(&state);
+    problems
+        .into_iter()
+        .map(|problem| ImportProblem {
+            message: problem.message(lang),
+            table: problem.table,
+            row: problem.row,
+            column: problem.column,
+        })
+        .collect()
 }
 
 #[tauri::command(async)]
@@ -1184,6 +1250,9 @@ pub fn run() {
             save_project,
             save_project_as,
             import_mspdi,
+            pick_table,
+            read_table_sheet,
+            check_import,
             export_mspdi,
             save_pdf,
             check_autosave,
