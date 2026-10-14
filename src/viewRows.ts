@@ -1,13 +1,14 @@
 import { distinctValues, formatFieldValue, valueKey, valueOf } from "./fieldValues";
 import { pick } from "./i18n";
+import { outsideSpan } from "./spanFit";
 import type { Assignment, FieldDef, Project, Resource, Task } from "./types";
 import { viewRowsMessages } from "./viewRows.i18n";
 
 /** A custom field, by id, as a filter or group mode. */
 export type FieldMode = `field:${number}`;
-export type FilterMode = "none" | "critical" | "resource" | "late" | "interrupts" | FieldMode;
+export type FilterMode = "none" | "critical" | "resource" | "late" | "interrupts" | "span" | FieldMode;
 export type GroupMode = "none" | "resource" | "summary" | FieldMode;
-export type HighlightMode = "none" | "critical" | "late" | "interrupts";
+export type HighlightMode = "none" | "critical" | "late" | "interrupts" | "span";
 
 export function fieldMode(field: FieldDef): FieldMode {
   return `field:${field.id}`;
@@ -41,7 +42,9 @@ export type ViewRow = TaskViewRow | GroupViewRow;
  * None of this rewrites WBS codes or the saved task order. Group headers it names itself
  * are in the current interface language. A custom field filter keeps tasks whose value
  * has `fieldValue` as its key (see `valueKey`; "" keeps tasks with no value), and a
- * mode naming a field that no longer exists does nothing.
+ * mode naming a field that no longer exists does nothing. "span" filters or highlights
+ * the tasks that do not fit before `spanEnd` (see `outsideSpan`); without an end it does
+ * nothing.
  */
 export function buildViewRows(
   project: Project,
@@ -50,18 +53,30 @@ export function buildViewRows(
   group: GroupMode,
   highlight: HighlightMode,
   fieldValue = "",
+  spanEnd: number | null = null,
 ): ViewRow[] {
-  const visible = visibleTasks(project, filter, resourceUid, fieldValue);
-  if (group === "resource") return groupByResource(project, visible, highlight);
-  if (group === "summary") return groupBySummary(project, visible, highlight);
+  const visible = visibleTasks(project, filter, resourceUid, fieldValue, spanEnd);
+  const lit = highlighter(highlight, spanEnd);
+  if (group === "resource") return groupByResource(project, visible, lit);
+  if (group === "summary") return groupBySummary(project, visible, lit);
   const field = fieldOfMode(project, group);
-  if (field) return groupByField(field, visible, highlight);
-  return visible.map((task) => taskRow(`task-${task.uid}`, task, highlight));
+  if (field) return groupByField(field, visible, lit);
+  return visible.map((task) => taskRow(`task-${task.uid}`, task, lit));
 }
 
-function visibleTasks(project: Project, filter: FilterMode, resourceUid: number | null, fieldValue: string): Task[] {
+/** Whether a row is tinted. */
+type Lit = (task: Task) => boolean;
+
+function visibleTasks(
+  project: Project,
+  filter: FilterMode,
+  resourceUid: number | null,
+  fieldValue: string,
+  spanEnd: number | null,
+): Task[] {
   const field = fieldOfMode(project, filter);
   if (filter === "none" || (filter.startsWith("field:") && !field)) return project.tasks;
+  if (filter === "span" && spanEnd == null) return project.tasks;
   const byUid = new Map(project.tasks.map((task) => [task.uid, task]));
   const direct = new Set<number>();
   const assignedTo = filter === "resource" ? tasksAssignedTo(project.assignments, resourceUid) : new Set<number>();
@@ -69,7 +84,9 @@ function visibleTasks(project: Project, filter: FilterMode, resourceUid: number 
     // A summary with no value matches nothing: it shows above its matching tasks only.
     const matches = field
       ? valueKey(valueOf(task, field)) === fieldValue && !(fieldValue === "" && task.summary)
-      : matchesFilter(task, assignedTo, filter, resourceUid);
+      : filter === "span"
+        ? spanEnd != null && outsideSpan(task, spanEnd)
+        : matchesFilter(task, assignedTo, filter, resourceUid);
     if (matches) direct.add(task.uid);
   }
   const keep = new Set(direct);
@@ -101,18 +118,19 @@ function matchesFilter(
   return true;
 }
 
-function matchesHighlight(task: Task, highlight: HighlightMode): boolean {
-  if (highlight === "critical") return task.critical;
-  if (highlight === "late") return task.late;
-  if (highlight === "interrupts") return task.interrupts;
-  return false;
+function highlighter(highlight: HighlightMode, spanEnd: number | null): Lit {
+  if (highlight === "critical") return (task) => task.critical;
+  if (highlight === "late") return (task) => task.late;
+  if (highlight === "interrupts") return (task) => task.interrupts;
+  if (highlight === "span" && spanEnd != null) return (task) => outsideSpan(task, spanEnd);
+  return () => false;
 }
 
-function taskRow(key: string, task: Task, highlight: HighlightMode): TaskViewRow {
-  return { kind: "task", key, task, highlighted: matchesHighlight(task, highlight) };
+function taskRow(key: string, task: Task, lit: Lit): TaskViewRow {
+  return { kind: "task", key, task, highlighted: lit(task) };
 }
 
-function groupByResource(project: Project, tasks: Task[], highlight: HighlightMode): ViewRow[] {
+function groupByResource(project: Project, tasks: Task[], lit: Lit): ViewRow[] {
   const buckets = new Map<number, Task[]>();
   const unassigned: Task[] = [];
   const assignees = assigneesByTask(project.resources, project.assignments);
@@ -138,13 +156,13 @@ function groupByResource(project: Project, tasks: Task[], highlight: HighlightMo
       label: resource.name.trim() || pick(viewRowsMessages).resourceFallback(resource.uid),
     });
     for (const task of list) {
-      rows.push(taskRow(`group-${resource.uid}-task-${task.uid}`, task, highlight));
+      rows.push(taskRow(`group-${resource.uid}-task-${task.uid}`, task, lit));
     }
   }
   if (unassigned.length > 0) {
     rows.push({ kind: "group", key: "group-unassigned", label: pick(viewRowsMessages).unassigned });
     for (const task of unassigned) {
-      rows.push(taskRow(`group-unassigned-task-${task.uid}`, task, highlight));
+      rows.push(taskRow(`group-unassigned-task-${task.uid}`, task, lit));
     }
   }
   return rows;
@@ -154,7 +172,7 @@ function groupByResource(project: Project, tasks: Task[], highlight: HighlightMo
  * Leaf tasks sit under their nearest summary ancestor; summaries are headers only.
  * Groups follow the summary's outline position, and top-level leaves go last.
  */
-function groupBySummary(project: Project, tasks: Task[], highlight: HighlightMode): ViewRow[] {
+function groupBySummary(project: Project, tasks: Task[], lit: Lit): ViewRow[] {
   const byUid = new Map(project.tasks.map((task) => [task.uid, task]));
   const buckets = new Map<number, Task[]>();
   const orphans: Task[] = [];
@@ -175,13 +193,13 @@ function groupBySummary(project: Project, tasks: Task[], highlight: HighlightMod
     if (!list || list.length === 0) continue;
     rows.push({ kind: "group", key: `group-summary-${summary.uid}`, label: summaryLabel(summary) });
     for (const task of list) {
-      rows.push(taskRow(`group-summary-${summary.uid}-task-${task.uid}`, task, highlight));
+      rows.push(taskRow(`group-summary-${summary.uid}-task-${task.uid}`, task, lit));
     }
   }
   if (orphans.length > 0) {
     rows.push({ kind: "group", key: "group-no-summary", label: pick(viewRowsMessages).noSummary });
     for (const task of orphans) {
-      rows.push(taskRow(`group-no-summary-task-${task.uid}`, task, highlight));
+      rows.push(taskRow(`group-no-summary-task-${task.uid}`, task, lit));
     }
   }
   return rows;
@@ -192,7 +210,7 @@ function groupBySummary(project: Project, tasks: Task[], highlight: HighlightMod
  * order), then the tasks with no value. A summary with no value is left out: its tasks
  * are listed on their own.
  */
-function groupByField(field: FieldDef, tasks: Task[], highlight: HighlightMode): ViewRow[] {
+function groupByField(field: FieldDef, tasks: Task[], lit: Lit): ViewRow[] {
   const buckets = new Map<string, Task[]>();
   for (const task of tasks) {
     const key = valueKey(valueOf(task, field));
@@ -208,7 +226,7 @@ function groupByField(field: FieldDef, tasks: Task[], highlight: HighlightMode):
     const list = buckets.get(key);
     if (!list || list.length === 0) return;
     rows.push({ kind: "group", key: `group-field-${place}`, label });
-    for (const task of list) rows.push(taskRow(`group-field-${place}-task-${task.uid}`, task, highlight));
+    for (const task of list) rows.push(taskRow(`group-field-${place}-task-${task.uid}`, task, lit));
   };
   distinctValues(field, tasks).forEach((value, index) => push(valueKey(value), formatFieldValue(value), String(index)));
   push("", pick(viewRowsMessages).noValue(field.name), "none");

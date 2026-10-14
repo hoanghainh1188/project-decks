@@ -27,6 +27,8 @@ function renderBar(view: ViewId, project: Project = makeProject(), overrides: Pa
     onNetworkSummaries: vi.fn(),
     interruptsColumn: false,
     onInterruptsColumn: vi.fn(),
+    spanEnd: { kind: "date" as const, date: "" },
+    onSpanEnd: vi.fn(),
     ...overrides,
   };
   render(<ViewBar {...props} />);
@@ -113,5 +115,33 @@ describe("ViewBar custom fields", () => {
     const { user, props } = renderBar("gantt", project);
     await user.selectOptions(screen.getByRole("combobox", { name: "Nhóm" }), "Theo “Mảng”");
     expect(props.onGroup).toHaveBeenCalledWith("field:2");
+  });
+
+  it("asks where the span ends once it filters or highlights by it", async () => {
+    const project = makeProject({
+      tasks: [
+        makeTask({ uid: 1, finish: Date.UTC(2026, 0, 9, 17) }),
+        makeTask({ uid: 2, name: "Bàn giao", milestone: true, finish: Date.UTC(2026, 0, 20, 17) }),
+      ],
+    });
+    const { user, props } = renderBar("gantt", project);
+    expect(screen.queryByRole("combobox", { name: "Điểm cuối" })).not.toBeInTheDocument();
+    await user.selectOptions(screen.getByRole("combobox", { name: "Lọc" }), "Không vừa khoảng");
+    expect(props.onFilter).toHaveBeenCalledWith("span");
+    // An empty end starts at the last finish, so the filter shows something sensible.
+    expect(props.onSpanEnd).toHaveBeenCalledWith({ kind: "date", date: "2026-01-20" });
+  });
+
+  it("ends the span at a date or a milestone", async () => {
+    const project = makeProject({
+      tasks: [makeTask({ uid: 2, name: "Bàn giao", milestone: true, finish: Date.UTC(2026, 0, 20, 17) })],
+    });
+    const { user, props } = renderBar("gantt", project, { highlight: "span", spanEnd: { kind: "date", date: "2026-01-16" } });
+    expect(screen.getByLabelText("Tới ngày")).toHaveValue("2026-01-16");
+    await user.selectOptions(screen.getByRole("combobox", { name: "Điểm cuối" }), "Bàn giao");
+    expect(props.onSpanEnd).toHaveBeenCalledWith({ kind: "milestone", uid: 2 });
+    // Back to a date keeps the one typed before.
+    await user.selectOptions(screen.getByRole("combobox", { name: "Điểm cuối" }), "Một ngày");
+    expect(props.onSpanEnd).toHaveBeenLastCalledWith({ kind: "date", date: "2026-01-16" });
   });
 });
