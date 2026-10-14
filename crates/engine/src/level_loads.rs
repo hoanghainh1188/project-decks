@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 
 use super::{
     first_clash, fit_from, free_from, stretches, working_pieces, working_ranges, Busy, Checked,
-    Lookup, EPSILON,
+    Lookup, EPSILON, NO_OWNER,
 };
 use crate::availability::Capacity;
 use crate::model::{Project, Task};
@@ -26,7 +26,7 @@ impl Loads {
             }
             for &(resource_uid, units) in &lookup.units[index] {
                 let entry = busy.entry(resource_uid).or_default();
-                working_pieces(project, task, units, &mut entry.pieces);
+                working_pieces(project, task, units, NO_OWNER, &mut entry.pieces);
             }
         }
         let mut loads = Self { lookup, busy };
@@ -81,7 +81,7 @@ impl Loads {
             capacity: Capacity::of(resource),
         };
         let mut pieces = Vec::new();
-        working_pieces(project, task, 0.0, &mut pieces);
+        working_pieces(project, task, 0.0, NO_OWNER, &mut pieces);
         first_clash(&checked, &pieces).is_none()
     }
 
@@ -133,7 +133,7 @@ impl Loads {
             return;
         }
         let entry = self.busy.entry(resource_uid).or_default();
-        working_pieces(project, task, units, &mut entry.pieces);
+        working_pieces(project, task, units, NO_OWNER, &mut entry.pieces);
         self.sweep(project, resource_uid);
     }
 

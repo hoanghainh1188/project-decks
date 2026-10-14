@@ -10,7 +10,9 @@
 //! setup does not replay thousands of commands. Add `field` to level the backlog by a
 //! custom choice field first (`[Field asc, Priority desc, Start asc]`), most tasks having
 //! a value, and `leave` to give each person up to three periods of other units (a week
-//! off, weeks at half time).
+//! off, weeks at half time), and `interrupt` to mark 5% of the tasks urgent (priority
+//! 900) and let half the tasks start up to two weeks late, so urgent work lands on work
+//! in progress.
 //!
 //! `-- suggest [<people> <tasks>]` times the assignment suggestions for an unassigned
 //! backlog (default 500 people, 5000 tasks): twenty skills, one to three per person, and
@@ -25,7 +27,7 @@ use sheafly_engine::command::Command;
 use sheafly_engine::fields::{FieldDef, FieldKind, FieldValue};
 use sheafly_engine::level::level_project;
 use sheafly_engine::level_order::{Criterion, SortKey};
-use sheafly_engine::model::{Assignment, DepKind, Resource, ResourceKind, Task, TaskType};
+use sheafly_engine::model::{Assignment, ConstraintType, DepKind, Resource, ResourceKind, Task, TaskType};
 use sheafly_engine::skills::{AssignmentRule, Condition, RuleTarget, SkillDef};
 use sheafly_engine::suggest::suggest;
 use sheafly_engine::store::{load, save};
@@ -140,7 +142,7 @@ fn leveling(tasks: u32) {
 /// A backlog of `tasks` effort-only tasks spread over `people`, the way a sprint plan
 /// arrives: no links, every task free to start at the project start, priority deciding
 /// the order. Prints the leveling time and the idle hours left between a person's tasks.
-fn capacity(people: u32, tasks: u32, by_field: bool, leave: bool) {
+fn capacity(people: u32, tasks: u32, by_field: bool, leave: bool, interrupt: bool) {
     // A fixed linear congruential generator, so every run builds the same backlog.
     let mut seed: u64 = 42;
     let mut random = |below: u64| {
@@ -174,6 +176,16 @@ fn capacity(people: u32, tasks: u32, by_field: bool, leave: bool) {
         task.remaining_work = work;
         task.priority = 100 + random(800) as i32;
         task.start = project.start;
+        if interrupt {
+            if random(2) == 0 {
+                task.constraint_type = ConstraintType::Snet;
+                task.constraint_date = Some(project.start + random(10) as i64 * 86_400_000);
+            }
+            if random(20) == 0 {
+                task.interrupts = true;
+                task.priority = 900;
+            }
+        }
         if by_field && random(10) > 0 {
             let option = ["Gấp", "Cao", "Vừa", "Thấp"][random(4) as usize];
             task.values.insert(1, FieldValue::Text(option.into()));
@@ -211,6 +223,12 @@ fn capacity(people: u32, tasks: u32, by_field: bool, leave: bool) {
     timed("lập lịch", || schedule(&mut project).expect("schedule"));
     println!("{people} người, {tasks} công việc, {} khoảng quá tải", project.overallocations.len());
     timed("cân bằng nguồn lực", || level_project(&mut project).expect("level"));
+    if interrupt {
+        let made = project.tasks.iter().flat_map(|task| &task.splits).filter(|split| split.leveling).count();
+        println!("{:<28} {:>10}", "khoảng tách do chen ngang", made);
+        println!("{:<28} {:>10}", "khoảng quá tải còn lại", project.overallocations.len());
+        return;
+    }
     assert!(project.overallocations.is_empty(), "{:?}", project.overallocations.first());
 
     // Working time from the project start to a person's last finish, less their work:
@@ -313,7 +331,7 @@ fn main() {
         let people = numbers.first().copied().unwrap_or(100).max(1) as u32;
         let tasks = numbers.get(1).copied().unwrap_or(1000) as u32;
         let has = |name: &str| args.iter().any(|arg| arg == name);
-        capacity(people, tasks, has("field"), has("leave"));
+        capacity(people, tasks, has("field"), has("leave"), has("interrupt"));
         return;
     }
     let args = numbers;

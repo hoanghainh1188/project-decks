@@ -95,6 +95,7 @@ pub enum Invalid {
     EmptyCondition,
     DuplicateCondition,
     NoAssignments,
+    InterruptsLeaf,
 }
 
 impl EngineError {
@@ -357,6 +358,10 @@ impl Invalid {
                 "A rule can have only one condition per field",
             ),
             Self::NoAssignments => fixed("Không có việc nào để giao", "There is nothing to assign"),
+            Self::InterruptsLeaf => fixed(
+                "Chỉ công việc có thời lượng mới chen ngang được, không phải tóm tắt hay mốc",
+                "Only a task with a duration can interrupt, not a summary or a milestone",
+            ),
         }
     }
 }
@@ -434,6 +439,7 @@ mod tests {
             EmptyCondition,
             DuplicateCondition,
             NoAssignments,
+            InterruptsLeaf,
         ];
         for reason in all {
             let (vi, en) = (reason.message(Lang::Vi), reason.message(Lang::En));

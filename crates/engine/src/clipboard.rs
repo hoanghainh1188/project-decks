@@ -44,6 +44,9 @@ pub struct TaskCopy {
     pub fixed_cost: f64,
     pub fixed_cost_accrual: Accrual,
     pub splits: Vec<Split>,
+    /// Urgent (`Task::interrupts`).
+    #[serde(default)]
+    pub interrupts: bool,
     pub assignments: Vec<AssignmentCopy>,
     /// Custom field values by field name: a paste into another project keeps those whose
     /// field has the same name there and can hold the value.
@@ -154,7 +157,9 @@ fn task_copy(project: &Project, task: &Task, base: u32) -> TaskCopy {
         effort_driven: task.effort_driven,
         fixed_cost: task.fixed_cost,
         fixed_cost_accrual: task.fixed_cost_accrual,
-        splits: task.splits.clone(),
+        // Leveling's own splits stay behind: they belong to that run, not to the task.
+        splits: task.splits.iter().filter(|split| !split.leveling).cloned().collect(),
+        interrupts: task.interrupts,
         assignments: project
             .assignments
             .iter()
@@ -284,8 +289,9 @@ fn pasted_task(project: &Project, uid: u32, copy: &TaskCopy, level: u32) -> Task
     task.effort_driven = copy.effort_driven;
     task.fixed_cost = copy.fixed_cost;
     task.fixed_cost_accrual = copy.fixed_cost_accrual;
-    task.splits = copy.splits.clone();
+    task.splits = copy.splits.iter().map(|split| Split { leveling: false, ..split.clone() }).collect();
     split::normalize_task(&mut task);
+    task.interrupts = copy.interrupts && !task.summary && !task.milestone;
     for (name, value) in &copy.values {
         let name = name.to_lowercase();
         let field = project.fields.iter().find(|field| field.name.to_lowercase() == name);

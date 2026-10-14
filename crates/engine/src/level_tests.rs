@@ -1,9 +1,11 @@
 //! Unit tests of `level.rs`.
 
+use super::queue::Key;
 use super::*;
+use crate::level_order::{self, Parts};
 
 fn piece(start: i64, end: i64, units: f64) -> Piece {
-    Piece { start, end, units }
+    Piece { start, end, units, owner: NO_OWNER }
 }
 
 /// The default order must place tasks exactly as the key leveling had before the

@@ -166,6 +166,7 @@ fn splits_from_periods(cal: &Calendar, periods: &[Period]) -> Vec<Split> {
         splits.push(Split {
             offset: done,
             gap: cal.working_between(pair[0].1, pair[1].0).max(0),
+            leveling: false,
         });
     }
     splits

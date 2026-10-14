@@ -233,7 +233,7 @@ fn moving_a_segment_changes_the_gap_before_it() {
         b.splits,
         vec![Split {
             offset: 240,
-            gap: 960
+            gap: 960, leveling: false
         }]
     );
     assert_eq!(

@@ -10,8 +10,7 @@
 //! calendar boundaries, so the elementary stretches between boundaries have one load
 //! and one availability each.
 
-use std::cmp::{Ordering, Reverse};
-use std::collections::{BTreeMap, BinaryHeap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use chrono::NaiveDate;
 
@@ -20,7 +19,6 @@ use crate::calendar::Calendar;
 use crate::error::EngineError;
 use crate::graph::Graph;
 use crate::level_cycle::{midnight_of, weekly_from, Cycle};
-use crate::level_order::{self, Parts};
 use crate::model::{ConstraintType, Overallocation, Project, Resource, Task};
 use crate::ripple::Ripple;
 use crate::schedule::{prepare, publish_derived, schedule_dates};
@@ -77,7 +75,12 @@ struct Piece {
     start: i64,
     end: i64,
     units: f64,
+    /// Position of the task the work belongs to, or `NO_OWNER` where it does not matter.
+    owner: usize,
 }
+
+/// The owner of pieces that only count load (overallocation, a task being tried).
+const NO_OWNER: usize = usize::MAX;
 
 /// A stretch of time with one load and one availability.
 struct Stretch {
@@ -110,7 +113,7 @@ fn sweeps(project: &Project) -> Vec<Sweep> {
             continue;
         }
         let into = pieces.entry(assignment.resource_uid).or_default();
-        working_pieces(project, task, assignment.units, into);
+        working_pieces(project, task, assignment.units, NO_OWNER, into);
     }
     pieces
         .into_iter()
@@ -132,15 +135,16 @@ fn sweeps(project: &Project) -> Vec<Sweep> {
 }
 
 /// The task's work cut at its own calendar's ranges, day by day.
-fn working_pieces(project: &Project, task: &Task, units: f64, into: &mut Vec<Piece>) {
+fn working_pieces(project: &Project, task: &Task, units: f64, owner: usize, into: &mut Vec<Piece>) {
     let calendar = project.task_calendar(task);
-    cut_to_calendar(calendar, &split::work_intervals(task), units, into);
+    cut_to_calendar(calendar, &split::work_intervals(task), units, owner, into);
 }
 
 fn cut_to_calendar(
     calendar: &Calendar,
     intervals: &[(i64, i64)],
     units: f64,
+    owner: usize,
     into: &mut Vec<Piece>,
 ) {
     for &(low, high) in intervals {
@@ -154,7 +158,7 @@ fn cut_to_calendar(
                 let start = low.max(compose(date, range.start_minute));
                 let end = high.min(compose(date, range.end_minute));
                 if end > start {
-                    into.push(Piece { start, end, units });
+                    into.push(Piece { start, end, units, owner });
                 }
             }
             match date.succ_opt() {
@@ -227,8 +231,9 @@ fn stretches(
 /// they are placed. Placed tasks do not move again, so no idle gap is left that a later
 /// choice could fill.
 ///
-/// Writes the result into `leveling_delay` and never splits a task (existing splits
-/// move with it). Tasks pinned by hand, by an actual start, or by a must-start/finish-on
+/// Writes the result into `leveling_delay` and, only to let an urgent task in
+/// (`level_interrupt.rs`), into splits marked as leveling's; otherwise existing splits
+/// move with the task. Tasks pinned by hand, by an actual start, or by a must-start/finish-on
 /// date, and tasks with priority 1000, stay where they are.
 pub fn level_project(project: &mut Project) -> Result<(), EngineError> {
     level_with(project, true)
@@ -240,7 +245,11 @@ pub(crate) fn level_with(project: &mut Project, quick: bool) -> Result<(), Engin
         if movable(task) {
             task.leveling_delay = 0;
         }
+        // Splits an earlier run made are made again from scratch, so leveling twice agrees.
+        task.splits.retain(|split| !split.leveling);
     }
+    // Without an urgent task nothing below splits work: leveling is what it always was.
+    let interrupts = project.tasks.iter().any(|task| task.interrupts && !task.summary);
     // Leveling changes dates, not links or the outline, so the graph is built once.
     let graph = prepare(project)?;
     schedule_dates(project, &graph);
@@ -254,32 +263,42 @@ pub(crate) fn level_with(project: &mut Project, quick: bool) -> Result<(), Engin
         let mut before: HashMap<usize, (i64, i64)> = HashMap::new();
         let resources = &lookup.units[index];
         let task = &project.tasks[index];
+        let mut affected: BTreeSet<u32> = BTreeSet::new();
         if levelable(task) && !resources.is_empty() {
-            let start = earliest_fit(project, &lookup, task, resources, &busy);
-            if start > task.start {
-                let delay = task.leveling_delay;
-                let bump = project
-                    .task_calendar(task)
-                    .working_between(task.start, start)
-                    .max(1);
-                project.tasks[index].leveling_delay = delay + bump;
-                reschedule(project, &graph, &mut ripple, index, &mut before);
-                // A constraint can hold the task where it was: keep the clash rather than
-                // a delay that does nothing.
-                if project.tasks[index].start < start {
-                    project.tasks[index].leveling_delay = delay;
-                    reschedule(project, &graph, &mut ripple, index, &mut before);
-                }
+            if interrupts {
+                let mut placing = interrupt::Placing {
+                    graph: &graph,
+                    ripple: &mut ripple,
+                    lookup: &lookup,
+                    order: &order,
+                    busy: &busy,
+                    is_placed: &is_placed,
+                    before: &mut before,
+                };
+                affected = placing.place(project, index);
+            } else {
+                let start = earliest_fit(project, &lookup, task, resources, &busy);
+                delay_to(project, &graph, &mut ripple, index, start, &mut before);
             }
         }
         // A placed task can still move when a predecessor placed after it is delayed
         // (a summary link, say); keep the busy profile true to the current dates.
-        let moved = before.iter().any(|(&other, &dates)| {
-            is_placed[other] && dates != (project.tasks[other].start, project.tasks[other].finish)
-        });
+        let moved: Vec<usize> = before
+            .iter()
+            .filter(|(&other, &dates)| {
+                is_placed[other] && dates != (project.tasks[other].start, project.tasks[other].finish)
+            })
+            .map(|(&other, _)| other)
+            .collect();
         placed.push(index);
         is_placed[index] = true;
-        if moved {
+        if interrupts && !(moved.is_empty() && affected.is_empty()) {
+            // Only the people of the work that moved need their load swept again.
+            for &other in moved.iter().chain([index].iter()) {
+                affected.extend(lookup.units[other].iter().map(|(uid, _)| *uid));
+            }
+            interrupt::rebuild(project, &lookup, &placed, &affected, &mut busy);
+        } else if !moved.is_empty() {
             busy = busy_of(project, &lookup, &placed);
         } else {
             add_to_busy(project, &lookup, index, &mut busy);
@@ -290,6 +309,31 @@ pub(crate) fn level_with(project: &mut Project, quick: bool) -> Result<(), Engin
     schedule_dates(project, &graph);
     publish_derived(project, &graph);
     Ok(())
+}
+
+/// Delay the leaf at `index` so it starts at `start` or later, if that is later than now.
+fn delay_to(
+    project: &mut Project,
+    graph: &Graph,
+    ripple: &mut Option<Ripple>,
+    index: usize,
+    start: i64,
+    before: &mut HashMap<usize, (i64, i64)>,
+) {
+    let task = &project.tasks[index];
+    if start <= task.start {
+        return;
+    }
+    let delay = task.leveling_delay;
+    let bump = project.task_calendar(task).working_between(task.start, start).max(1);
+    project.tasks[index].leveling_delay = delay + bump;
+    reschedule(project, graph, ripple, index, before);
+    // A constraint can hold the task where it was: keep the clash rather than a delay
+    // that does nothing.
+    if project.tasks[index].start < start {
+        project.tasks[index].leveling_delay = delay;
+        reschedule(project, graph, ripple, index, before);
+    }
 }
 
 /// Reschedule after the leveling delay of the leaf at `index` changed: only it and the
@@ -335,153 +379,6 @@ fn movable(task: &Task) -> bool {
 /// A task leveling may delay: movable, and not marked "do not level" (priority 1000).
 pub(crate) fn levelable(task: &Task) -> bool {
     movable(task) && task.priority < 1000
-}
-
-/// What decides which leaf is placed next, smallest first: tasks leveling will not
-/// delay come first, since their place is fixed and the others must fit around them;
-/// then tasks whose leaf predecessors are all placed, so a predecessor delayed later
-/// cannot push a placed task; then the project's leveling order (by default the
-/// earliest start, higher priority, less slack); then the lower uid. Slack is the one
-/// before leveling: it follows the links, not the order leveling happens to place tasks
-/// in.
-#[derive(Clone, Debug)]
-struct Key {
-    levelable: bool,
-    waiting: bool,
-    /// The task's start when the key was made: the one criterion leveling moves.
-    start: i64,
-    parts: Parts,
-    uid: u32,
-}
-
-impl Ord for Key {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.levelable
-            .cmp(&other.levelable)
-            .then(self.waiting.cmp(&other.waiting))
-            .then_with(|| self.parts.cmp(self.start, &other.parts, other.start))
-            .then(self.uid.cmp(&other.uid))
-    }
-}
-
-impl PartialOrd for Key {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl PartialEq for Key {
-    fn eq(&self, other: &Self) -> bool {
-        self.cmp(other) == Ordering::Equal
-    }
-}
-
-impl Eq for Key {}
-
-/// The leaves still to place, in a heap keyed by `Key`. A leaf whose key changes (its
-/// start moved, or its last predecessor was placed) is pushed again with a new stamp;
-/// an entry whose stamp is old is skipped when it comes out.
-struct Order {
-    heap: BinaryHeap<Reverse<(Key, usize, u64)>>,
-    /// The stamp of each leaf's current entry, or `None` once placed (and for summaries).
-    stamp: Vec<Option<u64>>,
-    next_stamp: u64,
-    /// The key parts that do not change while leveling, built once.
-    parts: Vec<Option<Parts>>,
-    /// Links from leaf predecessors not placed yet.
-    waiting_on: Vec<usize>,
-    /// Leaf successors through links between leaves, once per link.
-    successors: Vec<Vec<usize>>,
-}
-
-impl Order {
-    fn new(project: &Project, graph: &Graph) -> Self {
-        let count = project.tasks.len();
-        let mut waiting_on = vec![0; count];
-        let mut successors = vec![Vec::new(); count];
-        for dep in &project.dependencies {
-            let (Some(pred), Some(succ)) = (
-                graph.position(dep.predecessor_uid),
-                graph.position(dep.successor_uid),
-            ) else {
-                continue;
-            };
-            if !project.tasks[pred].summary && !project.tasks[succ].summary {
-                waiting_on[succ] += 1;
-                successors[pred].push(succ);
-            }
-        }
-        let keys = level_order::effective(project);
-        // Read after the delays of movable tasks were cleared; a task leveling may not
-        // move keeps its delay, and the slack that comes with it.
-        let parts = project
-            .tasks
-            .iter()
-            .map(|task| {
-                (!task.summary).then(|| Parts::of(project, &keys, task, task.total_slack))
-            })
-            .collect();
-        let mut order = Self {
-            heap: BinaryHeap::with_capacity(count),
-            stamp: vec![None; count],
-            next_stamp: 0,
-            parts,
-            waiting_on,
-            successors,
-        };
-        for index in 0..count {
-            if !project.tasks[index].summary {
-                order.refresh(project, index);
-            }
-        }
-        order
-    }
-
-    fn refresh(&mut self, project: &Project, index: usize) {
-        let task = &project.tasks[index];
-        let Some(parts) = self.parts[index].clone() else {
-            return;
-        };
-        let key = Key {
-            levelable: levelable(task),
-            waiting: self.waiting_on[index] > 0,
-            start: task.start,
-            parts,
-            uid: task.uid,
-        };
-        let stamp = self.next_stamp;
-        self.next_stamp += 1;
-        self.stamp[index] = Some(stamp);
-        self.heap.push(Reverse((key, index, stamp)));
-    }
-
-    /// The next leaf to place, taken out of the order.
-    fn next(&mut self, project: &Project) -> Option<usize> {
-        while let Some(Reverse((_, index, stamp))) = self.heap.pop() {
-            if self.stamp[index] == Some(stamp) {
-                self.stamp[index] = None;
-                debug_assert!(!project.tasks[index].summary);
-                return Some(index);
-            }
-        }
-        None
-    }
-
-    /// Note that the leaf at `index` is placed and that the leaves in `moved` have new
-    /// dates.
-    fn placed(&mut self, project: &Project, index: usize, moved: impl Iterator<Item = usize>) {
-        let mut stale: Vec<usize> = moved.collect();
-        for position in 0..self.successors[index].len() {
-            let successor = self.successors[index][position];
-            self.waiting_on[successor] -= 1;
-            stale.push(successor);
-        }
-        for position in stale {
-            if self.stamp[position].is_some() {
-                self.refresh(project, position);
-            }
-        }
-    }
 }
 
 /// Lookups leveling repeats for every task, built once: assignments do not change.
@@ -546,7 +443,7 @@ fn add_to_busy(project: &Project, lookup: &Lookup, index: usize, busy: &mut BTre
             continue;
         };
         let entry = busy.entry(resource_uid).or_default();
-        working_pieces(project, task, units, &mut entry.pieces);
+        working_pieces(project, task, units, index, &mut entry.pieces);
         let calendar = project.resource_calendar(resource);
         let capacity = Capacity::of(resource);
         entry.stretches = stretches(
@@ -656,7 +553,7 @@ fn fit_from(
             .map(|segment| (segment.start, segment.finish))
             .collect();
         let mut pieces = Vec::new();
-        cut_to_calendar(calendar, &intervals, 0.0, &mut pieces);
+        cut_to_calendar(calendar, &intervals, 0.0, NO_OWNER, &mut pieces);
         let clash = checked
             .iter()
             .filter_map(|resource| {
@@ -781,6 +678,13 @@ fn first_clash(resource: &Checked, pieces: &[Piece]) -> Option<(i64, i64)> {
     }
     None
 }
+
+#[path = "level_interrupt.rs"]
+mod interrupt;
+
+#[path = "level_queue.rs"]
+mod queue;
+use queue::Order;
 
 #[path = "level_loads.rs"]
 mod loads;

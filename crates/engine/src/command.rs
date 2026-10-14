@@ -15,7 +15,7 @@ use crate::model::{
 use crate::recurrence::{self, Recurrence, RecurrenceSpec};
 use crate::schedule::normalize_outline;
 use crate::skills::{self, AssignmentRule, TaskAssignment};
-use crate::split;
+use crate::split::{self, Split};
 use crate::timeutil::{parse_date_key, MINUTES_PER_DAY, MINUTES_PER_HOUR};
 use crate::tracking;
 use crate::work::{self, Changed};
@@ -234,9 +234,13 @@ pub enum Command {
     /// instead, so replay never reruns the heuristic; files from before phase 16 still
     /// replay this.
     LevelResources,
-    /// Leveling delays chosen by a leveling run: each listed task gets its value.
+    /// Leveling delays chosen by a leveling run: each listed task gets its value. `splits`
+    /// lists the tasks whose leveling splits changed, each with all of them (empty for
+    /// none); the user's own splits stay.
     ApplyLeveling {
         delays: Vec<LevelingDelay>,
+        #[serde(default)]
+        splits: Vec<LevelingSplits>,
     },
     ClearLeveling,
     /// Move work that should be done by the status date but is not to after it.
@@ -330,6 +334,12 @@ pub enum Command {
     SetLevelingOrder {
         order: Vec<SortKey>,
     },
+    /// Mark a leaf task urgent: when leveling, it goes ahead of work in progress ranked
+    /// below it on the same people (`level_interrupt.rs`).
+    SetInterrupts {
+        uid: u32,
+        interrupts: bool,
+    },
     /// Replace the days a resource has other units than its max units. Only
     /// overallocation and leveling read them.
     SetResourceAvailability {
@@ -364,6 +374,25 @@ pub enum Command {
     },
 }
 
+/// The splits a leveling run made in one task (`Split::leveling`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LevelingSplits {
+    pub uid: u32,
+    pub splits: Vec<Split>,
+}
+
+/// The splits of a task leveling made.
+pub(crate) fn leveling_splits(task: &Task) -> Vec<Split> {
+    task.splits.iter().filter(|split| split.leveling).cloned().collect()
+}
+
+/// Replace the splits leveling made in a task, keeping the user's.
+pub(crate) fn set_leveling_splits(task: &mut Task, splits: &[Split]) {
+    task.splits.retain(|split| !split.leveling);
+    task.splits.extend(splits.iter().map(|split| Split { leveling: true, ..split.clone() }));
+    split::normalize_task(task);
+}
+
 /// One task's leveling delay, in working minutes.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LevelingDelay {
@@ -384,7 +413,16 @@ pub fn leveled(project: &Project) -> Result<Command, EngineError> {
         })
         .map(|after| LevelingDelay { uid: after.uid, minutes: after.leveling_delay })
         .collect();
-    Ok(Command::ApplyLeveling { delays })
+    let splits = trial
+        .tasks
+        .iter()
+        .filter_map(|after| {
+            let made = leveling_splits(after);
+            let before = project.task(after.uid).map(leveling_splits).unwrap_or_default();
+            (made != before).then_some(LevelingSplits { uid: after.uid, splits: made })
+        })
+        .collect();
+    Ok(Command::ApplyLeveling { delays, splits })
 }
 
 pub fn apply_one(project: &mut Project, command: &Command) -> Result<(), EngineError> {
@@ -436,7 +474,8 @@ fn edited_task(project: &Project, command: &Command) -> Option<u32> {
         | Command::SplitTask { uid, .. }
         | Command::RemoveSplit { uid, .. }
         | Command::MoveSegment { uid, .. }
-        | Command::SetFieldValue { uid, .. } => Some(*uid),
+        | Command::SetFieldValue { uid, .. }
+        | Command::SetInterrupts { uid, .. } => Some(*uid),
         // Before any progress these set the duration or work: that is an edit.
         Command::SetRemainingDuration { uid, .. } | Command::SetRemainingWork { uid, .. } => project
             .task(*uid)
@@ -915,16 +954,22 @@ fn apply_inner(project: &mut Project, command: &Command) -> Result<(), EngineErr
             }
         }
         Command::LevelResources => level_project(project)?,
-        Command::ApplyLeveling { delays } => {
+        Command::ApplyLeveling { delays, splits } => {
             for delay in delays {
                 if let Some(task) = project.task_mut(delay.uid) {
                     task.leveling_delay = delay.minutes.max(0);
+                }
+            }
+            for made in splits {
+                if let Some(task) = project.task_mut(made.uid) {
+                    set_leveling_splits(task, &made.splits);
                 }
             }
         }
         Command::ClearLeveling => {
             for task in &mut project.tasks {
                 task.leveling_delay = 0;
+                task.splits.retain(|split| !split.leveling);
             }
         }
         Command::SetLevelingDelay { uid, minutes } => {
@@ -1005,6 +1050,13 @@ fn apply_inner(project: &mut Project, command: &Command) -> Result<(), EngineErr
         Command::SetLevelingOrder { order } => level_order::set_order(project, order)?,
         Command::SetResourceAvailability { uid, periods } => {
             availability::set_availability(project, *uid, periods)?
+        }
+        Command::SetInterrupts { uid, interrupts } => {
+            let task = project.task_mut(*uid).ok_or(EngineError::TaskNotFound)?;
+            if task.summary || task.milestone {
+                return Err(Invalid::InterruptsLeaf.into());
+            }
+            task.interrupts = *interrupts;
         }
         Command::AddSkill { name } => {
             skills::add_skill(project, name)?;

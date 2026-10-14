@@ -265,10 +265,13 @@ pub(crate) fn reschedule_uncompleted(project: &mut Project) -> Result<(), Engine
             if done <= 0 || done >= task.duration {
                 continue;
             }
-            let gap = cal.working_between(split::resume_at(cal, task, done), resume);
+            // Measured without leveling's own pauses, which Clear Leveling can take back.
+            let mut own = task.clone();
+            own.splits.retain(|split| !split.leveling);
+            let gap = cal.working_between(split::resume_at(cal, &own, done), resume);
             if gap > 0 {
                 let task = &mut project.tasks[index];
-                task.splits.push(Split { offset: done, gap });
+                task.splits.push(Split { offset: done, gap, leveling: false });
                 split::normalize(&mut task.splits, task.duration);
             }
         } else if task.series_uid.is_none() && task.start < status && waits_for(task, resume) {

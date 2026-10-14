@@ -169,6 +169,10 @@ pub struct Task {
     /// Scheduled pieces of work when split; derived by the scheduler, empty otherwise.
     #[serde(default)]
     pub segments: Vec<Segment>,
+    /// Urgent: when leveling, it goes ahead of work in progress ranked below it on the same
+    /// people, which is split to let it in (`level_interrupt.rs`).
+    #[serde(default)]
+    pub interrupts: bool,
 }
 
 impl Task {
@@ -227,6 +231,7 @@ impl Task {
             values: BTreeMap::new(),
             splits: Vec::new(),
             segments: Vec::new(),
+            interrupts: false,
         }
     }
 

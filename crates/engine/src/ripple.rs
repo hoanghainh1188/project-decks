@@ -343,8 +343,30 @@ mod tests {
         if random.chance(60) {
             availability(&mut project, &mut random);
         }
+        // Drawn last, so the projects above are what they were before urgent tasks.
+        if random.chance(30) {
+            urgent(&mut project, &mut random);
+        }
         schedule(&mut project).expect("schedules");
         project
+    }
+
+    /// A few urgent leaves, most with a high priority so they outrank work in progress.
+    fn urgent(project: &mut Project, random: &mut Random) {
+        let leaves: Vec<u32> = project
+            .tasks
+            .iter()
+            .filter(|task| !task.summary && !task.milestone && task.duration > 0)
+            .map(|task| task.uid)
+            .collect();
+        for uid in leaves {
+            if random.chance(15) {
+                apply(project, Command::SetInterrupts { uid, interrupts: true });
+                if random.chance(70) {
+                    apply(project, Command::SetPriority { uid, priority: 900 });
+                }
+            }
+        }
     }
 
     /// A few periods of other units on some resources: leaves, half time, double time,
@@ -439,6 +461,10 @@ mod tests {
         with_availability: usize,
         /// Projects whose periods change how they level.
         moved_by_availability: usize,
+        /// Splits leveling made to let an urgent task in.
+        leveling_splits: usize,
+        /// Projects their urgent tasks level differently.
+        moved_by_urgent: usize,
     }
 
     impl Seen {
@@ -457,6 +483,8 @@ mod tests {
             let by_field = |key: &SortKey| matches!(key.criterion, Criterion::Field { .. });
             self.ordered_by_field += usize::from(before.leveling_order.iter().any(by_field));
             self.with_availability += before.resources.iter().filter(|r| !r.availability.is_empty()).count();
+            let made = |task: &crate::model::Task| task.splits.iter().filter(|split| split.leveling).count();
+            self.leveling_splits += after.tasks.iter().map(made).sum::<usize>();
         }
     }
 
@@ -477,8 +505,8 @@ mod tests {
             let full = leveled(base, false);
             for (a, b) in quick.tasks.iter().zip(&full.tasks) {
                 assert_eq!(
-                    (a.uid, a.leveling_delay, a.start, a.finish, a.total_slack),
-                    (b.uid, b.leveling_delay, b.start, b.finish, b.total_slack),
+                    (a.uid, a.leveling_delay, a.start, a.finish, a.total_slack, &a.splits),
+                    (b.uid, b.leveling_delay, b.start, b.finish, b.total_slack, &b.splits),
                     "seed {seed}"
                 );
             }
@@ -494,6 +522,17 @@ mod tests {
                     project.tasks.iter().map(|task| task.leveling_delay).collect()
                 };
                 seen.moved_by_availability += usize::from(delays(&plain) != delays(&quick));
+            }
+            if before_leveling.tasks.iter().any(|task| task.interrupts) {
+                let mut calm = before_leveling.clone();
+                for task in &mut calm.tasks {
+                    task.interrupts = false;
+                }
+                let calm = leveled(calm, true);
+                let dates = |project: &Project| -> Vec<(i64, i64)> {
+                    project.tasks.iter().map(|task| (task.start, task.finish)).collect()
+                };
+                seen.moved_by_urgent += usize::from(dates(&calm) != dates(&quick));
             }
             if !base_order.is_empty() {
                 let mut default = before_leveling;
@@ -517,6 +556,8 @@ mod tests {
         assert!(seen.reordered >= 50, "only {} leveled apart from the default", seen.reordered);
         assert!(seen.with_availability >= 120, "only {} resources with periods", seen.with_availability);
         assert!(seen.moved_by_availability >= 50, "only {} moved by periods", seen.moved_by_availability);
+        assert!(seen.leveling_splits >= 40, "only {} splits for urgent tasks", seen.leveling_splits);
+        assert!(seen.moved_by_urgent >= 20, "only {} moved by urgent tasks", seen.moved_by_urgent);
     }
 
     /// Projects for the check against searching four years: a search that never fits
@@ -539,8 +580,8 @@ mod tests {
             assert_eq!(CAME_ROUND.with(|count| count.get()), stopped, "seed {seed}");
             for (a, b) in early.tasks.iter().zip(&full.tasks) {
                 assert_eq!(
-                    (a.uid, a.leveling_delay, a.start, a.finish, a.total_slack),
-                    (b.uid, b.leveling_delay, b.start, b.finish, b.total_slack),
+                    (a.uid, a.leveling_delay, a.start, a.finish, a.total_slack, &a.splits),
+                    (b.uid, b.leveling_delay, b.start, b.finish, b.total_slack, &b.splits),
                     "seed {seed}"
                 );
             }
