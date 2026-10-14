@@ -245,6 +245,7 @@ export default function App() {
         setEvmOpen,
         openProjectInfo: () => void openProjectInfo(),
         openCustomFields: () => void openProjectInfo("fields"),
+        openLevelingOrder: () => void openProjectInfo("leveling"),
         openWorkingTime: () => void openWorkingTime(snap?.project.calendar_id ?? 1),
         openBaseline: () => setBaselineOpen(true),
         openRecurring: () => setSeriesDialog(0),

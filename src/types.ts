@@ -130,6 +130,22 @@ export interface Task {
 /** Mirror of `fields::FieldKind`. A choice is one of `options`, in the user's order. */
 export type FieldKind = { type: "text" } | { type: "number" } | { type: "choice"; options: string[] };
 
+/** Mirror of `level_order::Criterion`: what one key of the leveling order compares. */
+export type Criterion =
+  | { type: "start" }
+  | { type: "priority" }
+  | { type: "slack" }
+  | { type: "deadline" }
+  | { type: "duration" }
+  | { type: "id" }
+  | { type: "field"; id: number };
+
+/** Mirror of `level_order::SortKey`. */
+export interface SortKey {
+  criterion: Criterion;
+  descending: boolean;
+}
+
 /** Mirror of `fields::FieldDef`: a custom task field the project declares. */
 export interface FieldDef {
   id: number;
@@ -250,6 +266,8 @@ export interface Project {
   editable_actual_costs: boolean;
   /** Custom task fields, in the order they were added. */
   fields: FieldDef[];
+  /** The order leveling places tasks in; empty for the default (start, priority, slack). */
+  leveling_order: SortKey[];
 }
 
 export interface Snapshot {
@@ -353,7 +371,8 @@ export type Command =
       renamed_options: { from: string; to: string }[];
     }
   | { type: "delete_field"; id: number }
-  | { type: "set_field_value"; uid: number; field_id: number; value: FieldValue | null };
+  | { type: "set_field_value"; uid: number; field_id: number; value: FieldValue | null }
+  | { type: "set_leveling_order"; order: SortKey[] };
 
 /** Mirror of `clipboard::TaskCopy`: one copied task, its level relative to the copy. */
 export interface TaskCopy {

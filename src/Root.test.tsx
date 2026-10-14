@@ -137,6 +137,23 @@ describe("Root", () => {
     expect(await screen.findByRole("group", { name: /^Biểu đồ Gantt/ })).toBeInTheDocument();
   });
 
+  it("opens the leveling order from the Project menu and sets it", async () => {
+    vi.spyOn(navigator, "languages", "get").mockReturnValue(["vi-VN"]);
+    render(<Root />);
+    await screen.findByRole("button", { name: "Hoàn tác" });
+    const menu = await menuHandler();
+    await act(async () => menu("leveling-order"));
+    expect(await screen.findByRole("tab", { name: "Cân bằng" })).toHaveAttribute("aria-selected", "true");
+    await act(async () => screen.getByRole("button", { name: "Theo ID" }).click());
+    await waitFor(() =>
+      expect(fakeBackend.commands()).toContainEqual({
+        type: "set_leveling_order",
+        order: [{ criterion: { type: "id" }, descending: false }],
+      }),
+    );
+    expect(await screen.findByRole("combobox", { name: "Tiêu chí 1" })).toHaveValue("id");
+  });
+
   it("bases a resource's new calendar on the project calendar", async () => {
     vi.spyOn(navigator, "languages", "get").mockReturnValue(["vi-VN"]);
     fakeBackend.reset(makeSnapshot(makeProject({ resources: [makeResource({ uid: 1, name: "An" })] })));
