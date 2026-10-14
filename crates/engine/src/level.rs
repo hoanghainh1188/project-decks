@@ -10,7 +10,7 @@
 //! calendar boundaries, so the elementary stretches between boundaries have one load
 //! and one availability each.
 
-use std::cmp::Reverse;
+use std::cmp::{Ordering, Reverse};
 use std::collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap};
 
 use chrono::NaiveDate;
@@ -18,6 +18,7 @@ use chrono::NaiveDate;
 use crate::calendar::Calendar;
 use crate::error::EngineError;
 use crate::graph::Graph;
+use crate::level_order::{self, Parts};
 use crate::model::{ConstraintType, Overallocation, Project, Resource, Task};
 use crate::ripple::Ripple;
 use crate::schedule::{prepare, publish_derived, schedule_dates};
@@ -214,8 +215,9 @@ fn stretches(
 }
 
 /// Serial leveling, close to Project's. Tasks are placed one at a time: those leveling
-/// will not delay first, then tasks whose predecessors are placed, then earliest start,
-/// higher priority, less total slack before leveling. Each goes to the first moment
+/// will not delay first, then tasks whose predecessors are placed, then by the project's
+/// leveling order (`level_order.rs`; by default earliest start, higher priority, less
+/// total slack before leveling). Each goes to the first moment
 /// every one of its resources has room for it for its whole duration, next to the tasks
 /// already placed, and placing it reschedules the dates so its successors move before
 /// they are placed. Placed tasks do not move again, so no idle gap is left that a later
@@ -334,18 +336,54 @@ fn levelable(task: &Task) -> bool {
 /// What decides which leaf is placed next, smallest first: tasks leveling will not
 /// delay come first, since their place is fixed and the others must fit around them;
 /// then tasks whose leaf predecessors are all placed, so a predecessor delayed later
-/// cannot push a placed task; then the earliest start, higher priority, less slack, and
-/// lower uid. Slack is the one before leveling: it follows the links, not the order
-/// leveling happens to place tasks in.
-type Key = (bool, bool, i64, i32, i64, u32);
+/// cannot push a placed task; then the project's leveling order (by default the
+/// earliest start, higher priority, less slack); then the lower uid. Slack is the one
+/// before leveling: it follows the links, not the order leveling happens to place tasks
+/// in.
+#[derive(Clone, Debug)]
+struct Key {
+    levelable: bool,
+    waiting: bool,
+    /// The task's start when the key was made: the one criterion leveling moves.
+    start: i64,
+    parts: Parts,
+    uid: u32,
+}
+
+impl Ord for Key {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.levelable
+            .cmp(&other.levelable)
+            .then(self.waiting.cmp(&other.waiting))
+            .then_with(|| self.parts.cmp(self.start, &other.parts, other.start))
+            .then(self.uid.cmp(&other.uid))
+    }
+}
+
+impl PartialOrd for Key {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl PartialEq for Key {
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other) == Ordering::Equal
+    }
+}
+
+impl Eq for Key {}
 
 /// The leaves still to place, in a heap keyed by `Key`. A leaf whose key changes (its
-/// start moved, or its last predecessor was placed) is pushed again; the stale entry is
-/// skipped when it comes out.
+/// start moved, or its last predecessor was placed) is pushed again with a new stamp;
+/// an entry whose stamp is old is skipped when it comes out.
 struct Order {
-    heap: BinaryHeap<Reverse<(Key, usize)>>,
-    key: Vec<Option<Key>>,
-    slack: Vec<i64>,
+    heap: BinaryHeap<Reverse<(Key, usize, u64)>>,
+    /// The stamp of each leaf's current entry, or `None` once placed (and for summaries).
+    stamp: Vec<Option<u64>>,
+    next_stamp: u64,
+    /// The key parts that do not change while leveling, built once.
+    parts: Vec<Option<Parts>>,
     /// Links from leaf predecessors not placed yet.
     waiting_on: Vec<usize>,
     /// Leaf successors through links between leaves, once per link.
@@ -369,12 +407,21 @@ impl Order {
                 successors[pred].push(succ);
             }
         }
+        let keys = level_order::effective(project);
+        // Read after the delays of movable tasks were cleared; a task leveling may not
+        // move keeps its delay, and the slack that comes with it.
+        let parts = project
+            .tasks
+            .iter()
+            .map(|task| {
+                (!task.summary).then(|| Parts::of(project, &keys, task, task.total_slack))
+            })
+            .collect();
         let mut order = Self {
             heap: BinaryHeap::with_capacity(count),
-            key: vec![None; count],
-            // Read after the delays of movable tasks were cleared; a task leveling may
-            // not move keeps its delay, and the slack that comes with it.
-            slack: project.tasks.iter().map(|task| task.total_slack).collect(),
+            stamp: vec![None; count],
+            next_stamp: 0,
+            parts,
             waiting_on,
             successors,
         };
@@ -388,23 +435,27 @@ impl Order {
 
     fn refresh(&mut self, project: &Project, index: usize) {
         let task = &project.tasks[index];
-        let key = (
-            levelable(task),
-            self.waiting_on[index] > 0,
-            task.start,
-            -task.priority,
-            self.slack[index],
-            task.uid,
-        );
-        self.key[index] = Some(key);
-        self.heap.push(Reverse((key, index)));
+        let Some(parts) = self.parts[index].clone() else {
+            return;
+        };
+        let key = Key {
+            levelable: levelable(task),
+            waiting: self.waiting_on[index] > 0,
+            start: task.start,
+            parts,
+            uid: task.uid,
+        };
+        let stamp = self.next_stamp;
+        self.next_stamp += 1;
+        self.stamp[index] = Some(stamp);
+        self.heap.push(Reverse((key, index, stamp)));
     }
 
     /// The next leaf to place, taken out of the order.
     fn next(&mut self, project: &Project) -> Option<usize> {
-        while let Some(Reverse((key, index))) = self.heap.pop() {
-            if self.key[index] == Some(key) {
-                self.key[index] = None;
+        while let Some(Reverse((_, index, stamp))) = self.heap.pop() {
+            if self.stamp[index] == Some(stamp) {
+                self.stamp[index] = None;
                 debug_assert!(!project.tasks[index].summary);
                 return Some(index);
             }
@@ -422,7 +473,7 @@ impl Order {
             stale.push(successor);
         }
         for position in stale {
-            if self.key[position].is_some() {
+            if self.stamp[position].is_some() {
                 self.refresh(project, position);
             }
         }
@@ -748,6 +799,43 @@ mod tests {
 
     fn piece(start: i64, end: i64, units: f64) -> Piece {
         Piece { start, end, units }
+    }
+
+    /// The default order must place tasks exactly as the key leveling had before the
+    /// order could be set: (levelable, waiting, start, -priority, slack, uid).
+    #[test]
+    fn the_default_order_is_the_old_key() {
+        let mut seed: u64 = 7;
+        let mut random = |below: u64| {
+            seed = seed.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
+            ((seed >> 33) % below) as i64
+        };
+        let mut project = Project::new("Khóa", 0);
+        let keys = level_order::default_order();
+        let mut both = Vec::new();
+        for uid in 1..=400 {
+            let mut task = Task::new(uid, "Việc");
+            task.start = random(6) * 3_600_000;
+            task.priority = [0, 300, 500, 500, 700, 1000][random(6) as usize];
+            task.manual = random(8) == 0;
+            let slack = random(5) * 60 - 120;
+            let waiting = random(4) == 0;
+            let old = (levelable(&task), waiting, task.start, -task.priority, slack, task.uid);
+            let new = Key {
+                levelable: levelable(&task),
+                waiting,
+                start: task.start,
+                parts: Parts::of(&project, &keys, &task, slack),
+                uid: task.uid,
+            };
+            project.tasks.push(task);
+            both.push((old, new));
+        }
+        for (old_a, new_a) in &both {
+            for (old_b, new_b) in &both {
+                assert_eq!(old_a.cmp(old_b), new_a.cmp(new_b), "{old_a:?} against {old_b:?}");
+            }
+        }
     }
 
     #[test]

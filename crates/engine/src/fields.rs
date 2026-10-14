@@ -1,15 +1,17 @@
 //! Custom task fields: the project declares them, each task holds a value per field.
 //!
 //! A field is plain text, a number, or a choice from a list. Values are data the user
-//! typed, so scheduling never reads them; they group, filter, and (later) order work. The
-//! limits follow what Microsoft Project can hold for a task: 30 text fields (a choice is a
-//! text field with a value list) and 20 number fields, so every field survives MSPDI.
+//! typed, so scheduling never reads them; they group and filter work, and leveling can
+//! place tasks by them (`level_order.rs`). The limits follow what Microsoft Project can
+//! hold for a task: 30 text fields (a choice is a text field with a value list) and 20
+//! number fields, so every field survives MSPDI.
 
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
 use crate::error::{EngineError, Invalid};
+use crate::level_order;
 use crate::model::Project;
 
 /// Text and choice fields a project can have (Microsoft Project's Text1–Text30).
@@ -108,10 +110,11 @@ pub(crate) fn update_field(
     Ok(())
 }
 
-/// Remove a field and every task's value for it.
+/// Remove a field, every task's value for it, and its place in the leveling order.
 pub(crate) fn delete_field(project: &mut Project, id: u32) -> Result<(), EngineError> {
     let position = position_of(project, id)?;
     project.fields.remove(position);
+    level_order::drop_field(project, id);
     for task in &mut project.tasks {
         task.values.remove(&id);
     }
