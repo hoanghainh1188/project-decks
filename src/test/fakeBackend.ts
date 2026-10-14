@@ -204,6 +204,8 @@ class FakeBackend {
         for (const task of project.tasks.filter((item) => command.to_uids.includes(item.uid))) {
           if (command.field === "name") task.name = source.name;
           if (command.field === "duration") task.duration = source.duration;
+          const flagged = !task.summary && !task.milestone && !source.summary && !source.milestone;
+          if (command.field === "interrupts" && flagged) task.interrupts = source.interrupts;
           if (typeof command.field === "object") setValue(task, command.field.field, source.values[command.field.field] ?? null);
         }
         return;
@@ -396,6 +398,13 @@ class FakeBackend {
         if (!assignment) throw `Không có phân công ${command.uid}`;
         assignment.manual_actual_cost = command.cost;
         if (project.editable_actual_costs && command.cost != null) assignment.actual_cost = command.cost;
+        return;
+      }
+      case "set_interrupts": {
+        const task = project.tasks.find((item) => item.uid === command.uid);
+        if (!task) throw `Không có công việc ${command.uid}`;
+        if (task.summary || task.milestone) throw "Chỉ việc lá mới chen ngang được";
+        task.interrupts = command.interrupts;
         return;
       }
       case "set_editable_actual_costs":

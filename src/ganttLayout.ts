@@ -58,6 +58,32 @@ export function splitPieces(task: Task, segments: Segment[] | undefined): Segmen
   return segments;
 }
 
+/**
+ * For each gap of a split bar, in order, whether leveling made it (to let an urgent task in).
+ * Gaps follow the distinct split offsets; the user's split and leveling's at one offset lay out
+ * as one gap, counted as leveling's since leveling lengthened it.
+ */
+export function levelingGaps(task: Task): boolean[] {
+  const byOffset = new Map<number, boolean>();
+  for (const split of task.splits) {
+    byOffset.set(split.offset, (byOffset.get(split.offset) ?? false) || split.leveling === true);
+  }
+  return [...byOffset.entries()].sort(([a], [b]) => a - b).map(([, leveling]) => leveling);
+}
+
+/** Whether content x falls in a gap of the bar that leveling made. */
+export function levelingGapAt(task: Task, x: number, origin: number, px: number): boolean {
+  const pieces = splitPieces(task, task.segments);
+  if (!pieces) return false;
+  const marks = levelingGaps(task);
+  return pieces.slice(1).some((piece, index) => {
+    if (!marks[index]) return false;
+    const before = pieceSpan(pieces[index], origin, px);
+    const after = pieceSpan(piece, origin, px);
+    return x > before.x + before.w && x < after.x;
+  });
+}
+
 /** Same pieces moved by a drag preview; a resize preview moves only the last finish. */
 export function previewPieces(task: Task, start: number, finish: number): Segment[] | null {
   const pieces = splitPieces(task, task.segments);

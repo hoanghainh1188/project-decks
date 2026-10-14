@@ -11,6 +11,8 @@ export const taskEditDialogMessages = defineMessages(
     percentComplete: "% hoàn thành",
     predecessors: "Tiền nhiệm",
     predecessorsPlaceholder: "VD: 2, 3SS+1d",
+    interrupts: "Chen ngang",
+    interruptsNote: "Khi cân bằng, việc này được làm trước việc đang dở có thứ tự thấp hơn của cùng người.",
   },
   {
     title: "Edit task",
@@ -22,5 +24,7 @@ export const taskEditDialogMessages = defineMessages(
     percentComplete: "% Complete",
     predecessors: "Predecessors",
     predecessorsPlaceholder: "e.g. 2, 3SS+1d",
+    interrupts: "Interrupts",
+    interruptsNote: "When leveling, this task goes ahead of work in progress ranked lower on the same people.",
   },
 );

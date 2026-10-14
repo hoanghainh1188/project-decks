@@ -91,6 +91,8 @@ pub enum FillField {
     Calendar,
     /// A custom field, by id.
     Field(u32),
+    /// The interrupt flag (`Task::interrupts`); summaries and milestones are skipped.
+    Interrupts,
 }
 
 /// Copy the tasks `uids` with their subtrees, in outline order.
@@ -363,7 +365,8 @@ fn push_assignment(project: &mut Project, task_uid: u32, resource_uid: u32, copy
 
 /// Copy `field` of `from_uid` to each task in `to_uids`, as the edit that field's cell makes.
 /// Summary tasks only take a name or a custom field value; the rest of their fields roll
-/// up from their tasks.
+/// up from their tasks. Milestones never take the interrupt flag, and a summary or milestone
+/// source, which never has it, fills nothing rather than clearing it below.
 pub fn fill_down(
     project: &mut Project,
     from_uid: u32,
@@ -374,10 +377,14 @@ pub fn fill_down(
         .task(from_uid)
         .ok_or(EngineError::TaskNotFound)?
         .clone();
+    if field == FillField::Interrupts && (source.summary || source.milestone) {
+        return Ok(());
+    }
     for uid in to_uids {
         let target = project.task(*uid).ok_or(EngineError::TaskNotFound)?;
         let summary_takes = matches!(field, FillField::Name | FillField::Field(_));
-        if *uid == from_uid || (target.summary && !summary_takes) {
+        let flag_refused = field == FillField::Interrupts && target.milestone;
+        if *uid == from_uid || (target.summary && !summary_takes) || flag_refused {
             continue;
         }
         let command = fill_command(&source, *uid, field);
@@ -416,6 +423,10 @@ fn fill_command(source: &Task, uid: u32, field: FillField) -> Command {
             uid,
             field_id,
             value: source.values.get(&field_id).cloned(),
+        },
+        FillField::Interrupts => Command::SetInterrupts {
+            uid,
+            interrupts: source.interrupts,
         },
     }
 }

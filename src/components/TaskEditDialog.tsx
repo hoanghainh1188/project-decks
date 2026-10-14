@@ -82,6 +82,20 @@ export function TaskEditDialog({ task, send, onClose }: Props) {
           }
         }}
       />
+      {!task.summary && !task.milestone && (
+        <>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={task.interrupts}
+              aria-describedby={`edit-interrupts-note-${task.uid}`}
+              onChange={(event) => send({ type: "set_interrupts", uid: task.uid, interrupts: event.target.checked })}
+            />
+            {m.interrupts}
+          </label>
+          <p className="check-note" id={`edit-interrupts-note-${task.uid}`}>{m.interruptsNote}</p>
+        </>
+      )}
     </Modal>
   );
 }

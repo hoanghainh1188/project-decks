@@ -43,6 +43,9 @@ interface Props {
   onHighlight: (highlight: HighlightMode) => void;
   networkSummaries: boolean;
   onNetworkSummaries: (show: boolean) => void;
+  /** Whether the task sheet shows the interrupt flag as a column. */
+  interruptsColumn: boolean;
+  onInterruptsColumn: (show: boolean) => void;
 }
 
 /**
@@ -140,6 +143,7 @@ export function ViewBar(props: Props) {
               <option value="critical">{m.critical}</option>
               <option value="resource">{m.byPerson}</option>
               <option value="late">{m.late}</option>
+              <option value="interrupts">{m.interrupts}</option>
               {project.fields.map((field) => (
                 <option key={field.id} value={fieldMode(field)}>
                   {m.byField(field.name)}
@@ -213,8 +217,19 @@ export function ViewBar(props: Props) {
               <option value="none">{m.highlightNone}</option>
               <option value="critical">{m.critical}</option>
               <option value="late">{m.late}</option>
+              <option value="interrupts">{m.interrupts}</option>
             </select>
           </label>
+          {chart && (
+            <label className="view-control">
+              <input
+                type="checkbox"
+                checked={props.interruptsColumn}
+                onChange={(event) => props.onInterruptsColumn(event.target.checked)}
+              />
+              {m.interruptsColumn}
+            </label>
+          )}
         </div>
       )}
     </div>

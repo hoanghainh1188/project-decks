@@ -25,6 +25,8 @@ function renderBar(view: ViewId, project: Project = makeProject(), overrides: Pa
     onHighlight: vi.fn(),
     networkSummaries: false,
     onNetworkSummaries: vi.fn(),
+    interruptsColumn: false,
+    onInterruptsColumn: vi.fn(),
     ...overrides,
   };
   render(<ViewBar {...props} />);
@@ -68,6 +70,16 @@ describe("ViewBar", () => {
     renderBar("network");
     expect(screen.queryByRole("group", { name: "Thang thời gian" })).toBeNull();
     expect(screen.getByLabelText("Hiện công việc tóm tắt")).toBeInTheDocument();
+  });
+
+  it("filters, highlights and shows a column for urgent tasks", async () => {
+    const { user, props } = renderBar("gantt");
+    await user.selectOptions(screen.getByLabelText("Lọc"), "interrupts");
+    expect(props.onFilter).toHaveBeenCalledWith("interrupts");
+    await user.selectOptions(screen.getByLabelText("Tô sáng"), "Việc chen ngang");
+    expect(props.onHighlight).toHaveBeenCalledWith("interrupts");
+    await user.click(screen.getByRole("checkbox", { name: "Cột chen ngang" }));
+    expect(props.onInterruptsColumn).toHaveBeenCalledWith(true);
   });
 
   it("has no row controls on the resource sheet", () => {

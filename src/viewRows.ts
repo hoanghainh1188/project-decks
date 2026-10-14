@@ -5,9 +5,9 @@ import { viewRowsMessages } from "./viewRows.i18n";
 
 /** A custom field, by id, as a filter or group mode. */
 export type FieldMode = `field:${number}`;
-export type FilterMode = "none" | "critical" | "resource" | "late" | FieldMode;
+export type FilterMode = "none" | "critical" | "resource" | "late" | "interrupts" | FieldMode;
 export type GroupMode = "none" | "resource" | "summary" | FieldMode;
-export type HighlightMode = "none" | "critical" | "late";
+export type HighlightMode = "none" | "critical" | "late" | "interrupts";
 
 export function fieldMode(field: FieldDef): FieldMode {
   return `field:${field.id}`;
@@ -92,6 +92,7 @@ function matchesFilter(
 ): boolean {
   if (filter === "critical") return task.critical;
   if (filter === "late") return task.late;
+  if (filter === "interrupts") return task.interrupts;
   if (filter === "resource") {
     if (resourceUid == null) return false;
     return assignments.some((item) => item.task_uid === task.uid && item.resource_uid === resourceUid);
@@ -102,6 +103,7 @@ function matchesFilter(
 function matchesHighlight(task: Task, highlight: HighlightMode): boolean {
   if (highlight === "critical") return task.critical;
   if (highlight === "late") return task.late;
+  if (highlight === "interrupts") return task.interrupts;
   return false;
 }
 

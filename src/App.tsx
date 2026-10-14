@@ -102,6 +102,7 @@ export default function App() {
   const [evmOpen, setEvmOpen] = useState(false);
   const [metrics, setMetrics] = useState<ProjectMetrics | null>(null);
   const [networkSummaries, setNetworkSummaries] = useState(false);
+  const [interruptsColumn, setInterruptsColumn] = useState(false);
   const [networkLayout, setNetworkLayout] = useState<NetworkLayout | null>(null);
   const [editUid, setEditUid] = useState<number | null>(null);
   const sheetRef = useRef<HTMLDivElement>(null);
@@ -551,6 +552,8 @@ export default function App() {
         onHighlight={setRowHighlight}
         networkSummaries={networkSummaries}
         onNetworkSummaries={setNetworkSummaries}
+        interruptsColumn={interruptsColumn}
+        onInterruptsColumn={setInterruptsColumn}
       />
       {error && <div className="banner">{error}</div>}
       {/* EVM sits beside the Gantt and the inspector so its burn-down chart keeps the full height. */}
@@ -570,6 +573,7 @@ export default function App() {
                   selected={selected}
                   selection={selectionSet}
                   tracking={view === "tracking"}
+                  interruptsColumn={interruptsColumn}
                   bodyRef={sheetRef}
                   onSelect={(uid, extend) => (extend && selected != null ? setSelectionEnd(uid) : selectOne(uid))}
                   onFillField={setFillField}
@@ -585,6 +589,7 @@ export default function App() {
                   onOvertime={(uid, minutes) => send({ type: "set_overtime_work", uid, minutes })}
                   onCalendar={(uid, calendarId) => send({ type: "set_task_calendar", uid, calendar_id: calendarId })}
                   onFieldValue={(uid, fieldId, value) => send({ type: "set_field_value", uid, field_id: fieldId, value })}
+                  onInterrupts={(uid, interrupts) => send({ type: "set_interrupts", uid, interrupts })}
                   onEditSeries={(uid) => {
                     selectOne(uid);
                     setSeriesDialog(uid);

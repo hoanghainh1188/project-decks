@@ -30,7 +30,14 @@ interface SheetColumn {
 /** Column width of a custom field by kind; numbers are short, text gets the most room. */
 const FIELD_WIDTH = { text: 140, number: 90, choice: 120 } as const;
 
-function sheetColumns(m: SheetMessages, tracking: boolean, nameWidth: number, fields: FieldDef[]): SheetColumn[] {
+interface ColumnOptions {
+  tracking: boolean;
+  interrupts: boolean;
+  nameWidth: number;
+  fields: FieldDef[];
+}
+
+function sheetColumns(m: SheetMessages, { tracking, interrupts, nameWidth, fields }: ColumnOptions): SheetColumn[] {
   const built: Omit<SheetColumn, "key">[] = [
     { label: m.id, width: 42 },
     { label: m.wbs, width: 72 },
@@ -56,6 +63,7 @@ function sheetColumns(m: SheetMessages, tracking: boolean, nameWidth: number, fi
     { label: m.predecessors, width: 120, fill: "predecessors" },
     { label: m.resources, width: 160 },
     { label: m.slack, width: 80 },
+    ...(interrupts ? [{ label: m.interrupts, width: 84, fill: "interrupts" as const }] : []),
   ];
   // Custom fields follow the built-in columns, in the order they were added.
   return [
@@ -85,6 +93,8 @@ interface Props {
   /** Rows of a Shift+click range (copy, paste and fill-down act on them); may be empty. */
   selection?: ReadonlySet<number>;
   tracking: boolean;
+  /** Show the interrupt flag as a column after the built-in ones. */
+  interruptsColumn: boolean;
   bodyRef: RefObject<HTMLDivElement | null>;
   /** `extend` is true for Shift+click, which selects every row from the selected one. */
   onSelect: (uid: number, extend: boolean) => void;
@@ -103,6 +113,7 @@ interface Props {
   onCalendar: (uid: number, calendarId: number | null) => void;
   /** A custom field value, or null to clear it. */
   onFieldValue: (uid: number, fieldId: number, value: FieldValue | null) => void;
+  onInterrupts: (uid: number, interrupts: boolean) => void;
   onEditSeries: (uid: number) => void;
   onScroll: () => void;
 }
@@ -112,10 +123,10 @@ export function TaskSheet(props: Props) {
   const headRef = useRef<HTMLDivElement>(null);
   const [windowRange, setWindowRange] = useState({ start: 0, end: 40 });
   const [paneWidth, setPaneWidth] = useState(0);
-  const baseColumns = sheetColumns(m, props.tracking, NAME_WIDTH, props.fields);
-  const baseWidth = sheetWidthOf(baseColumns);
+  const options = { tracking: props.tracking, interrupts: props.interruptsColumn, fields: props.fields };
+  const baseWidth = sheetWidthOf(sheetColumns(m, { ...options, nameWidth: NAME_WIDTH }));
   const nameWidth = NAME_WIDTH + Math.max(0, paneWidth - baseWidth);
-  const columns = sheetColumns(m, props.tracking, nameWidth, props.fields);
+  const columns = sheetColumns(m, { ...options, nameWidth });
   const template = columns.map((column) => `${column.width}px`).join(" ");
   // Header and body use this same pixel width so tracks, including columns past the viewport, stay aligned.
   const sheetWidth = sheetWidthOf(columns);
@@ -277,6 +288,19 @@ export function TaskSheet(props: Props) {
               />
               <ResourceCell names={names.get(task.uid) ?? ""} />
               <span className={`ro${task.total_slack < 0 ? " bad" : ""}`}>{formatDuration(task.total_slack)}</span>
+              {props.interruptsColumn && (
+                <span className="check-cell">
+                  <input
+                    type="checkbox"
+                    aria-label={m.interruptsOf(task.name)}
+                    checked={task.interrupts}
+                    disabled={task.summary || task.milestone}
+                    // WebKit does not focus a checkbox on click, so the row's onFocus may not run.
+                    onClick={() => props.onFillField?.("interrupts")}
+                    onChange={(event) => props.onInterrupts(task.uid, event.target.checked)}
+                  />
+                </span>
+              )}
               {props.fields.map((field) => (
                 <FieldInput
                   key={field.id}

@@ -60,6 +60,8 @@ export interface Baseline {
 export interface Split {
   offset: number;
   gap: number;
+  /** Made by leveling to let an urgent task in; omitted when false. */
+  leveling?: boolean;
 }
 
 /** One scheduled piece of a split task, as instants. */
@@ -94,6 +96,8 @@ export interface Task {
   fixed_cost: number;
   fixed_cost_accrual: Accrual;
   leveling_delay: number;
+  /** Urgent: when leveling, it goes ahead of work in progress ranked below it on the same people. */
+  interrupts: boolean;
   start: number;
   finish: number;
   early_start: number;
@@ -418,10 +422,16 @@ export type Command =
   | { type: "set_baseline"; number: number }
   | { type: "clear_baseline"; number: number }
   | { type: "level_resources" }
-  | { type: "apply_leveling"; delays: { uid: number; minutes: number }[] }
+  | {
+      type: "apply_leveling";
+      delays: { uid: number; minutes: number }[];
+      /** Tasks whose leveling splits changed, each with all of them. */
+      splits?: { uid: number; splits: Split[] }[];
+    }
   | { type: "clear_leveling" }
   | { type: "reschedule_uncompleted" }
   | { type: "set_leveling_delay"; uid: number; minutes: number }
+  | { type: "set_interrupts"; uid: number; interrupts: boolean }
   | { type: "set_deadline"; uid: number; date: number | null }
   | { type: "set_editable_actual_costs"; editable: boolean }
   | { type: "set_task_actual_cost"; uid: number; cost: number | null }
@@ -495,6 +505,7 @@ export type FillField =
   | "predecessors"
   | "percent_complete"
   | "calendar"
+  | "interrupts"
   | { field: number };
 
 export type ViewId = "gantt" | "tracking" | "resources" | "usage" | "network";

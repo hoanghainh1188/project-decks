@@ -24,13 +24,20 @@ const HANDLERS = [
   "onOvertime",
   "onCalendar",
   "onFieldValue",
+  "onInterrupts",
   "onEditSeries",
   "onScroll",
 ] as const;
 
 function renderSheet(
   rows: ViewRow[],
-  options: { tracking?: boolean; selected?: number | null; lang?: Lang; fields?: FieldDef[] } = {},
+  options: {
+    tracking?: boolean;
+    selected?: number | null;
+    lang?: Lang;
+    fields?: FieldDef[];
+    interruptsColumn?: boolean;
+  } = {},
 ) {
   const handlers = Object.fromEntries(HANDLERS.map((name) => [name, vi.fn<(...args: unknown[]) => void>()])) as Record<
     (typeof HANDLERS)[number],
@@ -49,6 +56,7 @@ function renderSheet(
       resources={[makeResource({ uid: 10, name: "An" }), makeResource({ uid: 11, name: "Bình" })]}
       selected={options.selected ?? null}
       tracking={options.tracking ?? false}
+      interruptsColumn={options.interruptsColumn ?? false}
       bodyRef={bodyRef}
       {...handlers}
     />,
@@ -442,5 +450,35 @@ describe("TaskSheet custom field columns", () => {
     const { handlers, user } = renderSheet(rows, { fields });
     await user.click(screen.getByRole("textbox", { name: "Điểm" }));
     expect(handlers.onFillField).toHaveBeenLastCalledWith({ field: 2 });
+  });
+});
+
+describe("TaskSheet interrupt column", () => {
+  const project = outlineProject();
+  project.tasks = project.tasks.map((task) => (task.uid === 7 ? { ...task, interrupts: true } : task));
+  const rows = buildViewRows(project, "none", null, "none", "none");
+
+  it("is hidden unless asked for", () => {
+    const { head } = renderSheet(rows);
+    expect(within(head).queryByText("Chen ngang")).not.toBeInTheDocument();
+  });
+
+  it("shows the flag, editable on leaves only, after the built-in columns", async () => {
+    const fields: FieldDef[] = [{ id: 1, name: "Ghi chú", kind: { type: "text" } }];
+    const { container, head, handlers, user } = renderSheet(rows, { interruptsColumn: true, fields });
+    const labels = [...head.children].map((cell) => cell.textContent);
+    expect(labels.slice(-3)).toEqual(["Trễ", "Chen ngang", "Ghi chú"]);
+    const flag = (uid: number) => within(rowOf(container, uid)).getByRole("checkbox", { name: /^Chen ngang: / });
+    expect(flag(7)).toBeChecked();
+    expect(flag(1)).toBeDisabled();
+    expect(flag(8)).toBeDisabled();
+    await user.click(flag(5));
+    expect(handlers.onInterrupts).toHaveBeenCalledWith(5, true);
+    expect(handlers.onFillField).toHaveBeenLastCalledWith("interrupts");
+  });
+
+  it("names the column in English", () => {
+    const { head } = renderSheet(rows, { interruptsColumn: true, lang: "en" });
+    expect(within(head).getByText("Interrupts")).toBeInTheDocument();
   });
 });
