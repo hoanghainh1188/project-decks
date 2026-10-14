@@ -765,6 +765,27 @@ input.bad { color: var(--critical-text); border-color: var(--critical-text); fon
 .suggestions select { max-width: 280px; }
 .suggestions .num { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .dialog-subhead { font-size: 13px; font-weight: 600; margin: 12px 0 4px; }
+/* Tải nguồn lực: names, a header of days or weeks, and the canvas heatmap. */
+.load-view { display: flex; flex-direction: column; min-height: 0; height: 100%; padding: 8px 12px; gap: 8px; }
+.load-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; }
+.load-controls input[type="number"] { width: 64px; }
+.load-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 0; padding: 0; list-style: none; color: var(--text-secondary); }
+.load-legend li { display: inline-flex; align-items: center; gap: 4px; }
+.load-swatch { width: 14px; height: 14px; border-radius: 3px; border: 1px solid var(--border-subtle); background: var(--surface); }
+.load-swatch.light { background: var(--load-light); }
+.load-swatch.full { background: var(--load-full); }
+.load-swatch.over { background: var(--load-over); }
+.load-swatch.off { background: var(--weekend); }
+.load-scroll { flex: 1 1 auto; min-height: 0; overflow: auto; border: 1px solid var(--border-subtle); border-radius: 6px; background: var(--surface); }
+.load-grid { display: grid; }
+.load-corner, .load-head { position: sticky; top: 0; z-index: 2; background: var(--surface-chrome); border-bottom: 1px solid var(--border-subtle); height: 24px; }
+.load-corner { left: 0; z-index: 3; padding: 4px 8px; color: var(--text-muted); }
+.load-head { display: flex; }
+.load-head span { flex: none; padding: 4px 2px; font-size: 11px; color: var(--text-muted); text-align: center; overflow: hidden; white-space: nowrap; }
+.load-names { position: sticky; left: 0; z-index: 1; display: flex; flex-direction: column; background: var(--surface); border-right: 1px solid var(--border-subtle); }
+.load-names button { height: 24px; padding: 0 10px; border: 0; background: none; color: var(--text); text-align: left; white-space: nowrap; cursor: pointer; font: inherit; }
+.load-names button:hover, .load-names button:focus-visible { background: var(--selected-row); }
+.load-grid canvas { cursor: pointer; }
 /* Giao việc theo quy tắc: the expected result of the plan. */
 .plan-filter { display: inline-flex; align-items: center; gap: 6px; margin: 2px 0; }
 .plan-late { font-weight: 600; }

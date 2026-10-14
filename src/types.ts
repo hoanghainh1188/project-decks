@@ -273,6 +273,21 @@ export interface TaskAssignment {
   units: number;
 }
 
+/** Mirror of `load_map::Bucket`. */
+export type LoadBucket = "day" | "week";
+
+/** Mirror of `load_map::LoadCell`: working minutes of work and of capacity. */
+export interface LoadCell {
+  work: number;
+  capacity: number;
+}
+
+/** Mirror of `load_map::LoadMap`: `buckets` are the first day of each, "YYYY-MM-DD". */
+export interface LoadMap {
+  buckets: string[];
+  rows: { resource_uid: number; cells: LoadCell[] }[];
+}
+
 /** Mirror of `command::LevelingDelay`. */
 export interface LevelingDelay {
   uid: number;
@@ -610,7 +625,7 @@ export type FillField =
   | "interrupts"
   | { field: number };
 
-export type ViewId = "gantt" | "tracking" | "resources" | "usage" | "network";
+export type ViewId = "gantt" | "tracking" | "resources" | "usage" | "load" | "network";
 
 export interface NetworkOptions {
   include_summary: boolean;

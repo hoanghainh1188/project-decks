@@ -63,6 +63,7 @@ const VIEWS: Record<string, ViewId> = {
   "view-tracking": "tracking",
   "view-resources": "resources",
   "view-usage": "usage",
+  "view-load": "load",
   "view-network": "network",
 };
 

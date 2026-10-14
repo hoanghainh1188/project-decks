@@ -21,7 +21,9 @@ use sheafly_engine::store;
 use sheafly_engine::suggest::{self, Suggestion};
 use sheafly_engine::command::{LevelingDelay, LevelingSplits};
 use sheafly_engine::import::{self, ImportColumn, ImportResource, ImportTable, ImportTask};
+use sheafly_engine::load_map::{self, Bucket, LoadMap};
 use sheafly_engine::plan::{self, PlanPreview};
+use sheafly_engine::timeutil::parse_date_key;
 use sheafly_engine::skills::TaskAssignment;
 use sheafly_engine::{Command, Document, EngineError, Lang, Snapshot};
 use tauri::menu::{AboutMetadata, CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
@@ -534,6 +536,16 @@ fn check_import(
             column: problem.column,
         })
         .collect()
+}
+
+/// Work and capacity by person for the days `from` to `to` (`YYYY-MM-DD`), by day or week.
+#[tauri::command(async)]
+fn load_map(state: State<'_, AppState>, from: String, to: String, bucket: Bucket) -> Result<LoadMap, String> {
+    let bad = || EngineError::from(sheafly_engine::Invalid::BadDate).message(lang(&state));
+    let from = parse_date_key(&from).ok_or_else(bad)?;
+    let to = parse_date_key(&to).ok_or_else(bad)?;
+    let project = lock(&state).project.clone();
+    load_map::load_map(&project, from, to, bucket).map_err(engine_message(&state))
 }
 
 /// What assigning `assignments` and leveling would do, without changing the project.
@@ -1302,6 +1314,7 @@ pub fn run() {
             read_table_sheet,
             check_import,
             preview_plan,
+            load_map,
             apply_plan,
             export_mspdi,
             save_pdf,

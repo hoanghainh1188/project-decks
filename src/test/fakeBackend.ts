@@ -3,6 +3,7 @@ import type {
   FieldValue,
   ImportProblem,
   ImportSheet,
+  LoadMap,
   PlanPreview,
   NetworkLayout,
   ProjectMetrics,
@@ -32,6 +33,8 @@ class FakeBackend {
   suggestions: Suggestion[] = [];
   /** What `preview_plan` answers; by default the assignments asked for and no leveling. */
   planPreview: PlanPreview | null = null;
+  /** What `load_map` answers. */
+  loadMap: LoadMap = { buckets: [], rows: [] };
   /** What `check_import` answers. */
   importProblems: ImportProblem[] = [];
   /** What `pick_table` answers (null is a cancelled dialog); `read_table_sheet` reads it too. */
@@ -53,6 +56,7 @@ class FakeBackend {
     this.suggestions = [];
     this.importProblems = [];
     this.planPreview = null;
+    this.loadMap = { buckets: [], rows: [] };
     this.table = null;
     this.failures.clear();
     this.holds.clear();
@@ -114,6 +118,8 @@ class FakeBackend {
         return structuredClone(this.network);
       case "suggest_assignments":
         return structuredClone(this.suggestions);
+      case "load_map":
+        return structuredClone(this.loadMap);
       case "preview_plan":
         return structuredClone(
           this.planPreview ?? {

@@ -70,6 +70,10 @@
   --bar-knob: #ffffff;
   /* Gaps leveling made in a split bar to let an urgent task in. */
   --bar-leveling-gap: #d97706;
+  /* Tải nguồn lực: work as a share of capacity. */
+  --load-light: #cfe3f7;
+  --load-full: #6aa5dc;
+  --load-over: #d9534f;
   --link: #6d6d72;
   --label-halo: rgba(255, 255, 255, 0.9);
   --network-bg: #fbfbfc;
@@ -152,6 +156,9 @@
   --bar-progress: rgba(0, 0, 0, 0.38);
   --bar-knob: #1f1f22;
   --bar-leveling-gap: #f59e0b;
+  --load-light: #1f3a56;
+  --load-full: #2f6fad;
+  --load-over: #e0605c;
   --link: #9a9aa3;
   --label-halo: rgba(31, 31, 34, 0.9);
   --network-bg: #19191c;

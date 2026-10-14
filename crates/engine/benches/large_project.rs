@@ -18,6 +18,9 @@
 //! backlog (default 500 people, 5000 tasks): twenty skills, one to three per person, and
 //! twenty rules from the values of a list field to the skills.
 //!
+//! `-- loadmap [<people> <tasks>]` levels a capacity backlog (default 500 people, 5000
+//! tasks), then times `load_map` for a year by week and for twelve weeks by day.
+//!
 //! `-- import [<tasks>]` times `check_import` and `ImportRows` for a table of people and
 //! tasks (default 5000 tasks in groups of ten, one person per ten tasks, each leaf with
 //! effort, one person and, every other row, a wait on the row above).
@@ -32,6 +35,7 @@ use sheafly_engine::fields::{FieldDef, FieldKind, FieldValue};
 use sheafly_engine::import::{check_import, ImportAssignee, ImportResource, ImportTask};
 use sheafly_engine::level::level_project;
 use sheafly_engine::level_order::{Criterion, SortKey};
+use sheafly_engine::load_map::{load_map, Bucket};
 use sheafly_engine::model::{Assignment, ConstraintType, DepKind, Resource, ResourceKind, Task, TaskType};
 use sheafly_engine::skills::{AssignmentRule, Condition, RuleTarget, SkillDef};
 use sheafly_engine::suggest::suggest;
@@ -147,7 +151,7 @@ fn leveling(tasks: u32) {
 /// A backlog of `tasks` effort-only tasks spread over `people`, the way a sprint plan
 /// arrives: no links, every task free to start at the project start, priority deciding
 /// the order. Prints the leveling time and the idle hours left between a person's tasks.
-fn capacity(people: u32, tasks: u32, by_field: bool, leave: bool, interrupt: bool) {
+fn capacity(people: u32, tasks: u32, by_field: bool, leave: bool, interrupt: bool) -> Project {
     // A fixed linear congruential generator, so every run builds the same backlog.
     let mut seed: u64 = 42;
     let mut random = |below: u64| {
@@ -232,7 +236,7 @@ fn capacity(people: u32, tasks: u32, by_field: bool, leave: bool, interrupt: boo
         let made = project.tasks.iter().flat_map(|task| &task.splits).filter(|split| split.leveling).count();
         println!("{:<28} {:>10}", "khoảng tách do chen ngang", made);
         println!("{:<28} {:>10}", "khoảng quá tải còn lại", project.overallocations.len());
-        return;
+        return project;
     }
     assert!(project.overallocations.is_empty(), "{:?}", project.overallocations.first());
 
@@ -254,6 +258,7 @@ fn capacity(people: u32, tasks: u32, by_field: bool, leave: bool, interrupt: boo
         })
         .sum();
     println!("{:<28} {:>10.1} giờ", "giờ rảnh xen giữa", idle as f64 / 60.0);
+    project
 }
 
 /// An unassigned backlog of `tasks` tasks, each with one of twenty values of a list field
@@ -370,6 +375,19 @@ fn import(tasks: u32) {
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let numbers: Vec<usize> = args.iter().filter_map(|arg| arg.parse().ok()).collect();
+    if args.iter().any(|arg| arg == "loadmap") {
+        let people = numbers.first().copied().unwrap_or(500).max(1) as u32;
+        let tasks = numbers.get(1).copied().unwrap_or(5000) as u32;
+        let project = capacity(people, tasks, false, true, false);
+        let monday = NaiveDate::from_ymd_opt(2026, 1, 5).unwrap();
+        timed("load_map 52 tuần", || {
+            load_map(&project, monday, monday + chrono::Duration::days(363), Bucket::Week).expect("load map")
+        });
+        timed("load_map 84 ngày", || {
+            load_map(&project, monday, monday + chrono::Duration::days(83), Bucket::Day).expect("load map")
+        });
+        return;
+    }
     if args.iter().any(|arg| arg == "import") {
         import(numbers.first().copied().unwrap_or(5000).max(1) as u32);
         return;

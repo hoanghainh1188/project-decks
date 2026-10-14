@@ -9,6 +9,8 @@ import type {
   ImportResource,
   ImportSheet,
   ImportTask,
+  LoadBucket,
+  LoadMap,
   NetworkLayout,
   NetworkOptions,
   PlanPreview,
@@ -92,6 +94,11 @@ export function loadNetworkLayout(options: NetworkOptions): Promise<NetworkLayou
 /** Who the assignment rules would give each unassigned task to; a read, never logged. */
 export function suggestAssignments(): Promise<Suggestion[]> {
   return inOrder(() => invoke<Suggestion[]>("suggest_assignments"));
+}
+
+/** Work and capacity by person from `from` to `to` ("YYYY-MM-DD", both included). */
+export function loadMap(from: string, to: string, bucket: LoadBucket): Promise<LoadMap> {
+  return inOrder(() => invoke<LoadMap>("load_map", { from, to, bucket }));
 }
 
 /** What assigning `assignments` and leveling would do; the project does not change. */
