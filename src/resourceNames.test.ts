@@ -13,6 +13,7 @@ function resource(uid: number, name: string): Resource {
     standard_rate: 0,
     overtime_rate: 0,
     cost_per_use: 0,
+    availability: [],
   };
 }
 

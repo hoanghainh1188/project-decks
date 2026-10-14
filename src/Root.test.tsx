@@ -154,6 +154,25 @@ describe("Root", () => {
     expect(await screen.findByRole("combobox", { name: "Tiêu chí 1" })).toHaveValue("id");
   });
 
+  it("edits a resource's availability as one transaction", async () => {
+    vi.spyOn(navigator, "languages", "get").mockReturnValue(["vi-VN"]);
+    fakeBackend.reset(makeSnapshot(makeProject({ resources: [makeResource({ uid: 1, name: "An" })] })));
+    render(<Root />);
+    await screen.findByRole("button", { name: "Hoàn tác" });
+    const menu = await menuHandler();
+    await act(async () => menu("view-resources"));
+    await act(async () => (await screen.findByRole("button", { name: "Khả dụng của An" })).click());
+    expect(await screen.findByRole("dialog", { name: "Khả dụng: An" })).toBeInTheDocument();
+    await act(async () => screen.getByRole("button", { name: "Thêm khoảng" }).click());
+    await waitFor(() =>
+      expect(fakeBackend.commands().some((command) => command.type === "set_resource_availability")).toBe(true),
+    );
+    expect(await screen.findByRole("textbox", { name: "Đơn vị, khoảng 1" })).toHaveValue("0,5");
+    await act(async () => screen.getByRole("button", { name: "Lưu" }).click());
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Khả dụng: An" })).not.toBeInTheDocument());
+    expect(await screen.findByText("theo ngày")).toBeInTheDocument();
+  });
+
   it("bases a resource's new calendar on the project calendar", async () => {
     vi.spyOn(navigator, "languages", "get").mockReturnValue(["vi-VN"]);
     fakeBackend.reset(makeSnapshot(makeProject({ resources: [makeResource({ uid: 1, name: "An" })] })));

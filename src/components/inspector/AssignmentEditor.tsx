@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import { formatUnits, hoursPerDay, parseUnits, showsUnits } from "../../assignmentUnits";
 import { useMessages } from "../../i18n";
 import type { Command, Project, Task } from "../../types";
 import { assignmentEditorMessages } from "./AssignmentEditor.i18n";
@@ -15,6 +16,7 @@ export function AssignmentEditor({
 }) {
   const m = useMessages(assignmentEditorMessages);
   const [units, setUnits] = useState("1");
+  const typed = parseUnits(units);
   const rows = project.assignments.filter((item) => item.task_uid === task.uid);
   return (
     <div className="assign">
@@ -33,11 +35,14 @@ export function AssignmentEditor({
                   <input
                     aria-label={m.unitsOf(name)}
                     disabled={task.summary}
-                    defaultValue={String(assignment.units)}
+                    title={m.unitsTip}
+                    defaultValue={formatUnits(assignment.units)}
                     key={`${assignment.uid}-${assignment.units}`}
                     onBlur={(event) => {
-                      const next = Number(event.target.value);
-                      if (Number.isFinite(next) && next !== assignment.units) {
+                      const next = parseUnits(event.target.value);
+                      if (next == null) {
+                        event.target.value = formatUnits(assignment.units);
+                      } else if (!showsUnits(event.target.value, assignment.units)) {
                         send({
                           type: "update_assignment",
                           uid: assignment.uid,
@@ -49,6 +54,7 @@ export function AssignmentEditor({
                     }}
                   />
                 </label>
+                <span className="meta">{hoursPerDay(assignment.units)}</span>
                 {project.editable_actual_costs && !task.summary && (
                   <label>
                     {m.actualCost}
@@ -88,23 +94,24 @@ export function AssignmentEditor({
           {m.units}
           <input
             aria-label={m.newUnits}
+            title={m.unitsTip}
             disabled={task.summary}
             value={units}
             onChange={(event) => setUnits(event.target.value)}
           />
         </label>
+        {typed != null && <span className="meta">{m.equals(hoursPerDay(typed))}</span>}
         <select
           disabled={task.summary}
           defaultValue=""
           onChange={(event) => {
             const resource = Number(event.target.value);
-            const parsed = Number(units);
             if (resource) {
               send({
                 type: "assign_resource",
                 task_uid: task.uid,
                 resource_uid: resource,
-                units: Number.isFinite(parsed) ? Math.max(0, parsed) : 1,
+                units: typed ?? 1,
               });
             }
             event.target.value = "";

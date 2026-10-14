@@ -90,6 +90,7 @@ export function makeResource(overrides: Partial<Resource> & { uid: number }): Re
     standard_rate: 0,
     overtime_rate: 0,
     cost_per_use: 0,
+    availability: [],
     ...overrides,
   };
 }

@@ -1,3 +1,4 @@
+import { formatUnits, parseUnits, showsUnits } from "../assignmentUnits";
 import { useMessages } from "../i18n";
 import type { Calendar, Overallocation, Resource, ResourceKind } from "../types";
 import { resourceSheetMessages } from "./ResourceSheet.i18n";
@@ -11,6 +12,8 @@ interface Props {
   onDelete: (uid: number) => void;
   onEditCalendar: (calendarId: number) => void;
   onCreateCalendar: (resource: Resource) => void;
+  /** Open the days the resource has other units than its max units. */
+  onEditAvailability: (uid: number) => void;
 }
 
 export function ResourceSheet({
@@ -22,6 +25,7 @@ export function ResourceSheet({
   onDelete,
   onEditCalendar,
   onCreateCalendar,
+  onEditAvailability,
 }: Props) {
   const m = useMessages(resourceSheetMessages);
   const overloaded = new Set(overallocations.map((item) => item.resource_uid));
@@ -67,11 +71,29 @@ export function ResourceSheet({
                 </select>
               </td>
               <td>
-                <input
-                  key={`${resource.uid}-units-${resource.max_units}`}
-                  defaultValue={String(resource.max_units)}
-                  onBlur={(event) => onChange({ ...resource, max_units: Number(event.target.value) || 0 })}
-                />
+                <div className="units-cell">
+                  <input
+                    key={`${resource.uid}-units-${resource.max_units}`}
+                    aria-label={m.maxUnitsOf(resource.name)}
+                    title={m.maxUnitsTip}
+                    defaultValue={formatUnits(resource.max_units)}
+                    onBlur={(event) => {
+                      const text = event.target.value;
+                      const units = parseUnits(text);
+                      if (units == null) event.target.value = formatUnits(resource.max_units);
+                      else if (!showsUnits(text, resource.max_units)) onChange({ ...resource, max_units: units });
+                    }}
+                  />
+                  {resource.availability.length > 0 && <span className="meta">{m.byDate}</span>}
+                  <button
+                    type="button"
+                    aria-label={m.availabilityOf(resource.name)}
+                    title={m.availabilityTip}
+                    onClick={() => onEditAvailability(resource.uid)}
+                  >
+                    {m.availability}
+                  </button>
+                </div>
               </td>
               <td>
                 <div className="calendar-cell">

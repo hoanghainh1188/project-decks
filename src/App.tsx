@@ -27,6 +27,7 @@ import { NetworkDiagram } from "./components/NetworkDiagram";
 import { ProjectDialog, type ProjectTab } from "./components/ProjectDialog";
 import { WorkingTimeDialog } from "./components/WorkingTimeDialog";
 import { RecurringDialog, recurringCommand } from "./components/RecurringDialog";
+import { ResourceAvailabilityDialog } from "./components/ResourceAvailabilityDialog";
 import { ResourceSheet } from "./components/ResourceSheet";
 import { SplitDialog } from "./components/SplitDialog";
 import { StatusBar } from "./components/StatusBar";
@@ -35,7 +36,7 @@ import { TaskSheet } from "./components/TaskSheet";
 import { TaskUsage } from "./components/TaskUsage";
 import { Toolbar } from "./components/Toolbar";
 import { VIEW_PANEL_ID, ViewBar, viewTabId } from "./components/ViewBar";
-import { normalizePredecessorText } from "./format";
+import { instantToDateKey, normalizePredecessorText, todayInstant } from "./format";
 import { pick, useLang, useMessages, useSetLang } from "./i18n";
 import { buildGanttPdf, pdfSuggestedName } from "./ganttPdf";
 import { handleMenuAction } from "./menuActions";
@@ -80,6 +81,8 @@ export default function App() {
   const [baselineOpen, setBaselineOpen] = useState(false);
   // The calendar Lịch làm việc opened on and the history cursor to roll back to.
   const [workingTime, setWorkingTime] = useState<{ id: number; start: number } | null>(null);
+  // The resource Khả dụng is open for and the history cursor to roll back to.
+  const [availability, setAvailability] = useState<{ uid: number; start: number } | null>(null);
   const [rowFilter, setRowFilter] = useState<FilterMode>("none");
   const [filterResource, setFilterResource] = useState<number | null>(null);
   const [filterValue, setFilterValue] = useState("");
@@ -180,6 +183,16 @@ export default function App() {
   );
   openWorkingTimeRef.current = openWorkingTime;
 
+  // Khả dụng of a resource is a transaction too.
+  const openAvailability = useCallback(
+    async (uid: number) => {
+      const state = await run(loadState);
+      setDialogError(null);
+      setAvailability({ uid, start: state ? state.history_cursor : (snap?.history_cursor ?? 0) });
+    },
+    [run, snap],
+  );
+
   // Undo every command applied since `cursor`. Queued edits (a field committed on
   // close) land first, because loadState waits for them.
   const rollbackTo = useCallback(
@@ -196,6 +209,11 @@ export default function App() {
   }, []);
 
   const project = snap?.project;
+  const availabilityResource = availability ? project?.resources.find((item) => item.uid === availability.uid) : undefined;
+  // A resource that is gone (a file opened elsewhere) ends its Khả dụng transaction.
+  useEffect(() => {
+    if (availability && project && !availabilityResource) setAvailability(null);
+  }, [availability, project, availabilityResource]);
   const task = project?.tasks.find((item) => item.uid === selected) ?? null;
   const editTask = project?.tasks.find((item) => item.uid === editUid) ?? null;
   const rows = useMemo(
@@ -234,8 +252,8 @@ export default function App() {
         task,
         view,
         fileDialogBusy,
-        // Undo stops where the open transaction began, in either dialog.
-        infoStart: infoStart ?? workingTime?.start ?? null,
+        // Undo stops where the open transaction began, in any of the dialogs.
+        infoStart: infoStart ?? workingTime?.start ?? availability?.start ?? null,
         run,
         send,
         startFileDialog,
@@ -261,7 +279,7 @@ export default function App() {
         setClipboard,
         fillField,
       }),
-    [run, send, startFileDialog, task, snap, view, fileDialogBusy, openProjectInfo, openWorkingTime, infoStart, workingTime, setLang, changeTheme, selection, clipboard, fillField],
+    [run, send, startFileDialog, task, snap, view, fileDialogBusy, openProjectInfo, openWorkingTime, infoStart, workingTime, availability, setLang, changeTheme, selection, clipboard, fillField],
   );
   menuRef.current = handleMenu;
 
@@ -567,6 +585,7 @@ export default function App() {
                 onChange={(resource) => send(resourceCommand(resource))}
                 onDelete={(uid) => send({ type: "delete_resource", uid })}
                 onEditCalendar={(id) => void openWorkingTime(id)}
+                onEditAvailability={(uid) => void openAvailability(uid)}
                 onCreateCalendar={(resource) => {
                   const name = resource.name.trim() ? m.calendarFor(resource.name.trim()) : m.resourceCalendar;
                   // Based on the project calendar, so its holidays reach the resource.
@@ -666,6 +685,26 @@ export default function App() {
           }}
           send={send}
           onCreateCalendar={() => createCalendar(m.newCalendar, () => null, false, null)}
+        />
+      )}
+      {availability && project && availabilityResource && (
+        <ResourceAvailabilityDialog
+          resource={availabilityResource}
+          changed={(snap?.history_cursor ?? 0) !== availability.start}
+          error={dialogError}
+          today={instantToDateKey(todayInstant())}
+          onSave={() => {
+            commitFocusedField();
+            setAvailability(null);
+          }}
+          onCancel={() => {
+            const start = availability.start;
+            void rollbackTo(start).then((state) => {
+              if (state && state.history_cursor <= start) setAvailability(null);
+              else setError(m.rollbackFailed);
+            });
+          }}
+          send={sendInDialog}
         />
       )}
       {seriesDialog != null && project && (

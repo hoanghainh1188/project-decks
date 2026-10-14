@@ -451,21 +451,26 @@ export function DateTimeField(props: DateTimeFieldProps) {
 
 interface DateKeyFieldProps {
   value: string;
+  /** Clearing the text commits "" (no date). */
+  optional?: boolean;
   disabled?: boolean;
   ariaLabel?: string;
+  /** Shown while empty; the date format by default. */
+  placeholder?: string;
   onCommit: (key: string) => void;
 }
 
 // Calendar exceptions use "YYYY-MM-DD" keys; an empty string means no date yet.
-export function DateKeyField({ value, disabled, ariaLabel, onCommit }: DateKeyFieldProps) {
+export function DateKeyField({ value, optional, disabled, ariaLabel, placeholder, onCommit }: DateKeyFieldProps) {
   const m = useMessages(dateTimeFieldMessages);
   return (
     <PickerField
       mode="date"
       value={value ? dateKeyToInstant(value) : null}
+      optional={optional}
       disabled={disabled}
       ariaLabel={ariaLabel}
-      placeholder={m.datePlaceholder}
+      placeholder={placeholder ?? m.datePlaceholder}
       onCommit={(ms) => onCommit(ms == null ? "" : instantToDateKey(ms))}
     />
   );
