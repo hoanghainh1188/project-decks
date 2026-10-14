@@ -27,7 +27,7 @@
 
 Tải bản cài ở trang [Releases](https://github.com/hoanghainh1188/sheafly/releases): `.dmg` cho macOS (Apple Silicon và Intel từ bản 1.2.0; các bản trước chỉ có Apple Silicon), `.msi` hoặc `-setup.exe` cho Windows, `.AppImage`, `.deb` hoặc `.rpm` cho Linux.
 
-Bản cài chưa ký số. Trên macOS, hãy mở Sheafly một lần, rồi vào **Cài đặt hệ thống → Quyền riêng tư & Bảo mật** và bấm **Vẫn mở** ở phía dưới (từ macOS 15, nhấp chuột phải → Mở không còn dùng được cho app chưa ký). Nếu macOS báo ứng dụng bị hỏng, chạy:
+Bản cài chưa ký bằng chứng chỉ nhà phát triển (bản macOS chỉ có chữ ký ad-hoc). Trên macOS, hãy mở Sheafly một lần, rồi vào **Cài đặt hệ thống → Quyền riêng tư & Bảo mật** và bấm **Vẫn mở** ở phía dưới (từ macOS 15, nhấp chuột phải → Mở không còn dùng được cho app chưa ký). Nếu macOS báo ứng dụng bị hỏng (các bản trước khi có chữ ký ad-hoc), chạy:
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/Sheafly.app

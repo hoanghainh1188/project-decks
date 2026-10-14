@@ -27,7 +27,7 @@ A Microsoft Project–style scheduler that runs on your own computer (macOS, Win
 
 Download an installer from [Releases](https://github.com/hoanghainh1188/sheafly/releases): `.dmg` for macOS (Apple Silicon and Intel, from 1.2.0; earlier releases are Apple Silicon only), `.msi` or `-setup.exe` for Windows, `.AppImage`, `.deb` or `.rpm` for Linux.
 
-The installers are not code-signed yet. On macOS, try to open Sheafly once, then go to **System Settings → Privacy & Security** and click **Open Anyway** near the bottom (since macOS 15, right-click → Open no longer works for unsigned apps). If macOS says the app is damaged, run:
+The installers are not signed with a developer certificate yet (the macOS app has only an ad-hoc signature). On macOS, try to open Sheafly once, then go to **System Settings → Privacy & Security** and click **Open Anyway** near the bottom (since macOS 15, right-click → Open no longer works for unsigned apps). If macOS says the app is damaged (releases before the ad-hoc signature), run:
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/Sheafly.app

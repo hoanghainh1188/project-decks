@@ -70,7 +70,8 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
-      # Unsigned builds. A draft release is only created for v* tags.
+      # No developer certificate: the macOS app gets an ad-hoc signature (bundle.macOS.signingIdentity "-"),
+      # so Gatekeeper offers Open Anyway instead of calling it damaged. A draft release is only created for v* tags.
       - name: Build bundles
         id: tauri
         uses: tauri-apps/tauri-action@v0
@@ -79,7 +80,7 @@ jobs:
         with:
           tagName: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
           releaseName: Sheafly ${{ github.ref_name }}
-          releaseBody: Unsigned build. See the assets below for each platform.
+          releaseBody: Not signed with a developer certificate (macOS has an ad-hoc signature). See the assets below for each platform.
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
