@@ -12,6 +12,8 @@ import {
   resourceLabelX,
   isWeekend,
   isoDate,
+  levelingGapAt,
+  levelingGaps,
   pixelsPerDay,
   ROW,
   segmentAt,
@@ -189,5 +191,40 @@ describe("dragging one piece of a split bar", () => {
       { start: at(2026, 1, 5, 8), finish: at(2026, 1, 5, 12) },
       { start: at(2026, 1, 8, 8), finish: at(2026, 1, 9, 17) },
     ]);
+  });
+});
+
+describe("gaps leveling made", () => {
+  const pieces = [
+    { start: at(2026, 1, 5, 8), finish: at(2026, 1, 5, 12) },
+    { start: at(2026, 1, 6, 8), finish: at(2026, 1, 6, 12) },
+    { start: at(2026, 1, 8, 8), finish: at(2026, 1, 8, 17) },
+  ];
+  const task = makeTask({
+    uid: 1,
+    start: at(2026, 1, 5, 8),
+    finish: at(2026, 1, 8, 17),
+    duration: 1440,
+    segments: pieces,
+    splits: [
+      { offset: 240, gap: 720 },
+      { offset: 480, gap: 600, leveling: true },
+    ],
+  });
+  const origin = at(2026, 1, 5, 0);
+
+  it("marks each gap by the splits at its offset", () => {
+    expect(levelingGaps(task)).toEqual([false, true]);
+    // The user's and leveling's split at one offset lay out as one gap, which leveling lengthened.
+    const shared = { ...task, splits: [{ offset: 240, gap: 120 }, { offset: 240, gap: 600, leveling: true }, { offset: 480, gap: 600 }] };
+    expect(levelingGaps(shared)).toEqual([true, false]);
+    expect(levelingGaps(makeTask({ uid: 2 }))).toEqual([]);
+  });
+
+  it("finds a leveling gap under the pointer only", () => {
+    // 24 px a day: the second gap runs from Jan 6 12:00 (x 36) to Jan 8 08:00 (x 80).
+    expect(levelingGapAt(task, 60, origin, 24)).toBe(true);
+    expect(levelingGapAt(task, 20, origin, 24)).toBe(false);
+    expect(levelingGapAt(task, 30, origin, 24)).toBe(false);
   });
 });

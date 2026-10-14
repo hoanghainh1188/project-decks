@@ -48,6 +48,23 @@ describe("Inspector", () => {
     expect(within(screen.getByRole("group", { name: "Theo dõi" })).getByLabelText("Bắt đầu thực")).toBeInTheDocument();
   });
 
+  it("marks a leaf as urgent with a note on what that does", async () => {
+    const { send, user } = renderInspector(leaf);
+    const group = screen.getByRole("group", { name: "Lịch" });
+    const box = within(group).getByRole("checkbox", { name: "Chen ngang" });
+    expect(box).not.toBeChecked();
+    expect(box).toHaveAccessibleDescription(/làm trước việc đang dở/);
+    await user.click(box);
+    expect(send).toHaveBeenCalledWith({ type: "set_interrupts", uid: 2, interrupts: true });
+  });
+
+  it("offers the interrupt flag only on leaves that are not milestones", () => {
+    renderInspector(summary);
+    expect(screen.queryByRole("checkbox", { name: "Chen ngang" })).not.toBeInTheDocument();
+    renderInspector(makeTask({ uid: 3, name: "Mốc", milestone: true, duration: 0 }));
+    expect(screen.queryByRole("checkbox", { name: "Chen ngang" })).not.toBeInTheDocument();
+  });
+
   it("hides fields that do not apply to a summary task", () => {
     renderInspector(summary);
     expect(screen.queryByLabelText("Bắt đầu thực")).not.toBeInTheDocument();

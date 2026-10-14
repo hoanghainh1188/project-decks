@@ -12,6 +12,8 @@ import {
   holidayKeys,
   isWeekend,
   isoDate,
+  levelingGapAt,
+  levelingGaps,
   pieceSpan,
   pixelsPerDay,
   previewPieces,
@@ -81,6 +83,8 @@ export function GanttChart({
   const headRef = useRef<HTMLDivElement>(null);
   const bodyCanvas = useRef<HTMLCanvasElement>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
+  /** Tooltip of the canvas: set while the pointer is over a gap leveling made. */
+  const [tip, setTip] = useState("");
   const px = pixelsPerDay(scale);
   const model = useMemo(() => buildTimescale(project), [project]);
   const m = useMessages(ganttChartMessages);
@@ -226,6 +230,7 @@ export function GanttChart({
             const { x, y } = contentPoint(event);
             const found = hit(x, y);
             if (!found) return;
+            setTip("");
             onSelect(found.task.uid);
             if (found.zone === "row") return;
             event.currentTarget.setPointerCapture(event.pointerId);
@@ -247,9 +252,16 @@ export function GanttChart({
               moved: false,
             });
           }}
+          title={tip}
+          onPointerLeave={() => setTip("")}
           onPointerMove={(event) => {
-            if (!drag) return;
             const { x, y } = contentPoint(event);
+            if (!drag) {
+              const found = hit(x, y);
+              const over = found != null && levelingGapAt(found.task, x, model.origin, px);
+              setTip(over ? m.levelingGap : "");
+              return;
+            }
             setDrag({ ...drag, x, y, moved: drag.moved || Math.hypot(x - drag.originX, y - drag.originY) > 4 });
           }}
           onPointerUp={(event) => {
@@ -372,7 +384,7 @@ function paintBody(
         : previewPieces(task, start, finish);
     const preview = { ...task, start, finish: moved?.kind === "segment" && pieces ? pieces[pieces.length - 1].finish : finish };
     const color = barColor(task, palette);
-    drawBar(ctx, preview, row, model.origin, px, color, palette.knob, false, preview.start, preview.finish, pieces);
+    drawBar(ctx, preview, row, model.origin, px, color, palette.knob, false, preview.start, preview.finish, pieces, palette.levelingGap);
     if (!task.summary && task.percent_complete > 0) {
       const rect = barBox(preview, row, model.origin, px);
       ctx.fillStyle = palette.progress;
@@ -460,6 +472,8 @@ function drawBar(
   start: number,
   finish: number,
   pieces: Segment[] | null,
+  /** Colour of the gaps leveling made; they are drawn as dashed boxes. Unset for a baseline. */
+  levelingGap?: string,
 ) {
   const shaped = { ...task, start, finish };
   const rect = barBox(shaped, row, origin, px);
@@ -474,8 +488,18 @@ function drawBar(
     ctx.strokeStyle = color;
     ctx.lineWidth = 1.2;
     ctx.setLineDash([2, 3]);
+    const marks = levelingGap ? levelingGaps(task) : [];
     for (let index = 0; index + 1 < spans.length; index += 1) {
       const from = spans[index].x + spans[index].w;
+      if (marks[index] && levelingGap) {
+        // A pause leveling made for an urgent task: a dashed box, apart from the user's dotted line.
+        ctx.strokeStyle = levelingGap;
+        ctx.setLineDash([4, 3]);
+        ctx.strokeRect(from + 0.5, y + 0.5, Math.max(spans[index + 1].x - from - 1, 1), h - 1);
+        ctx.strokeStyle = color;
+        ctx.setLineDash([2, 3]);
+        continue;
+      }
       ctx.beginPath();
       ctx.moveTo(from, y + h / 2);
       ctx.lineTo(spans[index + 1].x, y + h / 2);

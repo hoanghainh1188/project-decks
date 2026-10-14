@@ -240,6 +240,20 @@ function ScheduleGroup({ project, task, send, onEditCalendar, onCreateCalendar }
           </label>
         </div>
       )}
+      {!task.summary && !task.milestone && (
+        <div>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={task.interrupts}
+              aria-describedby={`interrupts-note-${task.uid}`}
+              onChange={(event) => send({ type: "set_interrupts", uid: task.uid, interrupts: event.target.checked })}
+            />
+            {m.interrupts}
+          </label>
+          <p className="check-note" id={`interrupts-note-${task.uid}`}>{m.interruptsNote}</p>
+        </div>
+      )}
       <label className="check">
         <input
           type="checkbox"

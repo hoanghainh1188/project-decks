@@ -12,7 +12,10 @@ import { GanttChart } from "./GanttChart";
 function recordingContext() {
   const fills: string[] = [];
   const texts: string[] = [];
+  /** Stroke colour of each line drawn, with the dash pattern in force. */
+  const lines: { color: string; dash: number[] }[] = [];
   let fillStyle = "";
+  let dash: number[] = [];
   const target = {
     get fillStyle() {
       return fillStyle;
@@ -22,6 +25,11 @@ function recordingContext() {
       fills.push(value);
     },
     strokeStyle: "",
+    setLineDash: (pattern: number[]) => {
+      dash = pattern;
+    },
+    stroke: () => lines.push({ color: target.strokeStyle, dash }),
+    strokeRect: () => lines.push({ color: target.strokeStyle, dash }),
     fillText: (text: string) => texts.push(text),
     measureText: (text: string) => ({ width: text.length * 6 }),
   };
@@ -32,7 +40,7 @@ function recordingContext() {
       return true;
     },
   });
-  return { ctx, fills, texts };
+  return { ctx, fills, texts, lines };
 }
 
 function project(): Project {
@@ -47,8 +55,7 @@ function project(): Project {
   });
 }
 
-function renderChart(selected: number | null = 1, group: GroupMode = "none") {
-  const data = project();
+function renderChart(selected: number | null = 1, group: GroupMode = "none", data: Project = project()) {
   const handlers = { onSelect: vi.fn(), onMove: vi.fn(), onResize: vi.fn(), onMoveSegment: vi.fn(), onLink: vi.fn(), onEdit: vi.fn(), onScroll: vi.fn() };
   const view = render(
     <GanttChart
@@ -122,5 +129,59 @@ describe("GanttChart", () => {
     act(() => applyTheme("dark"));
     expect(recorded.fills).toContain("#27272c");
     expect(recorded.fills).not.toContain("#f3f3f5");
+  });
+});
+
+describe("GanttChart leveling splits", () => {
+  let recorded: ReturnType<typeof recordingContext>;
+  beforeEach(() => {
+    recorded = recordingContext();
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(recorded.ctx as never);
+  });
+
+  function splitProject(leveling: boolean): Project {
+    return makeProject({
+      tasks: [
+        makeTask({
+          uid: 1,
+          name: "Viết API",
+          start: at(2026, 1, 5, 8),
+          finish: at(2026, 1, 8, 17),
+          duration: 960,
+          splits: [{ offset: 480, gap: 960, ...(leveling ? { leveling: true } : {}) }],
+          segments: [
+            { start: at(2026, 1, 5, 8), finish: at(2026, 1, 5, 17) },
+            { start: at(2026, 1, 8, 8), finish: at(2026, 1, 8, 17) },
+          ],
+        }),
+      ],
+    });
+  }
+
+  /** The canvas title after hovering each x along the first row. */
+  function tips(canvas: HTMLCanvasElement): Set<string> {
+    const seen = new Set<string>();
+    for (let x = 0; x < 600; x += 2) {
+      fireEvent.pointerMove(canvas, { clientX: x, clientY: 14 });
+      seen.add(canvas.title);
+    }
+    return seen;
+  }
+
+  it("draws a gap leveling made dashed in its own colour, with a tooltip", () => {
+    const { container } = renderChart(null, "none", splitProject(true));
+    expect(recorded.lines).toContainEqual({ color: "#d97706", dash: [4, 3] });
+    const canvas = container.querySelector("canvas")!;
+    expect(tips(canvas)).toContain("Tách do cân bằng (chen ngang)");
+    fireEvent.pointerLeave(canvas);
+    expect(canvas.title).toBe("");
+  });
+
+  it("draws the user's gap as before, without the tooltip", () => {
+    const { container } = renderChart(null, "none", splitProject(false));
+    expect(recorded.lines.some((line) => line.color === "#d97706")).toBe(false);
+    expect(recorded.lines).toContainEqual({ color: "#2f6fad", dash: [2, 3] });
+    const canvas = container.querySelector("canvas")!;
+    expect([...tips(canvas)].filter(Boolean)).toEqual([]);
   });
 });

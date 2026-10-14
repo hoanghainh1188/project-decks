@@ -90,6 +90,7 @@ export const CANVAS_TOKENS = {
   baseline: ["--bar-baseline", "#c5c5cb"],
   progress: ["--bar-progress", "rgba(0, 0, 0, 0.28)"],
   knob: ["--bar-knob", "#ffffff"],
+  levelingGap: ["--bar-leveling-gap", "#d97706"],
   link: ["--link", "#6d6d72"],
   accent: ["--accent", "#0a84ff"],
 } as const satisfies Record<string, readonly [string, string]>;

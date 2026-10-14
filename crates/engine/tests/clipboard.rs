@@ -183,6 +183,32 @@ fn fill_down_copies_the_field_in_one_undo_step() {
 }
 
 #[test]
+fn fill_down_of_the_interrupt_flag_skips_summaries_and_milestones() {
+    let mut doc = doc();
+    doc.apply(Command::SetDuration { uid: 3, minutes: 0 }).unwrap();
+    doc.apply(Command::SetInterrupts { uid: 1, interrupts: true }).unwrap();
+    doc.apply(Command::FillDown {
+        from_uid: 1,
+        to_uids: vec![2, 3],
+        field: FillField::Interrupts,
+    })
+    .unwrap();
+    let flags: Vec<bool> = doc.project.tasks.iter().map(|task| task.interrupts).collect();
+    assert_eq!(flags, [true, true, false]);
+    // Filling from the milestone, which never has the flag, leaves the rows below alone.
+    doc.apply(Command::FillDown {
+        from_uid: 3,
+        to_uids: vec![2],
+        field: FillField::Interrupts,
+    })
+    .unwrap();
+    assert!(doc.project.task(2).unwrap().interrupts);
+    doc.undo().unwrap();
+    doc.undo().unwrap();
+    assert!(!doc.project.task(2).unwrap().interrupts);
+}
+
+#[test]
 fn fill_down_of_predecessors_links_the_rows_below() {
     let mut doc = doc();
     doc.apply(Command::FillDown {

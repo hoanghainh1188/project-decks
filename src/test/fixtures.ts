@@ -49,6 +49,7 @@ export function makeTask(overrides: Partial<Task> & { uid: number }): Task {
     fixed_cost: 0,
     fixed_cost_accrual: "prorated",
     leveling_delay: 0,
+    interrupts: false,
     start,
     finish: start + 9 * HOUR_MS,
     early_start: start,

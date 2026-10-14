@@ -40,6 +40,15 @@ describe("buildViewRows without grouping", () => {
 });
 
 describe("buildViewRows filters", () => {
+  it("keeps urgent tasks with the interrupt filter and highlights them", () => {
+    const project = outlineProject();
+    project.tasks = project.tasks.map((task) => (task.uid === 7 ? { ...task, interrupts: true } : task));
+    expect(shape(buildViewRows(project, "interrupts", null, "none", "none"))).toEqual(["6", "7"]);
+    expect(shape(buildViewRows(project, "none", null, "none", "interrupts"))).toEqual([
+      "1", "2", "3", "4", "5", "6", "7*", "8",
+    ]);
+  });
+
   it("critical filter keeps matching tasks and their summary ancestors", () => {
     expect(shape(buildViewRows(outlineProject(), "critical", null, "none", "none"))).toEqual(["1", "2"]);
   });

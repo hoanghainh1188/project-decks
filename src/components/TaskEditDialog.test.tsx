@@ -25,6 +25,24 @@ describe("TaskEditDialog", () => {
     expect(send).toHaveBeenCalledWith({ type: "set_predecessors", uid: 4, text: "2SS" });
   });
 
+  it("marks a leaf as urgent", async () => {
+    const user = userEvent.setup();
+    const send = vi.fn();
+    render(<TaskEditDialog task={makeTask({ uid: 4 })} send={send} onClose={() => {}} />);
+    const box = screen.getByRole("checkbox", { name: "Chen ngang" });
+    expect(box).toHaveAccessibleDescription(/làm trước việc đang dở/);
+    await user.click(box);
+    expect(send).toHaveBeenCalledWith({ type: "set_interrupts", uid: 4, interrupts: true });
+  });
+
+  it("offers no interrupt flag on summaries and milestones", () => {
+    const { unmount } = render(<TaskEditDialog task={makeTask({ uid: 1, summary: true })} send={() => {}} onClose={() => {}} />);
+    expect(screen.queryByRole("checkbox", { name: "Chen ngang" })).not.toBeInTheDocument();
+    unmount();
+    render(<TaskEditDialog task={makeTask({ uid: 2, milestone: true, duration: 0 })} send={() => {}} onClose={() => {}} />);
+    expect(screen.queryByRole("checkbox", { name: "Chen ngang" })).not.toBeInTheDocument();
+  });
+
   it("closes on Escape", async () => {
     const user = userEvent.setup();
     const onClose = vi.fn();

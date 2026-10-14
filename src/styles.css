@@ -368,6 +368,8 @@ button.view-tab.on:active:not(:disabled) { background: var(--surface); }
 .evm-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .evm-head-actions { display: flex; gap: 4px; }
 .evm-note { margin: 0; color: var(--text-muted); }
+.check-cell { display: flex; align-items: center; justify-content: center; }
+.check-note { margin: 2px 0 0; color: var(--text-muted); font-size: 11px; }
 .evm-note:empty { display: none; }
 .evm-empty {
   display: grid;
