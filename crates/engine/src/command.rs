@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use crate::availability::{self, AvailabilityPeriod};
 use crate::calendar::{Calendar, TimeRange, WorkWeek};
 use crate::calendar_base;
 use crate::clipboard::{self, FillField, TaskClipboard};
@@ -327,6 +328,12 @@ pub enum Command {
     /// Dates change only when the project is leveled again.
     SetLevelingOrder {
         order: Vec<SortKey>,
+    },
+    /// Replace the days a resource has other units than its max units. Only
+    /// overallocation and leveling read them.
+    SetResourceAvailability {
+        uid: u32,
+        periods: Vec<AvailabilityPeriod>,
     },
 }
 
@@ -968,6 +975,9 @@ fn apply_inner(project: &mut Project, command: &Command) -> Result<(), EngineErr
             fields::set_value(project, *uid, *field_id, value.as_ref())?
         }
         Command::SetLevelingOrder { order } => level_order::set_order(project, order)?,
+        Command::SetResourceAvailability { uid, periods } => {
+            availability::set_availability(project, *uid, periods)?
+        }
     }
     Ok(())
 }

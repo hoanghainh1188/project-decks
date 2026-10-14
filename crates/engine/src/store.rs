@@ -25,9 +25,9 @@ use crate::recovery::{self, Damage, OpenReport, Recovery};
 /// (phase 15); version 8 `SetAssignmentActualCost`; version 9 `SetCalendarBase` and the
 /// base of `CreateCalendar`; version 10 `SetProjectCalendar`; version 11 the custom field
 /// commands (`AddField`, `UpdateField`, `DeleteField`, `SetFieldValue`) and the custom
-/// field of `FillDown` (phase 18); version 12 `SetLevelingOrder`. None of them changes how
-/// older commands schedule.
-pub const FORMAT_VERSION: u32 = 12;
+/// field of `FillDown` (phase 18); version 12 `SetLevelingOrder`, version 13
+/// `SetResourceAvailability`. None of them changes how older commands schedule.
+pub const FORMAT_VERSION: u32 = 13;
 
 /// Checkpoints a file keeps below the cursor, besides the one at the cursor. Each is
 /// a whole scheduled project (about 1 MB for 1,000 tasks), so only a few nearby ones.

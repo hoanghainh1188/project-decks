@@ -9,10 +9,14 @@
 //! hours with random priorities, one person each, built straight into the model so the
 //! setup does not replay thousands of commands. Add `field` to level the backlog by a
 //! custom choice field first (`[Field asc, Priority desc, Start asc]`), most tasks having
-//! a value.
+//! a value, and `leave` to give each person up to three periods of other units (a week
+//! off, weeks at half time).
 
 use std::time::{Duration, Instant};
 
+use chrono::NaiveDate;
+
+use sheafly_engine::availability::AvailabilityPeriod;
 use sheafly_engine::command::Command;
 use sheafly_engine::fields::{FieldDef, FieldKind, FieldValue};
 use sheafly_engine::level::level_project;
@@ -130,7 +134,7 @@ fn leveling(tasks: u32) {
 /// A backlog of `tasks` effort-only tasks spread over `people`, the way a sprint plan
 /// arrives: no links, every task free to start at the project start, priority deciding
 /// the order. Prints the leveling time and the idle hours left between a person's tasks.
-fn capacity(people: u32, tasks: u32, by_field: bool) {
+fn capacity(people: u32, tasks: u32, by_field: bool, leave: bool) {
     // A fixed linear congruential generator, so every run builds the same backlog.
     let mut seed: u64 = 42;
     let mut random = |below: u64| {
@@ -138,8 +142,21 @@ fn capacity(people: u32, tasks: u32, by_field: bool) {
         (seed >> 33) % below
     };
     let mut project = Project::new("Năng lực", timestamp(2026, 1, 5, 8, 0));
+    let monday = NaiveDate::from_ymd_opt(2026, 1, 5).unwrap();
     for uid in 1..=people {
-        project.resources.push(Resource::new(uid, format!("Người {uid}"), ResourceKind::Person));
+        let mut resource = Resource::new(uid, format!("Người {uid}"), ResourceKind::Person);
+        if leave {
+            let mut day = random(10) as i64;
+            for _ in 0..random(4) {
+                let length = if random(2) == 0 { 4 } else { 11 };
+                let from = monday + chrono::Duration::days(day);
+                let to = from + chrono::Duration::days(length);
+                let units = if random(2) == 0 { 0.0 } else { 0.5 };
+                resource.availability.push(AvailabilityPeriod { from: Some(from), to: Some(to), units });
+                day += length + 1 + random(14) as i64;
+            }
+        }
+        project.resources.push(resource);
     }
     for uid in 1..=tasks {
         let work = 60 * (1 + random(16) as i64);
@@ -191,7 +208,8 @@ fn capacity(people: u32, tasks: u32, by_field: bool) {
     assert!(project.overallocations.is_empty(), "{:?}", project.overallocations.first());
 
     // Working time from the project start to a person's last finish, less their work:
-    // zero when leveling packs each person's tasks back to back.
+    // zero when leveling packs each person's tasks back to back (with `leave`, the days
+    // off and the half days count too).
     let calendar = project.calendar().clone();
     let idle: i64 = (1..=people)
         .filter_map(|person| {
@@ -219,7 +237,8 @@ fn main() {
     if args.iter().any(|arg| arg == "capacity") {
         let people = numbers.first().copied().unwrap_or(100).max(1) as u32;
         let tasks = numbers.get(1).copied().unwrap_or(1000) as u32;
-        capacity(people, tasks, args.iter().any(|arg| arg == "field"));
+        let has = |name: &str| args.iter().any(|arg| arg == name);
+        capacity(people, tasks, has("field"), has("leave"));
         return;
     }
     let args = numbers;

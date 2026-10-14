@@ -11,25 +11,24 @@
 //! and one availability each.
 
 use std::cmp::{Ordering, Reverse};
-use std::collections::{BTreeMap, BTreeSet, BinaryHeap, HashMap};
+use std::collections::{BTreeMap, BinaryHeap, HashMap};
 
 use chrono::NaiveDate;
 
+use crate::availability::Capacity;
 use crate::calendar::Calendar;
 use crate::error::EngineError;
 use crate::graph::Graph;
+use crate::level_cycle::{midnight_of, weekly_from, Cycle};
 use crate::level_order::{self, Parts};
 use crate::model::{ConstraintType, Overallocation, Project, Resource, Task};
 use crate::ripple::Ripple;
 use crate::schedule::{prepare, publish_derived, schedule_dates};
 use crate::split;
-use crate::timeutil::{civil, compose, date_key, parse_date_key};
+use crate::timeutil::{civil, compose, date_key};
 
 /// Units below this are rounding noise.
 const EPSILON: f64 = 1e-6;
-
-/// Wall-clock time has no daylight saving, so every week is this long.
-const WEEK: i64 = 7 * 86_400_000;
 
 #[cfg(test)]
 thread_local! {
@@ -37,6 +36,8 @@ thread_local! {
     pub(crate) static SEARCH_IN_FULL: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     /// Searches that came round (or would have, with `SEARCH_IN_FULL`).
     pub(crate) static CAME_ROUND: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    /// Rounds of every search for a place.
+    pub(crate) static ROUNDS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
 pub fn publish_overallocations(project: &mut Project) {
@@ -116,10 +117,11 @@ fn sweeps(project: &Project) -> Vec<Sweep> {
         .filter_map(|(resource_uid, pieces)| {
             let resource = project.resources.iter().find(|r| r.uid == resource_uid)?;
             let calendar = project.resource_calendar(resource);
+            let capacity = Capacity::of(resource);
             let stretches = stretches(
                 &pieces,
                 |date| working_ranges(calendar, date),
-                resource.max_units,
+                |date| capacity.units_on(date),
             );
             Some(Sweep {
                 resource_uid,
@@ -164,11 +166,12 @@ fn cut_to_calendar(
 }
 
 /// Load and availability between every pair of consecutive boundaries, in time order,
-/// from the first day with work to the last.
+/// from the first day with work to the last. The resource has `units_on` a day while
+/// its calendar works that day.
 fn stretches(
     pieces: &[Piece],
     ranges_on: impl Fn(NaiveDate) -> Vec<(i64, i64)>,
-    max_units: f64,
+    units_on: impl Fn(NaiveDate) -> f64,
 ) -> Vec<Stretch> {
     // (instant, load change, availability change)
     let mut events: Vec<(i64, f64, f64)> = Vec::with_capacity(pieces.len() * 2);
@@ -180,9 +183,10 @@ fn stretches(
     let last = pieces.iter().map(|piece| civil(piece.start).0).max();
     if let (Some(mut date), Some(last)) = (first, last) {
         loop {
+            let units = units_on(date);
             for (start, end) in ranges_on(date) {
-                events.push((start, 0.0, max_units));
-                events.push((end, 0.0, -max_units));
+                events.push((start, 0.0, units));
+                events.push((end, 0.0, -units));
             }
             match date.succ_opt() {
                 Some(next) if date < last => date = next,
@@ -544,10 +548,11 @@ fn add_to_busy(project: &Project, lookup: &Lookup, index: usize, busy: &mut BTre
         let entry = busy.entry(resource_uid).or_default();
         working_pieces(project, task, units, &mut entry.pieces);
         let calendar = project.resource_calendar(resource);
+        let capacity = Capacity::of(resource);
         entry.stretches = stretches(
             &entry.pieces,
             |date| working_ranges(calendar, date),
-            resource.max_units,
+            |date| capacity.units_on(date),
         );
         entry.until = entry
             .pieces
@@ -583,9 +588,18 @@ fn working_ranges(calendar: &Calendar, date: NaiveDate) -> Vec<(i64, i64)> {
     merged
 }
 
+/// A resource `earliest_fit` checks, with the units the task needs of it.
+struct Checked<'a> {
+    units: f64,
+    placed: &'a Busy,
+    calendar: &'a Calendar,
+    capacity: Capacity<'a>,
+}
+
 /// The first start from the task's current start at which its work fits next to the
 /// placed work of every resource. A resource the task alone overloads (more units than
-/// it has) cannot be fixed by waiting and is left out of the check.
+/// it will ever have from the task's start on) cannot be fixed by waiting and is left
+/// out of the check.
 fn earliest_fit(
     project: &Project,
     lookup: &Lookup,
@@ -596,20 +610,25 @@ fn earliest_fit(
     let calendar = project.task_calendar(task);
     let duration = task.duration.max(0);
     let empty = Busy::default();
-    let checked: Vec<(&Resource, f64, &Busy, &Calendar)> = resources
+    let (first_day, _) = civil(task.start);
+    let checked: Vec<Checked> = resources
         .iter()
         .filter_map(|(resource_uid, units)| {
             let resource = lookup.resource(project, *resource_uid)?;
+            let capacity = Capacity::of(resource);
             // A resource the task alone overloads cannot be helped by waiting.
-            if *units > resource.max_units + EPSILON {
+            if *units > capacity.most_from(first_day) + EPSILON {
                 return None;
             }
-            let placed = busy.get(resource_uid).unwrap_or(&empty);
-            let resource_calendar = project.resource_calendar(resource);
-            Some((resource, *units, placed, resource_calendar))
+            Some(Checked {
+                units: *units,
+                placed: busy.get(resource_uid).unwrap_or(&empty),
+                calendar: project.resource_calendar(resource),
+                capacity,
+            })
         })
         .collect();
-    let mut cycle = Cycle::new(&checked);
+    let mut cycle = Cycle::new(horizon(&checked));
     let mut start = task.start;
     // Each round moves past one busy block. Past four years the resource will not have
     // room (its calendar never meets the task's, say): leave the task where it was.
@@ -618,6 +637,8 @@ fn earliest_fit(
         if start > limit {
             break;
         }
+        #[cfg(test)]
+        ROUNDS.with(|count| count.set(count.get() + 1));
         let segments = split::layout(calendar, start, duration, &task.splits);
         let intervals: Vec<(i64, i64)> = segments
             .iter()
@@ -627,21 +648,15 @@ fn earliest_fit(
         cut_to_calendar(calendar, &intervals, 0.0, &mut pieces);
         let clash = checked
             .iter()
-            .filter_map(|(resource, units, placed, resource_calendar)| {
-                let (from, to) = first_clash(
-                    resource_calendar,
-                    resource.max_units,
-                    &placed.pieces,
-                    &pieces,
-                    *units,
-                )?;
-                Some((from, room_from(placed, resource_calendar, to, *units)))
+            .filter_map(|resource| {
+                let (from, to) = first_clash(resource, &pieces)?;
+                Some((from, room_from(resource, to)))
             })
             .min();
         let Some((from, room)) = clash else {
             return start;
         };
-        if cycle.came_round(start, calendar, &checked) {
+        if cycle.came_round(start, || steady(calendar, &checked)) {
             break;
         }
         // Slide the task so the work that met the clash starts where the resource next
@@ -652,110 +667,72 @@ fn earliest_fit(
     task.start
 }
 
-/// Ends a search that can never succeed: the task's calendar works hours its resources
-/// never do, so some of its work clashes wherever it starts.
-///
-/// Past the placed work of every checked resource (`horizon`), a round sees no load:
-/// the clash, the room after it and the slide come from the calendars alone. Past the
-/// last exception and work week of those calendars (`steady`), the calendars repeat
-/// every week, so a round starting a whole number of weeks later is the same round
-/// moved by those weeks, and so is every round after it. When a start from there on
-/// lands on the same point of the week as an earlier clashing start from there on,
-/// the search has entered a loop of clashing starts and no later start can fit.
-/// Every search that does fit ends exactly as before.
-struct Cycle {
-    horizon: i64,
-    steady: Option<i64>,
-    seen: BTreeSet<i64>,
-}
-
-impl Cycle {
-    fn new(checked: &[(&Resource, f64, &Busy, &Calendar)]) -> Self {
-        let horizon = checked
-            .iter()
-            .map(|(_, _, placed, _)| {
-                // `room_from` reads the placed stretches up to the last one's start.
-                let last = placed.stretches.last().map_or(i64::MIN, |s| s.start + 1);
-                placed.until.max(last)
-            })
-            .max()
-            .unwrap_or(i64::MIN);
-        Self {
-            horizon,
-            steady: None,
-            seen: BTreeSet::new(),
-        }
-    }
-
-    /// Whether `start`, which clashes, repeats an earlier clashing start.
-    fn came_round(
-        &mut self,
-        start: i64,
-        calendar: &Calendar,
-        checked: &[(&Resource, f64, &Busy, &Calendar)],
-    ) -> bool {
-        if start < self.horizon {
-            return false;
-        }
-        let horizon = self.horizon;
-        let steady = *self.steady.get_or_insert_with(|| {
-            checked
-                .iter()
-                .map(|(_, _, _, resource_calendar)| weekly_from(resource_calendar))
-                .fold(horizon.max(weekly_from(calendar)), i64::max)
-        });
-        let came_round = start >= steady && !self.seen.insert(start.rem_euclid(WEEK));
-        #[cfg(test)]
-        if came_round {
-            CAME_ROUND.with(|count| count.set(count.get() + 1));
-            // Searching on: the same start of the week is not counted twice.
-            self.seen.clear();
-            self.steady = Some(i64::MAX);
-            return !SEARCH_IN_FULL.with(std::cell::Cell::get);
-        }
-        came_round
-    }
-}
-
-/// Midnight after the last day a calendar sets apart from its weekly pattern (an
-/// exception or a work week), from which on it repeats every week.
-fn weekly_from(calendar: &Calendar) -> i64 {
-    let last_exception = calendar
-        .exceptions
-        .keys()
-        .filter_map(|key| parse_date_key(key))
-        .max();
-    let last_work_week = calendar.work_weeks.iter().map(|week| week.to).max();
-    match last_exception.max(last_work_week) {
-        Some(date) => date.succ_opt().map_or(i64::MAX, |next| compose(next, 0)),
-        None => i64::MIN,
-    }
-}
-
-/// The first time from `at` on when the resource works and has room for `units` more:
-/// inside its placed work, or once that is over, when its calendar next works.
-fn room_from(busy: &Busy, calendar: &Calendar, at: i64, units: f64) -> i64 {
-    let first = busy.stretches.partition_point(|stretch| stretch.start < at);
-    busy.stretches[first..]
+/// Where the placed work of every checked resource is over.
+fn horizon(checked: &[Checked]) -> i64 {
+    checked
         .iter()
-        .find(|stretch| {
-            stretch.available > EPSILON && stretch.load + units <= stretch.available + EPSILON
+        .map(|resource| {
+            // `room_from` reads the placed stretches up to the last one's start.
+            let last = resource.placed.stretches.last().map_or(i64::MIN, |s| s.start + 1);
+            resource.placed.until.max(last)
         })
-        .map_or_else(
-            || calendar.next_work_start(busy.until.max(at)),
-            |stretch| stretch.start,
-        )
+        .max()
+        .unwrap_or(i64::MIN)
 }
 
-/// The earliest stretch in which `pieces` at `units` do not fit next to `others` on a
-/// resource with `max_units` while its calendar works.
-fn first_clash(
-    calendar: &Calendar,
-    max_units: f64,
-    others: &[Piece],
-    pieces: &[Piece],
-    units: f64,
-) -> Option<(i64, i64)> {
+/// From when the task's calendar and every checked resource's calendar and capacity
+/// repeat every week.
+fn steady(calendar: &Calendar, checked: &[Checked]) -> i64 {
+    checked
+        .iter()
+        .map(|resource| {
+            weekly_from(resource.calendar).max(midnight_of(resource.capacity.steady_from()))
+        })
+        .fold(weekly_from(calendar), i64::max)
+}
+
+/// The first time from `at` on when the resource works and has room for its units
+/// more: inside its placed work, or once that is over, when its calendar next works on a
+/// day it has the units (a leave is passed in one go).
+fn room_from(resource: &Checked, at: i64) -> i64 {
+    let (busy, units) = (resource.placed, resource.units);
+    // Before the placed work there is no load, so the clash came from the capacity: the
+    // room may come before the placed work. Without periods this cannot happen in a way
+    // the old search did not already handle, so it is left exactly as it was.
+    if resource.capacity.has_periods() {
+        let placed_from = busy.stretches.first().map_or(i64::MAX, |stretch| stretch.start);
+        if at < placed_from {
+            let free = free_from(resource, at);
+            if free < placed_from {
+                return free;
+            }
+        }
+    }
+    let first = busy.stretches.partition_point(|stretch| stretch.start < at);
+    let inside = busy.stretches[first..].iter().find(|stretch| {
+        stretch.available > EPSILON && stretch.load + units <= stretch.available + EPSILON
+    });
+    if let Some(stretch) = inside {
+        return stretch.start;
+    }
+    free_from(resource, busy.until.max(at))
+}
+
+/// When the resource's calendar next works, from `at` on, on a day it has its units.
+fn free_from(resource: &Checked, at: i64) -> i64 {
+    let after = resource.calendar.next_work_start(at);
+    let (day, _) = civil(after);
+    match resource.capacity.next_with(day, resource.units) {
+        Some(next) if next > day => resource.calendar.next_work_start(compose(next, 0)),
+        // No such day comes: the search runs into its limit or comes round.
+        _ => after,
+    }
+}
+
+/// The earliest stretch in which `pieces` at the resource's units do not fit next to its
+/// placed work, given what it has each day while its calendar works.
+fn first_clash(resource: &Checked, pieces: &[Piece]) -> Option<(i64, i64)> {
+    let (calendar, others, units) = (resource.calendar, &resource.placed.pieces, resource.units);
     for piece in pieces {
         let (date, _) = civil(piece.start);
         let mut cuts = vec![piece.start, piece.end];
@@ -768,6 +745,7 @@ fn first_clash(
             cuts.push(other.end.clamp(piece.start, piece.end));
         }
         let ranges = working_ranges(calendar, date);
+        let max_units = resource.capacity.units_on(date);
         for (start, end) in &ranges {
             cuts.push((*start).clamp(piece.start, piece.end));
             cuts.push((*end).clamp(piece.start, piece.end));
@@ -794,62 +772,5 @@ fn first_clash(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn piece(start: i64, end: i64, units: f64) -> Piece {
-        Piece { start, end, units }
-    }
-
-    /// The default order must place tasks exactly as the key leveling had before the
-    /// order could be set: (levelable, waiting, start, -priority, slack, uid).
-    #[test]
-    fn the_default_order_is_the_old_key() {
-        let mut seed: u64 = 7;
-        let mut random = |below: u64| {
-            seed = seed.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1_442_695_040_888_963_407);
-            ((seed >> 33) % below) as i64
-        };
-        let mut project = Project::new("Khóa", 0);
-        let keys = level_order::default_order();
-        let mut both = Vec::new();
-        for uid in 1..=400 {
-            let mut task = Task::new(uid, "Việc");
-            task.start = random(6) * 3_600_000;
-            task.priority = [0, 300, 500, 500, 700, 1000][random(6) as usize];
-            task.manual = random(8) == 0;
-            let slack = random(5) * 60 - 120;
-            let waiting = random(4) == 0;
-            let old = (levelable(&task), waiting, task.start, -task.priority, slack, task.uid);
-            let new = Key {
-                levelable: levelable(&task),
-                waiting,
-                start: task.start,
-                parts: Parts::of(&project, &keys, &task, slack),
-                uid: task.uid,
-            };
-            project.tasks.push(task);
-            both.push((old, new));
-        }
-        for (old_a, new_a) in &both {
-            for (old_b, new_b) in &both {
-                assert_eq!(old_a.cmp(old_b), new_a.cmp(new_b), "{old_a:?} against {old_b:?}");
-            }
-        }
-    }
-
-    #[test]
-    fn stretches_follow_load_and_availability() {
-        let day = NaiveDate::from_ymd_opt(2026, 1, 5).unwrap();
-        let at = |minute: u16| compose(day, minute);
-        let pieces = [piece(at(480), at(720), 1.0), piece(at(600), at(720), 0.5)];
-        let found = stretches(&pieces, |_| vec![(at(480), at(720))], 1.0);
-        let summary: Vec<(i64, f64, f64)> = found
-            .iter()
-            .map(|s| (s.start, s.load, s.available))
-            .collect();
-        assert_eq!(summary, vec![(at(480), 1.0, 1.0), (at(600), 1.5, 1.0)]);
-        assert!(!found[0].over());
-        assert!(found[1].over());
-    }
-}
+#[path = "level_tests.rs"]
+mod tests;

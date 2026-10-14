@@ -3,12 +3,14 @@ use std::collections::BTreeMap;
 use quick_xml::events::Event;
 use quick_xml::Reader;
 
+use crate::availability::AvailabilityPeriod;
 use crate::calendar::{Calendar, CalendarBase, TimeRange, WorkWeek};
 use crate::error::EngineError;
 use crate::model::{
     Accrual, Assignment, Baseline, ConstraintType, DepKind, Dependency, Project, Resource,
     ResourceKind, Task, TaskType,
 };
+use crate::mspdi_availability::{self, PeriodBuilder};
 use crate::mspdi_calendar_days;
 use crate::mspdi_cost;
 use crate::mspdi_fields::{self, FieldReader};
@@ -188,6 +190,7 @@ pub fn read_mspdi_with_report(xml: &str) -> Result<(Project, ImportReport), Engi
     let mut working: Option<TimeRange> = None;
     let mut exception: Option<ExceptionBuilder> = None;
     let mut work_week: Option<WorkWeekBuilder> = None;
+    let mut available: Option<PeriodBuilder> = None;
     let mut task: Option<TaskBuilder> = None;
     let mut link: Option<LinkBuilder> = None;
     let mut baseline: Option<Baseline> = None;
@@ -231,6 +234,7 @@ pub fn read_mspdi_with_report(xml: &str) -> Result<(Project, ImportReport), Engi
                         })
                     }
                     Some("Resource") => resource = Some(ResourceBuilder::default()),
+                    Some("AvailabilityPeriod") => available = Some(PeriodBuilder::default()),
                     Some("Assignment") => assignment = Some(AssignmentBuilder::default()),
                     Some("TimephasedData") => period = Some(Period::default()),
                     _ => {}
@@ -259,6 +263,9 @@ pub fn read_mspdi_with_report(xml: &str) -> Result<(Project, ImportReport), Engi
                 }
                 if let Some(item) = work_week.as_mut() {
                     item.read(parent, &name, text.trim());
+                }
+                if let Some(item) = available.as_mut() {
+                    item.read(parent, &name, &text);
                 }
                 fields.text(&name, parent, &text);
                 fields.end(&name, parent);
@@ -378,10 +385,15 @@ pub fn read_mspdi_with_report(xml: &str) -> Result<(Project, ImportReport), Engi
                             }
                         }
                     }
+                    "AvailabilityPeriod" => {
+                        if let (Some(owner), Some(item)) = (resource.as_mut(), available.take()) {
+                            owner.periods.push(item.finish());
+                        }
+                    }
                     "Resource" => {
                         if let Some(builder) = resource.take() {
                             if builder.uid != 0 {
-                                project.resources.push(builder.finish());
+                                project.resources.push(builder.finish(&mut notes));
                             }
                         }
                     }
@@ -1097,6 +1109,7 @@ fn write_resource(xml: &mut String, project: &Project, resource: &Resource) {
     if let Some(calendar_id) = resource.calendar_id {
         el(xml, "CalendarUID", &calendar_id.to_string());
     }
+    mspdi_availability::write(xml, resource);
     xml.push_str("</Resource>\n");
 }
 
@@ -1143,7 +1156,7 @@ fn escape(text: &str) -> String {
         .replace('>', "&gt;")
 }
 
-fn format_number(value: f64) -> String {
+pub(crate) fn format_number(value: f64) -> String {
     if value.fract() == 0.0 {
         format!("{}", value as i64)
     } else {
@@ -1417,16 +1430,17 @@ struct ResourceBuilder {
     overtime_rate: f64,
     cost_per_use: f64,
     calendar_id: Option<u32>,
+    periods: Vec<AvailabilityPeriod>,
 }
 
 impl ResourceBuilder {
-    fn finish(self) -> Resource {
+    fn finish(self, notes: &mut Vec<ImportNote>) -> Resource {
         let kind = if self.group.contains("Máy") || self.group.eq_ignore_ascii_case("machine") {
             ResourceKind::Machine
         } else {
             ResourceKind::Person
         };
-        Resource {
+        let mut resource = Resource {
             uid: self.uid,
             name: if self.name.is_empty() {
                 format!("Nguồn lực {}", self.uid)
@@ -1443,7 +1457,10 @@ impl ResourceBuilder {
             standard_rate: self.standard_rate,
             overtime_rate: self.overtime_rate,
             cost_per_use: self.cost_per_use,
-        }
+            availability: Vec::new(),
+        };
+        mspdi_availability::apply(&mut resource, self.periods, notes);
+        resource
     }
 }
 

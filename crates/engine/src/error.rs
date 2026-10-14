@@ -81,6 +81,10 @@ pub enum Invalid {
     FieldValue,
     DuplicateSortKey,
     TooManySortKeys,
+    AvailabilityRange,
+    AvailabilityUnits,
+    AvailabilityOverlaps,
+    TooManyAvailabilityPeriods,
 }
 
 impl EngineError {
@@ -293,6 +297,22 @@ impl Invalid {
                 "Thứ tự cân bằng có tối đa 8 tiêu chí",
                 "The leveling order can have at most 8 criteria",
             ),
+            Self::AvailabilityRange => fixed(
+                "Khoảng khả dụng phải kết thúc vào hoặc sau ngày bắt đầu",
+                "An availability period must end on or after its start",
+            ),
+            Self::AvailabilityUnits => fixed(
+                "Đơn vị khả dụng phải là một số không âm",
+                "Available units must be a number of zero or more",
+            ),
+            Self::AvailabilityOverlaps => fixed(
+                "Các khoảng khả dụng của một nguồn lực không được trùng ngày",
+                "The availability periods of a resource cannot share days",
+            ),
+            Self::TooManyAvailabilityPeriods => fixed(
+                "Một nguồn lực có tối đa 500 khoảng khả dụng",
+                "A resource can have at most 500 availability periods",
+            ),
         }
     }
 }
@@ -356,6 +376,10 @@ mod tests {
             FieldValue,
             DuplicateSortKey,
             TooManySortKeys,
+            AvailabilityRange,
+            AvailabilityUnits,
+            AvailabilityOverlaps,
+            TooManyAvailabilityPeriods,
         ];
         for reason in all {
             let (vi, en) = (reason.message(Lang::Vi), reason.message(Lang::En));

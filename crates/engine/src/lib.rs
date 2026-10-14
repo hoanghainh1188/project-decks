@@ -5,6 +5,7 @@
 //! The engine is the source of truth: the UI sends commands and renders the result.
 
 pub mod autosave;
+pub mod availability;
 pub mod calendar;
 pub mod calendar_base;
 pub mod checkpoint;
@@ -17,9 +18,11 @@ pub mod fields;
 mod graph;
 pub mod lang;
 pub mod level;
+mod level_cycle;
 pub mod level_order;
 pub mod model;
 pub mod mspdi;
+mod mspdi_availability;
 mod mspdi_calendar_days;
 mod mspdi_cost;
 mod mspdi_fields;
