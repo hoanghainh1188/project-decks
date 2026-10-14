@@ -2,6 +2,7 @@ import { ArrowDown, ArrowDownWideNarrow, ArrowUp, ArrowUpNarrowWide, Plus, X } f
 import { useRef } from "react";
 
 import { useMessages } from "../i18n";
+import { usePendingList } from "../usePendingList";
 import type { Command, Criterion, Project, Snapshot, SortKey } from "../types";
 import { Button } from "./Button";
 import { levelingTabMessages } from "./LevelingTab.i18n";
@@ -52,15 +53,7 @@ export function LevelingTab({ project, send }: { project: Project; send: Send })
   const l = useMessages(levelingTabMessages);
   const stored = project.leveling_order;
   const order = stored.length > 0 ? stored : STANDARD;
-  // The list the next change starts from: the last one sent. A new snapshot replaces it
-  // only once no change is still on its way, so two quick clicks both count.
-  const latest = useRef(order);
-  const seen = useRef(stored);
-  const pending = useRef(0);
-  if (seen.current !== stored) {
-    seen.current = stored;
-    if (pending.current === 0) latest.current = order;
-  }
+  const { latest, apply } = usePendingList(order, (next) => send({ type: "set_leveling_order", order: next }));
   // The criterion whose select gets focus once its row comes back with a new key.
   const focusKey = useRef<string | null>(null);
   const options = [
@@ -73,39 +66,27 @@ export function LevelingTab({ project, send }: { project: Project; send: Send })
   const full = order.length >= MAX_KEYS;
   const standard = sameOrder(order, STANDARD);
 
-  async function apply(next: SortKey[]) {
-    latest.current = next;
-    pending.current += 1;
-    try {
-      // Refused: start again from the list the engine holds (its reason is in the footer).
-      if (!(await send({ type: "set_leveling_order", order: next }))) {
-        latest.current = seen.current.length > 0 ? seen.current : STANDARD;
-      }
-    } finally {
-      pending.current -= 1;
-    }
-  }
-  const at = (own: string) => latest.current.findIndex((item) => criterionKey(item.criterion) === own);
+  const at = (own: string) => latest().findIndex((item) => criterionKey(item.criterion) === own);
   const replace = (own: string, key: SortKey) => {
     if (at(own) < 0) return;
     if (criterionKey(key.criterion) !== own) focusKey.current = criterionKey(key.criterion);
-    void apply(latest.current.map((item) => (criterionKey(item.criterion) === own ? key : item)));
+    void apply(latest().map((item) => (criterionKey(item.criterion) === own ? key : item)));
   };
   const move = (own: string, by: -1 | 1) => {
     const index = at(own);
     const other = index + by;
-    if (index < 0 || other < 0 || other >= latest.current.length) return;
-    const next = [...latest.current];
+    if (index < 0 || other < 0 || other >= latest().length) return;
+    const next = [...latest()];
     [next[index], next[other]] = [next[other], next[index]];
     void apply(next);
   };
   const remove = (own: string) => {
-    if (latest.current.length > 1) void apply(latest.current.filter((item) => criterionKey(item.criterion) !== own));
+    if (latest().length > 1) void apply(latest().filter((item) => criterionKey(item.criterion) !== own));
   };
   const add = () => {
-    const taken = new Set(latest.current.map((item) => criterionKey(item.criterion)));
+    const taken = new Set(latest().map((item) => criterionKey(item.criterion)));
     const free = options.find((option) => !taken.has(option.key));
-    if (free && latest.current.length < MAX_KEYS) void apply([...latest.current, asc(criterionOf(free.key))]);
+    if (free && latest().length < MAX_KEYS) void apply([...latest(), asc(criterionOf(free.key))]);
   };
 
   return (

@@ -7,6 +7,9 @@ import { getLang } from "./i18n/lang";
 
 const DAY = 8 * 60;
 
+/** The working minutes durations count as a day, as the engine's `MINUTES_PER_DAY`. */
+export const MINUTES_PER_DAY = DAY;
+
 /** Hundredths of a unit as text: 150 -> "1,5" ("1.5" in English), 75 -> "0,75". */
 function hundredths(value: number): string {
   const whole = Math.floor(value / 100);

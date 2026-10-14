@@ -210,6 +210,18 @@ export interface Resource {
   standard_rate: number;
   overtime_rate: number;
   cost_per_use: number;
+  /** Days with other units than `max_units`, in date order. */
+  availability: AvailabilityPeriod[];
+}
+
+/**
+ * Mirror of `availability::AvailabilityPeriod`: `units` on every day from `from` to `to`
+ * (both "YYYY-MM-DD", both included); `null` is no limit on that side.
+ */
+export interface AvailabilityPeriod {
+  from: string | null;
+  to: string | null;
+  units: number;
 }
 
 export interface Assignment {
@@ -372,7 +384,8 @@ export type Command =
     }
   | { type: "delete_field"; id: number }
   | { type: "set_field_value"; uid: number; field_id: number; value: FieldValue | null }
-  | { type: "set_leveling_order"; order: SortKey[] };
+  | { type: "set_leveling_order"; order: SortKey[] }
+  | { type: "set_resource_availability"; uid: number; periods: AvailabilityPeriod[] };
 
 /** Mirror of `clipboard::TaskCopy`: one copied task, its level relative to the copy. */
 export interface TaskCopy {

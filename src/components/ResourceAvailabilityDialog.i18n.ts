@@ -1,0 +1,46 @@
+import { defineMessages } from "../i18n";
+
+export const resourceAvailabilityMessages = defineMessages(
+  {
+    title: (name: string) => `Khả dụng: ${name}`,
+    intro: (name: string, units: string) =>
+      `Ngoài các khoảng dưới đây, ${name} có đơn vị tối đa ${units}. Đơn vị 0 là vắng mặt (nghỉ phép), 0,5 là nửa thời gian; có thể gõ cả “4h/ngày”. Chỉ báo quá tải và cân bằng nguồn lực đọc khả dụng, thời lượng không đổi; bấm Cân bằng nguồn lực để xếp lại.`,
+    none: "Chưa có khoảng nào.",
+    periods: "Các khoảng khả dụng",
+    from: "Từ ngày",
+    to: "Đến ngày",
+    units: "Đơn vị",
+    fromOf: (n: number) => `Từ ngày, khoảng ${n}`,
+    toOf: (n: number) => `Đến ngày, khoảng ${n}`,
+    unitsOf: (n: number) => `Đơn vị, khoảng ${n}`,
+    noLimit: "Không giới hạn",
+    remove: (n: number) => `Bỏ khoảng ${n}`,
+    removeColumn: "Bỏ",
+    add: "Thêm khoảng",
+    addAfterOpen: "Khoảng cuối không có ngày kết thúc; đặt ngày kết thúc trước khi thêm",
+    previewing: "Đang xem trước thay đổi",
+    cancel: "Hủy",
+    save: "Lưu",
+  },
+  {
+    title: (name: string) => `Availability: ${name}`,
+    intro: (name: string, units: string) =>
+      `Outside the periods below, ${name} has max units ${units}. Units of 0 mean away (on leave), 0.5 half time; you can also type “4h/day”. Only overallocation and leveling read availability, durations do not change; choose Level Resources to place tasks again.`,
+    none: "No periods yet.",
+    periods: "Availability periods",
+    from: "From",
+    to: "To",
+    units: "Units",
+    fromOf: (n: number) => `From, period ${n}`,
+    toOf: (n: number) => `To, period ${n}`,
+    unitsOf: (n: number) => `Units, period ${n}`,
+    noLimit: "No limit",
+    remove: (n: number) => `Remove period ${n}`,
+    removeColumn: "Remove",
+    add: "Add period",
+    addAfterOpen: "The last period has no end; give it an end date before adding another",
+    previewing: "Previewing changes",
+    cancel: "Cancel",
+    save: "Save",
+  },
+);

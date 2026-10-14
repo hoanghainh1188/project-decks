@@ -246,6 +246,25 @@ class FakeBackend {
         project.leveling_order = structuredClone(command.order);
         return;
       }
+      case "set_resource_availability": {
+        const resource = project.resources.find((item) => item.uid === command.uid);
+        if (!resource) throw "Không tìm thấy nguồn lực";
+        // The engine's checks, roughly: sorted by start (open first), no shared days.
+        const start = (key: string | null) => key ?? "";
+        const periods = [...command.periods].sort((a, b) => start(a.from).localeCompare(start(b.from)));
+        for (const period of periods) {
+          if (!(period.units >= 0)) throw "Đơn vị khả dụng phải là một số không âm";
+          if (period.from && period.to && period.from > period.to) throw "Khoảng khả dụng phải kết thúc vào hoặc sau ngày bắt đầu";
+        }
+        for (let i = 1; i < periods.length; i += 1) {
+          const [before, after] = [periods[i - 1], periods[i]];
+          if (before.to === null || after.from === null || after.from <= before.to) {
+            throw "Các khoảng khả dụng của một nguồn lực không được trùng ngày";
+          }
+        }
+        resource.availability = periods;
+        return;
+      }
       case "create_calendar": {
         const id = Math.max(0, ...project.calendars.map((item) => item.id)) + 1;
         const base = project.calendars.find((item) => item.id === command.base_id);

@@ -14,6 +14,7 @@ function renderSheet(resources: Resource[], overallocations: Overallocation[] = 
     onDelete: vi.fn(),
     onEditCalendar: vi.fn(),
     onCreateCalendar: vi.fn(),
+    onEditAvailability: vi.fn(),
   };
   render(
     <I18nProvider lang={lang}>
@@ -33,6 +34,32 @@ const crane = makeResource({ uid: 11, name: "Cẩu", kind: "machine" });
 const over: Overallocation[] = [{ resource_uid: 10, date: "2026-01-05", units: 1.5, max_units: 1 }];
 
 describe("ResourceSheet", () => {
+  it("reads max units with a comma or as hours per day", async () => {
+    const { handlers, user } = renderSheet([an]);
+    const units = screen.getByRole("textbox", { name: "Đơn vị tối đa của An" });
+    await user.clear(units);
+    await user.type(units, "0,5");
+    await user.tab();
+    expect(handlers.onChange).toHaveBeenLastCalledWith({ ...an, max_units: 0.5 });
+    await user.clear(units);
+    await user.type(units, "4h/ngày");
+    await user.tab();
+    expect(handlers.onChange).toHaveBeenLastCalledWith({ ...an, max_units: 0.5 });
+    await user.clear(units);
+    await user.type(units, "nhiều");
+    await user.tab();
+    expect(handlers.onChange).toHaveBeenCalledTimes(2);
+    expect(units).toHaveValue("1");
+  });
+
+  it("opens a resource's availability and marks one that has periods", async () => {
+    const away = makeResource({ uid: 12, name: "Bình", availability: [{ from: "2026-01-12", to: null, units: 0 }] });
+    const { handlers, user } = renderSheet([an, away]);
+    expect(screen.getAllByText("theo ngày")).toHaveLength(1);
+    await user.click(screen.getByRole("button", { name: "Khả dụng của Bình" }));
+    expect(handlers.onEditAvailability).toHaveBeenCalledWith(12);
+  });
+
   it("shows the Vietnamese headers and flags overallocated resources", () => {
     renderSheet([an, crane], over);
     const headers = screen.getAllByRole("columnheader").map((cell) => cell.textContent);

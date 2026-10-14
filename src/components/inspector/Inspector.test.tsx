@@ -83,6 +83,36 @@ describe("Inspector", () => {
     expect(within(screen.getByRole("group", { name: "Nguồn lực" })).getByLabelText("Đơn vị An")).toBeInTheDocument();
   });
 
+  it("takes assignment units as hours per day and shows them as hours", async () => {
+    const project = makeProject({
+      tasks: [leaf],
+      resources: [makeResource({ uid: 10, name: "An" }), makeResource({ uid: 11, name: "Bình" })],
+      assignments: [makeAssignment({ uid: 1, task_uid: 2, resource_uid: 10, units: 0.5 })],
+    });
+    const { send, user } = renderInspector(leaf, project);
+    const units = screen.getByLabelText("Đơn vị An");
+    expect(units).toHaveValue("0,5");
+    expect(screen.getByText("4 giờ/ngày")).toBeInTheDocument();
+    await user.clear(units);
+    await user.type(units, "2h/ngày");
+    await user.tab();
+    expect(send).toHaveBeenLastCalledWith({ type: "update_assignment", uid: 1, units: 0.25, work: null, overtime_work: null });
+
+    // Text that is not units goes back to what the assignment has.
+    await user.clear(units);
+    await user.type(units, "nửa");
+    await user.tab();
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(units).toHaveValue("0,5");
+
+    const add = screen.getByLabelText("Đơn vị gán");
+    await user.clear(add);
+    await user.type(add, "1,5 giờ/ngày");
+    expect(screen.getByText("= 1,5 giờ/ngày")).toBeInTheDocument();
+    await user.selectOptions(within(screen.getByRole("group", { name: "Nguồn lực" })).getByRole("combobox"), "11");
+    expect(send).toHaveBeenLastCalledWith({ type: "assign_resource", task_uid: 2, resource_uid: 11, units: 0.1875 });
+  });
+
   it("does not send anything when a duration field is left untouched", () => {
     for (const work of [0, 25, 45, 90, 540, 768, 12060]) {
       const { send, unmount } = renderInspector({ ...leaf, work });
