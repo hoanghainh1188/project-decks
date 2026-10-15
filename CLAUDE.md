@@ -21,9 +21,12 @@ cargo bench -p sheafly-engine --bench large_project -- leveling   # leveling 500
 cargo bench -p sheafly-engine --bench large_project -- capacity 500 5000  # leveling a sprint backlog: <people> <tasks>
 cargo bench -p sheafly-engine --bench large_project -- suggest 500 5000   # assignment suggestions: <people> <tasks>
 cargo bench -p sheafly-engine --bench large_project -- capacity 500 5000 interrupt  # leveling with 5% urgent tasks
+cargo bench -p sheafly-engine --bench large_project -- capacity 500 5000 linked  # leveling with finish-to-start chains
 cargo bench -p sheafly-engine --bench large_project -- import 5000   # check_import and ImportRows for 500 people, 5000 tasks
 cargo bench -p sheafly-engine --bench large_project -- loadmap 500 5000  # load_map for a year by week and twelve weeks by day
 ```
+
+Measure speed with these benches (release), never in a test: under `cfg(test)` leveling also checks every quick reschedule against a full pass (`ripple.rs` `same_as_full_pass`), which makes a linked 5,000-task leveling look a hundred times slower.
 
 The webview runs under a CSP (`app.security.csp` in `tauri.conf.json`): scripts only from the app, inline styles allowed (components use `style={…}`), images and fonts also from `data:`/`blob:` (canvas and jsPDF). A new feature that loads anything else (a remote font, `eval`, a worker) needs the policy widened, and checked against the production build. CI (`.github/workflows/ci.yml`) runs the engine tests, the typecheck, and `pnpm test`. `.github/workflows/build.yml` builds unsigned installers for macOS (universal: Apple Silicon and Intel), Windows, and Linux. It runs on `v*` tags, which also create a draft release, and on manual dispatch, never on ordinary PRs or pushes. The real UI only works inside Tauri: `inTauri()` guards every `invoke`, so a plain browser at `localhost:1420` can't load project state.
 

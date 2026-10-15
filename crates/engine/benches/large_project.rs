@@ -36,7 +36,7 @@ use sheafly_engine::import::{check_import, ImportAssignee, ImportResource, Impor
 use sheafly_engine::level::level_project;
 use sheafly_engine::level_order::{Criterion, SortKey};
 use sheafly_engine::load_map::{load_map, Bucket};
-use sheafly_engine::model::{Assignment, ConstraintType, DepKind, Resource, ResourceKind, Task, TaskType};
+use sheafly_engine::model::{Assignment, ConstraintType, DepKind, Dependency, Resource, ResourceKind, Task, TaskType};
 use sheafly_engine::skills::{AssignmentRule, Condition, RuleTarget, SkillDef};
 use sheafly_engine::suggest::suggest;
 use sheafly_engine::store::{load, save};
@@ -151,7 +151,7 @@ fn leveling(tasks: u32) {
 /// A backlog of `tasks` effort-only tasks spread over `people`, the way a sprint plan
 /// arrives: no links, every task free to start at the project start, priority deciding
 /// the order. Prints the leveling time and the idle hours left between a person's tasks.
-fn capacity(people: u32, tasks: u32, by_field: bool, leave: bool, interrupt: bool) -> Project {
+fn capacity(people: u32, tasks: u32, by_field: bool, leave: bool, interrupt: bool, linked: bool) -> Project {
     // A fixed linear congruential generator, so every run builds the same backlog.
     let mut seed: u64 = 42;
     let mut random = |below: u64| {
@@ -200,6 +200,15 @@ fn capacity(people: u32, tasks: u32, by_field: bool, leave: bool, interrupt: boo
             task.values.insert(1, FieldValue::Text(option.into()));
         }
         project.tasks.push(task);
+        // Chains of ten, and a link from an earlier task on about a quarter of them.
+        if linked && uid % 10 != 1 {
+            let next = project.dependencies.len() as u32 + 1;
+            project.dependencies.push(Dependency { uid: next, predecessor_uid: uid - 1, successor_uid: uid, kind: DepKind::Fs, lag: 0 });
+            if uid > 20 && random(4) == 0 {
+                let from = 1 + random(u64::from(uid - 11)) as u32;
+                project.dependencies.push(Dependency { uid: next + 1, predecessor_uid: from, successor_uid: uid, kind: DepKind::Fs, lag: 0 });
+            }
+        }
         project.assignments.push(Assignment {
             uid,
             task_uid: uid,
@@ -217,6 +226,7 @@ fn capacity(people: u32, tasks: u32, by_field: bool, leave: bool, interrupt: boo
     project.next_task_uid = tasks + 1;
     project.next_resource_uid = people + 1;
     project.next_assignment_uid = tasks + 1;
+    project.next_dependency_uid = project.dependencies.len() as u32 + 1;
     if by_field {
         let options = ["Gấp", "Cao", "Vừa", "Thấp"].iter().map(|o| o.to_string()).collect();
         let kind = FieldKind::Choice { options };
@@ -378,7 +388,7 @@ fn main() {
     if args.iter().any(|arg| arg == "loadmap") {
         let people = numbers.first().copied().unwrap_or(500).max(1) as u32;
         let tasks = numbers.get(1).copied().unwrap_or(5000) as u32;
-        let project = capacity(people, tasks, false, true, false);
+        let project = capacity(people, tasks, false, true, false, false);
         let monday = NaiveDate::from_ymd_opt(2026, 1, 5).unwrap();
         timed("load_map 52 tuần", || {
             load_map(&project, monday, monday + chrono::Duration::days(363), Bucket::Week).expect("load map")
@@ -406,7 +416,7 @@ fn main() {
         let people = numbers.first().copied().unwrap_or(100).max(1) as u32;
         let tasks = numbers.get(1).copied().unwrap_or(1000) as u32;
         let has = |name: &str| args.iter().any(|arg| arg == name);
-        capacity(people, tasks, has("field"), has("leave"), has("interrupt"));
+        capacity(people, tasks, has("field"), has("leave"), has("interrupt"), has("linked"));
         return;
     }
     let args = numbers;
