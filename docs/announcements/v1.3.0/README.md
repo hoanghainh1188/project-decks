@@ -41,3 +41,14 @@ Cách 2, kho GitHub đã liên kết với Zenn:
 1. Chép `zenn.md` thành `articles/sheafly-v1-3-capacity.md`. Tên tệp chính là slug: 12–50 ký tự, gồm `a-z`, `0-9`, `-` và `_`.
 2. Chép ảnh vào `images/sheafly-1.3.jpg` ở gốc kho.
 3. Đổi `published: false` thành `true`, rồi push.
+
+## Facebook
+
+Bốn ảnh trong `facebook/`, chụp từ bản 1.3 với một dự án mẫu ("Ra mắt ứng dụng đặt lịch khám": 6 người, 19 công việc, có kỹ năng, quy tắc giao việc và một kỳ nghỉ phép), độ phân giải Retina:
+
+1. `1-gantt.png`: bảng công việc và Gantt theo tuần.
+2. `2-load.png`: màn Tải nguồn lực, ô đỏ là quá tải, ô xám là tuần nghỉ phép.
+3. `3-assign-preview.png`: Giao việc theo quy tắc, gợi ý người làm và kết quả dự kiến sau cân bằng.
+4. `4-gantt-dark.png`: giao diện tối.
+
+Ảnh chụp trên nhánh có thanh chia bảng/Gantt và các sửa bố cục (PR #101), trước khi PR đó merge.
