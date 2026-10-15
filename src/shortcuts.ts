@@ -13,6 +13,9 @@ export function shortcutId(event: KeyboardEvent): string | null {
   if (key === "[") return "outdent";
   if (key === "backspace") return "delete";
   if (key === "d" && !event.shiftKey && !event.altKey) return "fill-down";
+  if (key === "=" || key === "+") return "zoom-in";
+  if (key === "-") return "zoom-out";
+  if (key === "0") return "zoom-reset";
   // Option changes the key on macOS (Option+C is "ç"), so read the physical key.
   if (event.altKey && event.code === "KeyC") return "copy-task";
   if (event.altKey && event.code === "KeyV") return "paste-task";

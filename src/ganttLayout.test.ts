@@ -66,6 +66,13 @@ describe("timescale bands and labels", () => {
     expect(bands[0].count).toBe(7);
   });
 
+  it("leaves a band too narrow for its name unlabelled, so the name is never cut", () => {
+    // Two days of a week band at 14 px a day cannot hold "Tuần 5".
+    const bands = timescaleBands([at(2026, 1, 30), at(2026, 1, 31), at(2026, 2, 1), ...days.slice(7, 14)], pixelsPerDay("week"));
+    expect(bands[0]).toEqual({ label: "", count: 2 });
+    expect(bands[1].label).toMatch(/^Tuần \d+$/);
+  });
+
   it("day labels depend on zoom", () => {
     const monday = at(2026, 1, 5);
     expect(dayLabel(monday, 28)).toBe("T2 5");
@@ -77,7 +84,8 @@ describe("timescale bands and labels", () => {
     const monday = at(2026, 1, 5);
     const sunday = at(2026, 1, 11);
     expect(dayLabelParts(monday, 28)).toEqual({ weekday: "T2", date: "5" });
-    expect(dayLabelParts(sunday, 20)).toEqual({ weekday: "CN", date: "11" });
+    expect(dayLabelParts(sunday, 26)).toEqual({ weekday: "CN", date: "11" });
+    expect(dayLabelParts(sunday, 22)).toEqual({ weekday: "", date: "11" });
     expect(dayLabelParts(monday, 14)).toEqual({ weekday: "", date: "5" });
     expect(dayLabelParts(monday, 5)).toEqual({ weekday: "", date: "" });
   });
@@ -161,7 +169,7 @@ describe("timescale labels in English", () => {
     const monday = at(2026, 1, 5);
     const sunday = at(2026, 1, 11);
     expect(dayLabel(monday, 28)).toBe("Mon 5");
-    expect(dayLabelParts(sunday, 20)).toEqual({ weekday: "Sun", date: "11" });
+    expect(dayLabelParts(sunday, 26)).toEqual({ weekday: "Sun", date: "11" });
     expect(dayLabelParts(monday, 14)).toEqual({ weekday: "", date: "5" });
   });
 });

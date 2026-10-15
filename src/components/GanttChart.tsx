@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
 
 import { shiftDays } from "../format";
 import { resourceNamesByTask } from "../resourceNames";
@@ -15,7 +15,6 @@ import {
   levelingGapAt,
   levelingGaps,
   pieceSpan,
-  pixelsPerDay,
   previewPieces,
   segmentAt,
   segmentPreview,
@@ -27,6 +26,7 @@ import {
 import { ganttKeyAction } from "../ganttKeys";
 import { useLang, useMessages } from "../i18n";
 import { canvasPalette, useResolvedTheme, type CanvasPalette } from "../theme";
+import { anchoredScroll, wheelPixels, wheelZoom, zoomedPx } from "../ganttZoom";
 import { UI_FONT_FAMILY } from "../uiFont";
 import type { Project, Scale, Segment, Task } from "../types";
 import type { ViewRow } from "../viewRows";
@@ -51,6 +51,10 @@ interface Props {
   project: Project;
   rows: ViewRow[];
   scale: Scale;
+  /** How much wider than the scale's own a day column is (Cmd/Ctrl + wheel, pinch, menu). */
+  zoom?: number;
+  /** A new zoom from Cmd/Ctrl + wheel or a pinch; the chart keeps the date under the pointer. */
+  onZoom?: (zoom: number) => void;
   selected: number | null;
   tracking: boolean;
   bodyRef: RefObject<HTMLDivElement | null>;
@@ -69,6 +73,8 @@ export function GanttChart({
   project,
   rows,
   scale,
+  zoom = 1,
+  onZoom,
   selected,
   tracking,
   bodyRef,
@@ -85,7 +91,51 @@ export function GanttChart({
   const [drag, setDrag] = useState<DragState | null>(null);
   /** Tooltip of the canvas: set while the pointer is over a gap leveling made. */
   const [tip, setTip] = useState("");
-  const px = pixelsPerDay(scale);
+  const px = zoomedPx(scale, zoom);
+  // Where the last zoom was aimed, so the date under the pointer stays put.
+  const anchor = useRef<{ x: number } | null>(null);
+  const shownPx = useRef(px);
+  const zoomState = useRef({ scale, zoom, onZoom });
+  zoomState.current = { scale, zoom, onZoom };
+  const pending = useRef<number | null>(null);
+  pending.current = null;
+
+  useEffect(() => {
+    const scroller = bodyRef.current;
+    if (!scroller) return;
+    // A native listener: React's wheel listener is passive and cannot stop the scroll.
+    const wheel = (event: WheelEvent) => {
+      const { scale: s, zoom: z, onZoom: change } = zoomState.current;
+      if (!(event.ctrlKey || event.metaKey) || !change) return;
+      event.preventDefault();
+      // Several events can arrive before the next render: build on the last one sent.
+      const from = pending.current ?? z;
+      const next = wheelZoom(s, from, wheelPixels(event));
+      if (next === from) return;
+      pending.current = next;
+      anchor.current = { x: event.clientX - scroller.getBoundingClientRect().left };
+      change(next);
+    };
+    scroller.addEventListener("wheel", wheel, { passive: false });
+    return () => scroller.removeEventListener("wheel", wheel);
+  }, [bodyRef]);
+
+  // Keep the anchored date in place once the wider or narrower columns are laid out; a
+  // zoom from the menu or keys anchors at the middle of the view.
+  useLayoutEffect(() => {
+    const scroller = bodyRef.current;
+    const before = shownPx.current;
+    shownPx.current = px;
+    if (!scroller || before === px) {
+      anchor.current = null;
+      return;
+    }
+    const x = anchor.current?.x ?? scroller.clientWidth / 2;
+    anchor.current = null;
+    scroller.scrollLeft = anchoredScroll(scroller.scrollLeft, x, before, px);
+    // The header follows in the same frame, not one scroll event later.
+    if (headRef.current) headRef.current.scrollLeft = scroller.scrollLeft;
+  }, [px, bodyRef]);
   const model = useMemo(() => buildTimescale(project), [project]);
   const m = useMessages(ganttChartMessages);
   // Band labels are in the interface language, so they are rebuilt when it changes.
@@ -117,6 +167,7 @@ export function GanttChart({
       scroller.scrollTop,
       scroller.scrollLeft,
       scroller.clientHeight,
+      scroller.clientWidth,
       palette,
     );
   }
@@ -133,7 +184,8 @@ export function GanttChart({
   function contentPoint(event: { clientX: number; clientY: number; currentTarget: HTMLCanvasElement }) {
     const bounds = event.currentTarget.getBoundingClientRect();
     return {
-      x: event.clientX - bounds.left,
+      // The canvas sits at the scrolled-to part of the timeline (`paintBody`).
+      x: event.clientX - bounds.left + (Number.parseFloat(event.currentTarget.style.left) || 0),
       y: event.clientY - bounds.top + (bodyRef.current?.scrollTop ?? 0),
     };
   }
@@ -210,6 +262,7 @@ export function GanttChart({
               event.currentTarget.scrollTop,
               event.currentTarget.scrollLeft,
               event.currentTarget.clientHeight,
+              event.currentTarget.clientWidth,
               palette,
             );
           }
@@ -306,18 +359,24 @@ function paintBody(
   scrollTop: number,
   scrollLeft: number,
   viewHeight: number,
+  viewWidth: number,
   palette: CanvasPalette,
 ) {
   const width = model.days.length * px;
+  // The canvas covers only the part of the timeline in view, so it stays far below the
+  // size a browser will draw however long the project or wide the zoom.
+  const canvasWidth = Math.max(1, Math.min(width, viewWidth > 0 ? viewWidth : width));
+  const canvasLeft = Math.max(0, Math.min(scrollLeft, width - canvasWidth));
   const contentHeight = Math.max(rows.length * ROW, 1);
   const canvasHeight = Math.max(1, Math.min(Math.max(viewHeight, ROW), contentHeight));
   const ratio = window.devicePixelRatio || 1;
   canvas.style.top = `${scrollTop}px`;
-  sizeCanvas(canvas, width, canvasHeight, ratio);
+  canvas.style.left = `${canvasLeft}px`;
+  sizeCanvas(canvas, canvasWidth, canvasHeight, ratio);
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
-  ctx.setTransform(ratio, 0, 0, ratio, 0, -scrollTop * ratio);
-  ctx.clearRect(0, scrollTop, width, canvasHeight);
+  ctx.setTransform(ratio, 0, 0, ratio, -canvasLeft * ratio, -scrollTop * ratio);
+  ctx.clearRect(canvasLeft, scrollTop, canvasWidth, canvasHeight);
   const windowHeight = Math.max(viewHeight, canvasHeight);
   const rowStart = Math.max(0, Math.floor(scrollTop / ROW) - 6);
   const rowEnd = Math.min(rows.length, rowStart + Math.ceil(windowHeight / ROW) + 12);

@@ -164,6 +164,13 @@ pub enum Entry {
         en: &'static str,
     },
     Separator,
+    /// A submenu of related items; `id` only names it for its icon and the tests.
+    Submenu {
+        id: &'static str,
+        vi: &'static str,
+        en: &'static str,
+        entries: &'static [Entry],
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -192,6 +199,10 @@ const fn item(
     }
 }
 
+const fn group(id: &'static str, vi: &'static str, en: &'static str, entries: &'static [Entry]) -> Entry {
+    Entry::Submenu { id, vi, en, entries }
+}
+
 /// The custom quit item. Not the predefined Quit: it would exit without asking about
 /// unsaved changes.
 pub const QUIT: Entry = item(
@@ -212,10 +223,24 @@ pub const FILE_MENU: &[Entry] = &[
         Some("CmdOrCtrl+Shift+S"),
     ),
     Entry::Separator,
-    item("import-xml", "Nhập MSPDI…", "Import MSPDI…", None),
-    item("import-table", "Nhập bảng (CSV, Excel)…", "Import Table (CSV, Excel)…", None),
-    item("export-xml", "Xuất MSPDI…", "Export MSPDI…", None),
-    item("export-pdf", "Xuất PDF", "Export PDF", None),
+    group(
+        "import",
+        "Nhập",
+        "Import",
+        &[
+            item("import-xml", "Nhập MSPDI…", "Import MSPDI…", None),
+            item("import-table", "Nhập bảng (CSV, Excel)…", "Import Table (CSV, Excel)…", None),
+        ],
+    ),
+    group(
+        "export",
+        "Xuất",
+        "Export",
+        &[
+            item("export-xml", "Xuất MSPDI…", "Export MSPDI…", None),
+            item("export-pdf", "Xuất PDF", "Export PDF", None),
+        ],
+    ),
 ];
 
 /// The Help menu. The licenses item opens the file the installer ships
@@ -259,8 +284,15 @@ pub const EDIT_MENU: &[Entry] = &[
         Some("CmdOrCtrl+Backspace"),
     ),
     Entry::Separator,
-    item("recurring", "Công việc lặp…", "Recurring Task…", None),
-    item("split-task", "Tách công việc…", "Split Task…", None),
+    group(
+        "task-tools",
+        "Công việc",
+        "Task",
+        &[
+            item("recurring", "Công việc lặp…", "Recurring Task…", None),
+            item("split-task", "Tách công việc…", "Split Task…", None),
+        ],
+    ),
 ];
 
 /// The View menu, before the language submenu.
@@ -278,33 +310,67 @@ pub const VIEW_MENU: &[Entry] = &[
         None,
     ),
     Entry::Separator,
-    item("scale-day", "Thang ngày", "Timescale: Days", None),
-    item("scale-week", "Thang tuần", "Timescale: Weeks", None),
-    item("scale-month", "Thang tháng", "Timescale: Months", None),
+    group(
+        "timescale",
+        "Thang thời gian",
+        "Timescale",
+        &[
+            item("scale-day", "Thang ngày", "Timescale: Days", None),
+            item("scale-week", "Thang tuần", "Timescale: Weeks", None),
+            item("scale-month", "Thang tháng", "Timescale: Months", None),
+            Entry::Separator,
+            item("zoom-in", "Phóng to thời gian", "Zoom In Timescale", Some("CmdOrCtrl+=")),
+            item("zoom-out", "Thu nhỏ thời gian", "Zoom Out Timescale", Some("CmdOrCtrl+-")),
+            item("zoom-reset", "Cỡ thời gian gốc", "Actual Timescale Size", Some("CmdOrCtrl+0")),
+        ],
+    ),
 ];
 
 pub const PROJECT_MENU: &[Entry] = &[
-    item(
-        "project-info",
-        "Thông tin dự án…",
-        "Project Information…",
-        None,
+    group(
+        "project-setup",
+        "Thiết lập dự án",
+        "Project Setup",
+        &[
+            item("project-info", "Thông tin dự án…", "Project Information…", None),
+            item("custom-fields", "Trường tùy chỉnh…", "Custom Fields…", None),
+            item("working-time", "Lịch làm việc…", "Working Time…", None),
+        ],
     ),
-    item("custom-fields", "Trường tùy chỉnh…", "Custom Fields…", None),
-    item("working-time", "Lịch làm việc…", "Working Time…", None),
-    item("baseline", "Đường cơ sở…", "Baseline…", None),
     Entry::Separator,
-    item("level", "Cân bằng nguồn lực", "Level Resources", None),
-    item("leveling-order", "Thứ tự cân bằng…", "Leveling Order…", None),
-    item("assignment-rules", "Quy tắc giao việc…", "Assignment Rules…", None),
-    item("assign-by-rules", "Giao việc theo quy tắc…", "Assign by Rules…", None),
-    item("clear-level", "Xóa độ trễ cân bằng", "Clear Leveling", None),
-    Entry::Separator,
-    item(
-        "reschedule-uncompleted",
-        "Dời phần chưa xong sau ngày trạng thái",
-        "Reschedule Uncompleted Work After the Status Date",
-        None,
+    group(
+        "leveling",
+        "Cân bằng",
+        "Leveling",
+        &[
+            item("level", "Cân bằng nguồn lực", "Level Resources", None),
+            item("clear-level", "Xóa độ trễ cân bằng", "Clear Leveling", None),
+            Entry::Separator,
+            item("leveling-order", "Thứ tự cân bằng…", "Leveling Order…", None),
+        ],
+    ),
+    group(
+        "assigning",
+        "Giao việc",
+        "Assigning",
+        &[
+            item("assign-by-rules", "Giao việc theo quy tắc…", "Assign by Rules…", None),
+            item("assignment-rules", "Quy tắc giao việc…", "Assignment Rules…", None),
+        ],
+    ),
+    group(
+        "tracking",
+        "Theo dõi",
+        "Tracking",
+        &[
+            item("baseline", "Đường cơ sở…", "Baseline…", None),
+            item(
+                "reschedule-uncompleted",
+                "Dời phần chưa xong sau ngày trạng thái",
+                "Reschedule Uncompleted Work After the Status Date",
+                None,
+            ),
+        ],
     ),
     Entry::Separator,
     item(
@@ -435,20 +501,27 @@ mod tests {
     use super::*;
 
     fn all_entries() -> impl Iterator<Item = &'static Entry> {
-        FILE_MENU
-            .iter()
-            .chain(EDIT_MENU)
-            .chain(VIEW_MENU)
-            .chain(PROJECT_MENU)
-            .chain(HELP_MENU)
-            .chain(std::iter::once(&QUIT))
+        fn flatten(entries: &'static [Entry], out: &mut Vec<&'static Entry>) {
+            for entry in entries {
+                out.push(entry);
+                if let Entry::Submenu { entries, .. } = entry {
+                    flatten(entries, out);
+                }
+            }
+        }
+        let mut out = Vec::new();
+        for menu in [FILE_MENU, EDIT_MENU, VIEW_MENU, PROJECT_MENU, HELP_MENU] {
+            flatten(menu, &mut out);
+        }
+        out.push(&QUIT);
+        out.into_iter()
     }
 
     #[test]
     fn every_menu_item_has_both_languages_and_a_unique_id() {
         let mut ids = std::collections::HashSet::new();
         for entry in all_entries() {
-            if let Entry::Item { id, vi, en, .. } = entry {
+            if let Entry::Item { id, vi, en, .. } | Entry::Submenu { id, vi, en, .. } = entry {
                 assert!(!vi.trim().is_empty(), "{id} has no Vietnamese label");
                 assert!(!en.trim().is_empty(), "{id} has no English label");
                 assert!(ids.insert(*id), "duplicate menu id {id}");
@@ -485,7 +558,7 @@ mod tests {
     fn quit_keeps_its_accelerator() {
         let quit = match QUIT {
             Entry::Item { accelerator, .. } => accelerator,
-            Entry::Native { .. } | Entry::Separator => None,
+            Entry::Native { .. } | Entry::Separator | Entry::Submenu { .. } => None,
         };
         assert_eq!(quit, Some("CmdOrCtrl+Q"));
     }

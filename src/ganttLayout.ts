@@ -177,7 +177,16 @@ export interface TimescaleBand {
   count: number;
 }
 
-/** Each band is an exact run of equal day columns. Callers must not flex-shrink it. */
+/** Roughly how wide a band label is drawn, with its padding: 7 px a letter, 12 px around. */
+function labelFits(label: string, width: number): boolean {
+  return label.length * 7 + 12 <= width;
+}
+
+/**
+ * Each band is an exact run of equal day columns. Callers must not flex-shrink it. A band
+ * too narrow for its name (the part of a week or month at either end) has no label, so
+ * the window never shows a name cut in half.
+ */
 export function timescaleBands(days: number[], px: number): TimescaleBand[] {
   const bands: TimescaleBand[] = [];
   let start = 0;
@@ -185,7 +194,9 @@ export function timescaleBands(days: number[], px: number): TimescaleBand[] {
     const previous = days[index - 1];
     const day = days[index];
     if (index === days.length || groupLabel(previous, px) !== groupLabel(day, px)) {
-      bands.push({ label: groupLabel(days[start], px), count: index - start });
+      const label = groupLabel(days[start], px);
+      const count = index - start;
+      bands.push({ label: labelFits(label, count * px) ? label : "", count });
       start = index;
     }
   }
@@ -206,6 +217,8 @@ export function dayLabelParts(ms: number, px: number): DayLabelParts {
   const date = new Date(ms);
   if (px < 10) return { weekday: "", date: "" };
   if (px < 20) return { weekday: "", date: date.getUTCDay() === 1 ? String(date.getUTCDate()) : "" };
+  // Zoomed between the scales, a column can be too narrow for "Wed" above the date.
+  if (px < 26) return { weekday: "", date: String(date.getUTCDate()) };
   return { weekday: pick(timescaleMessages).weekday(date.getUTCDay()), date: String(date.getUTCDate()) };
 }
 

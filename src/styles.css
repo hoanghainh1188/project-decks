@@ -220,12 +220,25 @@ button.view-tab.on:active:not(:disabled) { background: var(--surface); }
   padding: 2px 6px;
 }
 .segmented { display: flex; gap: 2px; }
+.zoom-reset { font-variant-numeric: tabular-nums; }
 .banner { background: var(--banner-bg); color: var(--banner-text); padding: 6px 10px; }
 .work-area { flex: 1; min-height: 0; display: flex; }
 .work-column { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .workspace { flex: 1; min-height: 0; display: flex; }
-.workspace-panel { flex: 1; min-width: 0; min-height: 0; display: flex; }
-.sheet { width: 52%; min-width: 420px; display: flex; flex-direction: column; border-right: 1px solid var(--border-strong); background: var(--surface); }
+.workspace-panel { flex: 1; min-width: 0; min-height: 0; display: flex; overflow: hidden; }
+.sheet { width: 52%; min-width: 0; flex: 0 0 auto; display: flex; flex-direction: column; overflow: hidden; background: var(--surface); }
+/* Between the sheet and the Gantt: a thin line that widens to a grip on hover and focus. */
+.pane-splitter {
+  flex: 0 0 5px;
+  margin: 0 -2px;
+  z-index: 2;
+  cursor: col-resize;
+  background: linear-gradient(to right, transparent 2px, var(--border-strong) 2px, var(--border-strong) 3px, transparent 3px);
+  touch-action: none;
+}
+.pane-splitter:hover,
+.pane-splitter:focus-visible { background: var(--accent); outline: none; }
+body.pane-resizing { cursor: col-resize; user-select: none; }
 .sheet-head-clip {
   height: var(--scale-head);
   flex: 0 0 var(--scale-head);
@@ -287,7 +300,7 @@ button.view-tab.on:active:not(:disabled) { background: var(--surface); }
 .sheet input:focus, .sheet select:focus { outline: 1px solid var(--accent); background: var(--surface); }
 .id, .ro { padding: 0 4px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bad { color: var(--critical-text); font-weight: 600; }
-.gantt { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--surface); }
+.gantt { flex: 1; min-width: 160px; display: flex; flex-direction: column; background: var(--surface); }
 .gantt-head {
   height: var(--scale-head);
   flex: 0 0 var(--scale-head);
@@ -521,7 +534,7 @@ tr.child td:first-child { padding-left: 22px; color: var(--text-secondary); }
   flex-direction: column;
   overflow: hidden;
 }
-.dialog.wide { width: min(720px, calc(100% - 32px)); max-height: min(860px, calc(100vh - 32px)); }
+.dialog.wide { width: min(880px, calc(100% - 32px)); max-height: min(860px, calc(100vh - 32px)); }
 .dialog-head {
   flex: none;
   display: flex;
@@ -550,6 +563,9 @@ button.dialog-close:hover:not(:disabled) { background: var(--surface-hover); col
   min-height: 0;
   overflow: auto;
   display: grid;
+  /* One column no wider than the dialog: a wide table scrolls in its own box instead of
+     widening the body past the dialog's edge. */
+  grid-template-columns: minmax(0, 1fr);
   align-content: start;
   gap: 6px;
   padding: 12px 16px 14px;
@@ -781,7 +797,7 @@ input.bad { color: var(--critical-text); border-color: var(--critical-text); fon
 .load-corner, .load-head { position: sticky; top: 0; z-index: 2; background: var(--surface-chrome); border-bottom: 1px solid var(--border-subtle); height: 24px; }
 .load-corner { left: 0; z-index: 3; padding: 4px 8px; color: var(--text-muted); }
 .load-head { display: flex; }
-.load-head span { flex: none; padding: 4px 2px; font-size: 11px; color: var(--text-muted); text-align: center; overflow: hidden; white-space: nowrap; }
+.load-head span { flex: none; box-sizing: border-box; padding: 4px 2px; font-size: 11px; color: var(--text-muted); text-align: center; overflow: hidden; white-space: nowrap; }
 .load-names { position: sticky; left: 0; z-index: 1; display: flex; flex-direction: column; background: var(--surface); border-right: 1px solid var(--border-subtle); }
 .load-names button { height: 24px; padding: 0 10px; border: 0; background: none; color: var(--text); text-align: left; white-space: nowrap; cursor: pointer; font: inherit; }
 .load-names button:hover, .load-names button:focus-visible { background: var(--selected-row); }

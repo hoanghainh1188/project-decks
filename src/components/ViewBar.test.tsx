@@ -144,4 +144,16 @@ describe("ViewBar custom fields", () => {
     await user.selectOptions(screen.getByRole("combobox", { name: "Điểm cuối" }), "Một ngày");
     expect(props.onSpanEnd).toHaveBeenLastCalledWith({ kind: "date", date: "2026-01-16" });
   });
+
+  it("shows a zoomed timeline as a percentage that resets it", async () => {
+    const onZoomReset = vi.fn();
+    const { user } = renderBar("gantt", makeProject(), { zoom: 1.5625, onZoomReset });
+    await user.click(screen.getByRole("button", { name: "156% · về cỡ gốc" }));
+    expect(onZoomReset).toHaveBeenCalled();
+  });
+
+  it("shows no zoom control at the scale's own size", () => {
+    renderBar("gantt", makeProject(), { zoom: 1, onZoomReset: vi.fn() });
+    expect(screen.queryByRole("button", { name: /về cỡ gốc/ })).not.toBeInTheDocument();
+  });
 });

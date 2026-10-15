@@ -84,6 +84,8 @@ function sheetWidthOf(columns: SheetColumn[]): number {
 
 interface Props {
   rows: ViewRow[];
+  /** The part of the width the sheet takes beside the Gantt (`PaneSplitter`). */
+  share?: number;
   calendars: Calendar[];
   /** Custom fields, each shown as a column after the built-in ones. */
   fields: FieldDef[];
@@ -157,7 +159,7 @@ export function TaskSheet(props: Props) {
   );
 
   return (
-    <div className="sheet">
+    <div className="sheet" style={props.share == null ? undefined : { width: `${props.share * 100}%` }}>
       <div className="sheet-head-clip" ref={headRef}>
         <div className="sheet-head" style={{ gridTemplateColumns: template, width: sheetWidth, minWidth: sheetWidth }}>
           {columns.map((column) => (

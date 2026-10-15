@@ -38,6 +38,9 @@ import { ResourceSheet } from "./components/ResourceSheet";
 import { SplitDialog } from "./components/SplitDialog";
 import { StatusBar } from "./components/StatusBar";
 import { TaskEditDialog } from "./components/TaskEditDialog";
+import { stepZoom } from "./ganttZoom";
+import { PaneSplitter } from "./components/split/PaneSplitter";
+import { readShare, saveShare } from "./components/split/sheetShare";
 import { TaskSheet } from "./components/TaskSheet";
 import { TaskUsage } from "./components/TaskUsage";
 import { LoadMapView } from "./components/load/LoadMapView";
@@ -75,7 +78,21 @@ export default function App() {
   const lang = useLang();
   const [snap, setSnap] = useState<Snapshot | null>(null);
   const [view, setView] = useState<ViewId>("gantt");
-  const [scale, setScale] = useState<Scale>("day");
+  const [scale, setScaleState] = useState<Scale>("day");
+  // How much wider a day column is than the scale's own; a scale choice starts it at 1.
+  const [zoom, setZoom] = useState(1);
+  const setScale = useCallback((next: Scale) => {
+    setScaleState(next);
+    setZoom(1);
+  }, []);
+  const zoomTimeline = useCallback(
+    (direction: 1 | -1 | 0) => {
+      // Only the Gantt views have a timeline; elsewhere the keys do nothing.
+      if (view !== "gantt" && view !== "tracking") return;
+      setZoom((current) => (direction === 0 ? 1 : stepZoom(scale, current, direction)));
+    },
+    [scale, view],
+  );
   const [selected, setSelected] = useState<number | null>(null);
   // The other end of a Shift+click range in the sheet; null when one row is selected.
   const [selectionEnd, setSelectionEnd] = useState<number | null>(null);
@@ -111,6 +128,13 @@ export default function App() {
   const [metrics, setMetrics] = useState<ProjectMetrics | null>(null);
   const [networkSummaries, setNetworkSummaries] = useState(false);
   const [interruptsColumn, setInterruptsColumn] = useState(false);
+  const [sheetShare, setSheetShare] = useState(readShare);
+  const changeSheetShare = useCallback((share: number) => setSheetShare(share), []);
+  // Kept once a drag settles, not on every pointer move.
+  useEffect(() => {
+    const timer = window.setTimeout(() => saveShare(sheetShare), 300);
+    return () => window.clearTimeout(timer);
+  }, [sheetShare]);
   const [networkLayout, setNetworkLayout] = useState<NetworkLayout | null>(null);
   const [editUid, setEditUid] = useState<number | null>(null);
   const sheetRef = useRef<HTMLDivElement>(null);
@@ -329,6 +353,7 @@ export default function App() {
         exportPdf: () => exportPdfRef.current(),
         setView,
         setScale,
+        zoomTimeline,
         setEvmOpen,
         openProjectInfo: () => void openProjectInfo(),
         openCustomFields: () => void openProjectInfo("fields"),
@@ -351,7 +376,7 @@ export default function App() {
         setClipboard,
         fillField,
       }),
-    [run, send, startFileDialog, task, snap, view, fileDialogBusy, openProjectInfo, openWorkingTime, openAssignmentRules, openAssignByRules, openImportTable, infoStart, workingTime, availability, assignmentStart, setLang, changeTheme, selection, clipboard, fillField],
+    [run, send, startFileDialog, task, snap, view, fileDialogBusy, openProjectInfo, openWorkingTime, openAssignmentRules, openAssignByRules, openImportTable, infoStart, workingTime, availability, assignmentStart, setLang, changeTheme, selection, clipboard, fillField, setScale, zoomTimeline],
   );
   menuRef.current = handleMenu;
 
@@ -584,6 +609,12 @@ export default function App() {
         onView={setView}
         scale={scale}
         onScale={setScale}
+        zoom={zoom}
+        onZoomReset={() => {
+          setZoom(1);
+          // The button goes away with the zoom; keep keyboard focus on the chart.
+          ganttRef.current?.focus();
+        }}
         filter={rowFilter}
         onFilter={setRowFilter}
         filterResource={filterResource}
@@ -620,6 +651,7 @@ export default function App() {
                   selection={selectionSet}
                   tracking={view === "tracking"}
                   interruptsColumn={interruptsColumn}
+                  share={sheetShare}
                   bodyRef={sheetRef}
                   onSelect={(uid, extend) => (extend && selected != null ? setSelectionEnd(uid) : selectOne(uid))}
                   onFillField={setFillField}
@@ -642,10 +674,13 @@ export default function App() {
                   }}
                   onScroll={() => syncScroll("sheet")}
                 />
+                <PaneSplitter share={sheetShare} onChange={changeSheetShare} />
                 <GanttChart
                   project={project}
                   rows={rows}
                   scale={scale}
+                  zoom={zoom}
+                  onZoom={setZoom}
                   selected={selected}
                   tracking={view === "tracking"}
                   bodyRef={ganttRef}

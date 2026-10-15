@@ -28,6 +28,10 @@ describe("shortcutId", () => {
     ["d", {}, "fill-down"],
     ["ç", { altKey: true, code: "KeyC" }, "copy-task"],
     ["√", { altKey: true, code: "KeyV" }, "paste-task"],
+    ["=", {}, "zoom-in"],
+    ["+", { shiftKey: true }, "zoom-in"],
+    ["-", {}, "zoom-out"],
+    ["0", {}, "zoom-reset"],
   ])("maps Cmd+%s to %s", (key, init, id) => {
     expect(shortcutId(keyEvent(key, init))).toBe(id);
   });
