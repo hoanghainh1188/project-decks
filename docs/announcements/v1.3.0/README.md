@@ -11,7 +11,9 @@ Bản tiếng Nhật có thêm một mục kỹ thuật, "平準化を 1,000 倍
 
 ## Qiita
 
-Trình soạn trên web:
+**Đã đăng (15/10/2026):** https://qiita.com/harryforge/items/517c0568c11115a0d3a2. `qiita.md` mang `id` của bài này, nên `npx qiita publish` cập nhật bài đó thay vì tạo bài mới; bản dùng để đăng là `~/qiita-articles/public/sheafly-v1-3.md`, với ảnh trỏ tới `raw.githubusercontent.com` ở commit `2472c44`. Sửa bài thì sửa cả hai nơi.
+
+Đăng lần đầu bằng trình soạn trên web:
 
 1. Mở https://qiita.com/drafts/new.
 2. Dán tiêu đề và 5 thẻ (`Rust`, `Tauri`, `React`, `プロジェクト管理`, `OSS`) từ front matter.
