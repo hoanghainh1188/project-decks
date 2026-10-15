@@ -33,6 +33,8 @@ export interface MenuContext {
   exportPdf: () => void;
   setView: (update: ViewId | ((current: ViewId) => ViewId)) => void;
   setScale: (scale: Scale) => void;
+  /** One zoom step of the Gantt timeline in (1) or out (-1), or back to the scale (0). */
+  zoomTimeline: (direction: 1 | -1 | 0) => void;
   setEvmOpen: (open: boolean) => void;
   openProjectInfo: () => void;
   /** Thông tin dự án, on its custom fields tab. */
@@ -68,6 +70,7 @@ const VIEWS: Record<string, ViewId> = {
 };
 
 const SCALES: Record<string, Scale> = { "scale-day": "day", "scale-week": "week", "scale-month": "month" };
+const ZOOMS: Record<string, 1 | -1 | 0> = { "zoom-in": 1, "zoom-out": -1, "zoom-reset": 0 };
 
 /** Commands on the whole project or document; true when `id` was one of them. */
 function documentAction(id: string, ctx: MenuContext): boolean {
@@ -134,6 +137,10 @@ function viewAction(id: string, ctx: MenuContext): boolean {
   }
   if (SCALES[id]) {
     ctx.setScale(SCALES[id]);
+    return true;
+  }
+  if (ZOOMS[id] !== undefined) {
+    ctx.zoomTimeline(ZOOMS[id]);
     return true;
   }
   if (id.startsWith("theme-")) {

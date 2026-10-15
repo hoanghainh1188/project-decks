@@ -1,4 +1,5 @@
 mod i18n;
+mod menu_icons;
 mod settings;
 mod table;
 
@@ -292,7 +293,9 @@ fn refresh_menu(app: &AppHandle) {
     let Some(state) = app.try_state::<AppState>() else { return };
     match build_menu(app, lang(&state), theme(&state), &recent_files(&state)) {
         Ok(menu) => {
-            let _ = app.set_menu(menu);
+            if app.set_menu(menu).is_ok() {
+                menu_icons::apply(app, lang(&state));
+            }
         }
         Err(err) => eprintln!("Sheafly: không dựng lại được menu: {err}"),
     }
@@ -1013,6 +1016,9 @@ fn append_entries(
                 menu.append(&native)?
             }
             i18n::Entry::Separator => menu.append(&PredefinedMenuItem::separator(app)?)?,
+            i18n::Entry::Submenu { vi, en, entries, .. } => {
+                menu.append(&submenu(app, lang.pick(*vi, *en), entries, lang)?)?
+            }
         }
     }
     Ok(())
@@ -1135,6 +1141,7 @@ fn set_language(
     // Rebuild the menu first, so the stored language never disagrees with it.
     app.set_menu(build_menu(&app, chosen, theme(&state), &recent_files(&state)).map_err(|err| err.to_string())?)
         .map_err(|err| err.to_string())?;
+    menu_icons::apply(&app, chosen);
     *state.lang.lock().unwrap_or_else(|err| err.into_inner()) = chosen;
     // The untouched project made at launch, before the language was known, gets its
     // default names again in the chosen language.
@@ -1254,8 +1261,10 @@ pub fn run() {
             }
             let menu = build_menu(app.handle(), lang(&state), theme(&state), &recent_files(&state))?;
             let chosen_theme = theme(&state);
+            let chosen_lang = lang(&state);
             app.manage(state);
             app.set_menu(menu)?;
+            menu_icons::apply(app.handle(), chosen_lang);
             apply_window_theme(app.handle(), chosen_theme);
             let handle = app.handle().clone();
             std::thread::spawn(move || loop {
@@ -1347,6 +1356,14 @@ pub fn run() {
                         .find(|path| is_project_file(path));
                     if let Some(path) = file {
                         queue_open(app, path);
+                    }
+                }
+                // The menu set in `setup` is only installed once the event loop runs, so its
+                // symbols go on now; later rebuilds put them on themselves.
+                #[cfg(target_os = "macos")]
+                RunEvent::Ready => {
+                    if let Some(state) = app.try_state::<AppState>() {
+                        menu_icons::apply(app, lang(&state));
                     }
                 }
                 _ => {}

@@ -17,6 +17,7 @@ function context(overrides: Partial<MenuContext> = {}): MenuContext {
     exportPdf: vi.fn(),
     setView: vi.fn(),
     setScale: vi.fn(),
+    zoomTimeline: vi.fn(),
     setEvmOpen: vi.fn(),
     openProjectInfo: vi.fn(),
     openCustomFields: vi.fn(),
@@ -91,6 +92,14 @@ describe("handleMenuAction", () => {
     expect(ctx.setScale).toHaveBeenCalledWith("week");
     expect(ctx.changeLang).toHaveBeenCalledWith("en");
     expect(vi.mocked(ctx.changeTheme).mock.calls).toEqual([["dark"], ["system"]]);
+  });
+
+  it("zooms the timeline in, out and back", () => {
+    const ctx = context();
+    handleMenuAction("zoom-in", ctx);
+    handleMenuAction("zoom-out", ctx);
+    handleMenuAction("zoom-reset", ctx);
+    expect(vi.mocked(ctx.zoomTimeline).mock.calls).toEqual([[1], [-1], [0]]);
   });
 
   it("opens EVM beside a Gantt view", () => {

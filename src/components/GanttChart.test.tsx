@@ -92,6 +92,38 @@ describe("GanttChart", () => {
     expect(weekend.slice(first, first + 7)).toEqual([true, true, false, false, false, false, false]);
   });
 
+  it("zooms the timeline with Cmd or Ctrl and the wheel or a pinch, and scrolls otherwise", () => {
+    const onZoom = vi.fn();
+    const data = project();
+    const { container } = render(
+      <GanttChart
+        project={data}
+        rows={buildViewRows(data, "none", null, "none", "none")}
+        scale="day"
+        zoom={1}
+        onZoom={onZoom}
+        selected={null}
+        tracking={false}
+        bodyRef={createRef<HTMLDivElement>()}
+        onSelect={vi.fn()}
+        onMove={vi.fn()}
+        onResize={vi.fn()}
+        onMoveSegment={vi.fn()}
+        onLink={vi.fn()}
+        onEdit={vi.fn()}
+        onScroll={vi.fn()}
+      />,
+    );
+    const body = container.querySelector(".gantt-body")!;
+    fireEvent.wheel(body, { deltaY: 40 });
+    expect(onZoom).not.toHaveBeenCalled();
+    fireEvent.wheel(body, { deltaY: -40, ctrlKey: true, clientX: 0 });
+    expect(onZoom).toHaveBeenCalledTimes(1);
+    expect(onZoom.mock.calls[0][0]).toBeGreaterThan(1);
+    fireEvent.wheel(body, { deltaY: 40, metaKey: true, clientX: 0 });
+    expect(onZoom.mock.calls[1][0]).toBeLessThan(1);
+  });
+
   it("moves the selection with the arrow keys, Home and End, and opens the task on Enter", () => {
     const { chart, handlers } = renderChart(1);
     fireEvent.keyDown(chart, { key: "ArrowDown" });

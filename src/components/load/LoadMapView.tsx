@@ -9,7 +9,8 @@ import { loadMapMessages } from "./LoadMapView.i18n";
 import { loadTone, type LoadTone } from "./loadTone";
 
 const ROW = 24;
-const CELL = { day: 28, week: 60 } as const;
+// Wide enough for "05/01" or "01-05" at the header size, so day headers never touch.
+const CELL = { day: 36, week: 60 } as const;
 const DEFAULT_WEEKS = 12;
 const MAX_WEEKS = 104;
 const DAY_MS = 86_400_000;

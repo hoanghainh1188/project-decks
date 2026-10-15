@@ -32,6 +32,9 @@ interface Props {
   onView: (view: ViewId) => void;
   scale: Scale;
   onScale: (scale: Scale) => void;
+  /** How much the Gantt timeline is zoomed past the scale (1 for none). */
+  zoom?: number;
+  onZoomReset?: () => void;
   filter: FilterMode;
   onFilter: (filter: FilterMode) => void;
   filterResource: number | null;
@@ -134,6 +137,11 @@ export function ViewBar(props: Props) {
                 </button>
               ))}
             </div>
+          )}
+          {chart && props.zoom != null && props.zoom !== 1 && props.onZoomReset && (
+            <button type="button" className="zoom-reset" title={m.zoomHint} onClick={props.onZoomReset}>
+              {m.zoomReset(Math.round(props.zoom * 100))}
+            </button>
           )}
           <label className="view-control">
             {m.filter}
