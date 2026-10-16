@@ -452,7 +452,7 @@ export interface PullChanges {
 /** Mirror of `backlog::PullWarning`. */
 export interface PullWarning {
   key: string;
-  kind: "no_email" | "skipped";
+  kind: "no_email" | "skipped" | "field_value";
 }
 
 /** Mirror of `tracker::PullPreview`: what `tracker_pull` fetched; send `rows` in `apply_pull`. */

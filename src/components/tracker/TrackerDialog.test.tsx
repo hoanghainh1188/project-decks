@@ -33,7 +33,10 @@ const PREVIEW: PullPreview = {
     { key: "PROJ-3", name: "Việc cũ" },
   ],
   pulled_at: 123,
-  warnings: [{ key: "PROJ-9", kind: "no_email" }],
+  warnings: [
+    { key: "PROJ-9", kind: "no_email" },
+    { key: "PROJ-2", kind: "field_value" },
+  ],
   changes: [
     { row: 0, key: "PROJ-1", name: "Màn hình đăng nhập", uid: 2, kind: "add", fields: [] },
     { row: 1, key: "PROJ-2", name: "Kiểm tra mật khẩu", uid: 3, kind: "change", fields: ["name", "due"] },
@@ -123,6 +126,7 @@ describe("TrackerDialog", () => {
     expect(within(table).queryByText("Việc cũ")).not.toBeInTheDocument();
     expect(screen.getByText(/Việc đã xóa/)).toBeInTheDocument();
     expect(screen.getByText(/1 việc có người được giao nhưng nguồn không cho biết email/)).toBeInTheDocument();
+    expect(screen.getByText(/1 việc có giá trị trường tùy chỉnh không phải số/)).toBeInTheDocument();
     const apply = screen.getByRole("button", { name: "Áp dụng 3 thay đổi" });
     fireEvent.click(apply);
     await waitFor(() => expect(onClose).toHaveBeenCalled());

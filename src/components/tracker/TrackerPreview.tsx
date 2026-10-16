@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 
 import { useMessages } from "../../i18n";
-import type { Project, PullPreview, PullRowDiff } from "../../types";
+import type { Project, PullPreview, PullRowDiff, PullWarning } from "../../types";
 import { trackerDialogMessages } from "./TrackerDialog.i18n";
 import { unmatchedEmails } from "./trackerSource";
 
@@ -30,7 +30,7 @@ export function TrackerPreview({
   const listed = useMemo(() => preview.changes.filter((row) => row.kind !== "same"), [preview.changes]);
   const emails = useMemo(() => unmatchedEmails(preview.problems, preview.rows), [preview.problems, preview.rows]);
   const people = project.resources.filter((resource) => resource.kind === "person" && !resource.email);
-  const warned = (kind: "no_email" | "skipped") => preview.warnings.filter((warning) => warning.kind === kind).length;
+  const warned = (kind: PullWarning["kind"]) => preview.warnings.filter((warning) => warning.kind === kind).length;
   const otherProblems = preview.problems.filter((problem) => problem.column !== "assignee");
   return (
     <div className="tracker-preview">
@@ -73,10 +73,11 @@ export function TrackerPreview({
           </ul>
         </section>
       )}
-      {(warned("no_email") > 0 || warned("skipped") > 0) && (
+      {(warned("no_email") > 0 || warned("skipped") > 0 || warned("field_value") > 0) && (
         <ul className="meta tracker-warnings">
           {warned("no_email") > 0 && <li>{m.noEmail(warned("no_email"))}</li>}
           {warned("skipped") > 0 && <li>{m.skipped(warned("skipped"))}</li>}
+          {warned("field_value") > 0 && <li>{m.fieldValue(warned("field_value"))}</li>}
         </ul>
       )}
       {listed.length > 0 && (

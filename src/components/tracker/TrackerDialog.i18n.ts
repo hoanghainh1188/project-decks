@@ -60,6 +60,7 @@ export const trackerDialogMessages = defineMessages(
     personForEmail: (email: string) => `Người có email ${email}`,
     noEmail: (count: number) => `${count} việc có người được giao nhưng nguồn không cho biết email, nên không gán được người.`,
     skipped: (count: number) => `${count} việc không đọc được (thiếu khóa hoặc tên) và bị bỏ qua.`,
+    fieldValue: (count: number) => `${count} việc có giá trị trường tùy chỉnh không phải số; trường số đó được giữ nguyên.`,
   },
   {
     title: "Pull from a task tracker (Backlog)",
@@ -120,5 +121,6 @@ export const trackerDialogMessages = defineMessages(
     personForEmail: (email: string) => `Person with email ${email}`,
     noEmail: (count: number) => `${count} issues have an assignee but the source gave no email, so no one could be matched.`,
     skipped: (count: number) => `${count} issues could not be read (no key or title) and were left out.`,
+    fieldValue: (count: number) => `${count} issues have a custom field value that is not a number; that number field was left as it was.`,
   },
 );
