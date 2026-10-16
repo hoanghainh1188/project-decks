@@ -486,7 +486,7 @@ Chia 5 PR: (A) dọn dẹp và chỉnh nhỏ, (B) sơ đồ mạng, (C) thanh c�
 - *Kéo từng đoạn:* kéo đoạn thứ hai trở đi của task tách trên Gantt gửi `MoveSegment { uid, index, start }`: engine đổi khoảng ngắt ngay trước đoạn (theo phút làm việc trên lịch task), các đoạn sau đi theo; kéo chạm đoạn trước thì nối lại. Đoạn đầu vẫn dời cả task.
 - Shift+↑↓ (cả Shift+Home/End) trên Gantt đang focus mở rộng dải chọn từ việc đang chọn (#117; ô của bảng vẫn dùng Shift+mũi tên để chọn chữ).
 - Dán từ Excel, Numbers, Google Sheets (#118): chữ dán không phải chữ app vừa sao chép mà đọc ra bảng (có tab hoặc từ hai dòng) thì mở hộp Nhập bảng với các dòng đó, như nhập tệp.
-- Còn lại: chọn dải ở sơ đồ mạng.
+- Shift+click trên sơ đồ mạng chọn dải theo thứ tự dòng như ở bảng, mọi ô trong dải được viền (#119).
 
 - Copy/paste và điền xuống (fill-down) task. (PR D)
 - Tách `App.tsx` tiếp (PR #25 đã giảm còn 730 dòng); thêm test cho `GanttChart`, `ganttPdf`, `networkPdf`, `App`, `ResourceSheet`, `CalendarEditor`, `SplitDialog`, `TaskUsage`. (PR E; `TaskUsage` đã có test từ trước)
