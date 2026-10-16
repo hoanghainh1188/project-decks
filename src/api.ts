@@ -17,6 +17,11 @@ import type {
   NetworkOptions,
   PlanPreview,
   ProjectMetrics,
+  PullChanges,
+  PullPreview,
+  PullProgress,
+  PullTask,
+  Source,
   Snapshot,
   Suggestion,
   TaskAssignment,
@@ -142,6 +147,47 @@ export function readTableSheet(sheet: string): Promise<ImportSheet> {
 /** What `import_rows` would refuse, row by row; empty when it would succeed. */
 export function checkImport(afterUid: number | null, resources: ImportResource[], tasks: ImportTask[]): Promise<ImportProblem[]> {
   return inOrder(() => invoke<ImportProblem[]>("check_import", { afterUid, resources, tasks }));
+}
+
+/** Save the API key for a tracker's site in the operating system's credential store. */
+export function trackerSaveKey(site: string, key: string): Promise<void> {
+  return invoke<void>("tracker_save_key", { site, key });
+}
+
+/** Whether a key is saved for the site; the key itself is never sent back. */
+export function trackerHasKey(site: string): Promise<boolean> {
+  return invoke<boolean>("tracker_has_key", { site });
+}
+
+export function trackerForgetKey(site: string): Promise<void> {
+  return invoke<void>("tracker_forget_key", { site });
+}
+
+/** Check the saved key and the project key against the tracker; the project's name. */
+export function trackerTest(source: Source): Promise<string> {
+  return invoke<string>("tracker_test", { source });
+}
+
+/**
+ * Fetch the source's issues and say what pulling them would do. The project does not
+ * change; `apply_pull` with the rows does that. Null when cancelled. Not queued behind edits.
+ */
+export function trackerPull(source: Source): Promise<PullPreview | null> {
+  return invoke<PullPreview | null>("tracker_pull", { source });
+}
+
+/** What pulling `rows` would do to the project as it is now. */
+export function trackerCheck(rows: PullTask[], pulledAt: number): Promise<PullChanges> {
+  return inOrder(() => invoke<PullChanges>("tracker_check", { rows, pulledAt }));
+}
+
+/** Stop the pull that is fetching. */
+export function trackerCancel(): Promise<void> {
+  return invoke<void>("tracker_cancel");
+}
+
+export function onTrackerProgress(handler: (progress: PullProgress) => void): Promise<UnlistenFn> {
+  return listen<PullProgress>("tracker-progress", (event) => handler(event.payload));
 }
 
 /** The tasks `uids` with their subtrees, ready for a `paste_tasks` command. */

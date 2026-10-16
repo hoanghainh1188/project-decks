@@ -11,6 +11,7 @@ function renderSheet(resources: Resource[], overallocations: Overallocation[] = 
   const handlers = {
     onAdd: vi.fn(),
     onChange: vi.fn(),
+    onChangeEmail: vi.fn(),
     onDelete: vi.fn(),
     onEditCalendar: vi.fn(),
     onCreateCalendar: vi.fn(),
@@ -45,6 +46,22 @@ describe("ResourceSheet", () => {
     expect(screen.getByText("Thiết kế, Kiểm thử")).toBeInTheDocument();
   });
 
+  it("edits the email that matches people at a task tracker", async () => {
+    const { handlers, user } = renderSheet([makeResource({ uid: 10, name: "An", email: "an@example.com" }), crane]);
+    const email = screen.getByRole("textbox", { name: "Email của An" });
+    expect(email).toHaveValue("an@example.com");
+    expect(screen.getByRole("textbox", { name: "Email của Cẩu" })).toHaveValue("");
+    await user.clear(email);
+    await user.type(email, "  an.nguyen@example.com ");
+    await user.tab();
+    expect(handlers.onChangeEmail).toHaveBeenCalledExactlyOnceWith(10, "an.nguyen@example.com");
+    // Leaving a field as it was sends nothing.
+    handlers.onChangeEmail.mockClear();
+    await user.click(screen.getByRole("textbox", { name: "Email của Cẩu" }));
+    await user.tab();
+    expect(handlers.onChangeEmail).not.toHaveBeenCalled();
+  });
+
   it("reads max units with a comma or as hours per day", async () => {
     const { handlers, user } = renderSheet([an]);
     const units = screen.getByRole("textbox", { name: "Đơn vị tối đa của An" });
@@ -75,7 +92,7 @@ describe("ResourceSheet", () => {
     renderSheet([an, crane], over);
     const headers = screen.getAllByRole("columnheader").map((cell) => cell.textContent);
     expect(headers).toEqual([
-      "Tên", "Loại", "Đơn vị tối đa", "Lịch", "Giá chuẩn / giờ", "Giá tăng ca", "Chi phí mỗi lần", "Kỹ năng", "Quá tải", "",
+      "Tên", "Loại", "Đơn vị tối đa", "Lịch", "Giá chuẩn / giờ", "Giá tăng ca", "Chi phí mỗi lần", "Email", "Kỹ năng", "Quá tải", "",
     ]);
     expect(screen.getByText("Có")).toBeInTheDocument();
     expect(screen.getByText("Không")).toBeInTheDocument();
@@ -152,7 +169,7 @@ describe("ResourceSheet in English", () => {
     renderSheet([an, crane], over, "en");
     const headers = screen.getAllByRole("columnheader").map((cell) => cell.textContent);
     expect(headers).toEqual([
-      "Name", "Type", "Max units", "Calendar", "Std. rate / hr", "Ovt. rate", "Cost/use", "Skills", "Overallocated", "",
+      "Name", "Type", "Max units", "Calendar", "Std. rate / hr", "Ovt. rate", "Cost/use", "Email", "Skills", "Overallocated", "",
     ]);
     expect(screen.getByText("Yes")).toBeInTheDocument();
     expect(screen.getByText("No")).toBeInTheDocument();

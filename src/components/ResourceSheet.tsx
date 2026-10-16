@@ -12,6 +12,8 @@ interface Props {
   overallocations: Overallocation[];
   onAdd: (kind: ResourceKind) => void;
   onChange: (resource: Resource) => void;
+  /** Set (or, empty, clear) the email address that matches people at an external tracker. */
+  onChangeEmail: (uid: number, email: string) => void;
   onDelete: (uid: number) => void;
   onEditCalendar: (calendarId: number) => void;
   onCreateCalendar: (resource: Resource) => void;
@@ -26,6 +28,7 @@ export function ResourceSheet({
   overallocations,
   onAdd,
   onChange,
+  onChangeEmail,
   onDelete,
   onEditCalendar,
   onCreateCalendar,
@@ -51,6 +54,7 @@ export function ResourceSheet({
             <th>{m.standardRate}</th>
             <th>{m.overtimeRate}</th>
             <th>{m.costPerUse}</th>
+            <th title={m.emailTip}>{m.email}</th>
             <th title={m.skillsTip}>{m.skills}</th>
             <th>{m.overallocated}</th>
             <th></th>
@@ -148,6 +152,18 @@ export function ResourceSheet({
                   ariaLabel={`${m.costPerUse}: ${resource.name}`}
                   value={resource.cost_per_use}
                   onCommit={(amount) => onChange({ ...resource, cost_per_use: amount ?? 0 })}
+                />
+              </td>
+              <td>
+                <input
+                  key={`${resource.uid}-email-${resource.email ?? ""}`}
+                  type="email"
+                  aria-label={m.emailOf(resource.name)}
+                  defaultValue={resource.email ?? ""}
+                  onBlur={(event) => {
+                    const email = event.target.value.trim();
+                    if (email !== (resource.email ?? "")) onChangeEmail(resource.uid, email);
+                  }}
                 />
               </td>
               <td className="skills-cell">{skillNames(resource)}</td>

@@ -13,6 +13,8 @@ import type {
   TaskAssignment,
   TaskClipboard,
   Forecast,
+  PullChanges,
+  PullPreview,
 } from "../types";
 import { makeMetrics, makeResource, makeSnapshot, makeTask } from "./fixtures";
 
@@ -40,6 +42,12 @@ class FakeBackend {
   loadMap: LoadMap = { buckets: [], rows: [] };
   /** What `check_import` answers. */
   importProblems: ImportProblem[] = [];
+  /** What `tracker_pull` answers (null is a cancelled pull), and `tracker_test` calls the project. */
+  pullPreview: PullPreview | null = null;
+  /** What `tracker_check` answers; by default the preview's own changes. */
+  pullChanges: PullChanges | null = null;
+  /** Sites with a saved API key (`tracker_has_key`). */
+  trackerKeys = new Set<string>();
   /** What `pick_table` answers (null is a cancelled dialog); `read_table_sheet` reads it too. */
   table: ImportSheet | null = null;
   /** What `check_autosave` restores; null when there is no autosave. */
@@ -61,6 +69,9 @@ class FakeBackend {
     this.planPreview = null;
     this.loadMap = { buckets: [], rows: [] };
     this.table = null;
+    this.pullPreview = null;
+    this.pullChanges = null;
+    this.trackerKeys.clear();
     this.failures.clear();
     this.holds.clear();
     this.autosave = null;
@@ -143,6 +154,24 @@ class FakeBackend {
       }
       case "check_import":
         return structuredClone(this.importProblems);
+      case "tracker_has_key":
+        return this.trackerKeys.has(args?.site as string);
+      case "tracker_save_key":
+        this.trackerKeys.add(args?.site as string);
+        return undefined;
+      case "tracker_forget_key":
+        this.trackerKeys.delete(args?.site as string);
+        return undefined;
+      case "tracker_test":
+        return "Dự án mẫu";
+      case "tracker_pull":
+        return structuredClone(this.pullPreview);
+      case "tracker_check": {
+        const base = this.pullPreview;
+        return structuredClone(this.pullChanges ?? { changes: base?.changes ?? [], gone: base?.gone ?? [], problems: base?.problems ?? [] });
+      }
+      case "tracker_cancel":
+        return undefined;
       case "pick_table":
         return structuredClone(this.table);
       case "read_table_sheet":
@@ -216,6 +245,21 @@ class FakeBackend {
     switch (command.type) {
       case "rename_project":
         project.name = command.name;
+        return;
+      case "set_source":
+        project.source = command.source;
+        return;
+      case "set_resource_email": {
+        const resource = project.resources.find((item) => item.uid === command.uid);
+        if (!resource) throw `Không có nguồn lực ${command.uid}`;
+        resource.email = command.email;
+        return;
+      }
+      case "apply_pull":
+        // Only the count of tasks: the engine's mapping is tested in Rust.
+        for (const row of command.rows) {
+          project.tasks.push(makeTask({ uid: Math.max(0, ...project.tasks.map((item) => item.uid)) + 1, name: row.name }));
+        }
         return;
       case "set_status_date":
         project.status_date = command.date;
