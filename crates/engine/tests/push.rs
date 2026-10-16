@@ -44,7 +44,7 @@ fn pulled() -> (Document, Vec<PullTask>) {
         PullTask { work: Some(16 * HOUR), assignee_email: Some("an@example.com".into()), ..issue("P-1", "Hai ngày") },
         PullTask { work: Some(HOUR), assignee_email: Some("binh@example.com".into()), ..issue("P-2", "Một giờ") },
     ];
-    doc.apply(Command::ApplyPull { rows: rows.clone(), pulled_at: 1 }).unwrap();
+    doc.apply(Command::ApplyPull { rows: rows.clone(), pulled_at: 1, resolutions: None }).unwrap();
     (doc, rows)
 }
 
@@ -161,7 +161,7 @@ fn linked_tasks_the_source_did_not_return_are_missing_and_gone_ones_are_ignored(
     assert_eq!(result.changes.len(), 1);
 
     // A pull without P-2 marks it gone; after that a push does not even list it.
-    doc.apply(Command::ApplyPull { rows: short.clone(), pulled_at: 2 }).unwrap();
+    doc.apply(Command::ApplyPull { rows: short.clone(), pulled_at: 2, resolutions: None }).unwrap();
     let result = plan(&doc.project, &short, dates());
     assert!(result.missing.is_empty());
 }
@@ -171,7 +171,7 @@ fn record_push_remembers_the_days_in_one_undo_step() {
     let (mut doc, _) = pulled();
     let before = doc.project.clone();
     doc.apply(Command::RecordPush {
-        entries: vec![PushedEntry { key: "P-1".into(), start: Some("2026-01-05".into()), due: Some("2026-01-06".into()) }],
+        entries: vec![PushedEntry { key: "P-1".into(), start: Some("2026-01-05".into()), due: Some("2026-01-06".into()), assignee: None }],
     })
     .unwrap();
     let link = by_key(&doc.project, "P-1").external.clone().unwrap();
@@ -186,13 +186,13 @@ fn record_push_remembers_the_days_in_one_undo_step() {
 fn record_push_refuses_bad_days_and_entries_that_match_nothing() {
     let (mut doc, _) = pulled();
     let bad = doc.apply(Command::RecordPush {
-        entries: vec![PushedEntry { key: "P-1".into(), start: Some("05/01/2026".into()), due: None }],
+        entries: vec![PushedEntry { key: "P-1".into(), start: Some("05/01/2026".into()), due: None, assignee: None }],
     });
     assert_eq!(bad.unwrap_err(), EngineError::Invalid(Invalid::PushDate));
     for entries in [
         vec![],
-        vec![PushedEntry { key: "NOPE-1".into(), start: Some("2026-01-05".into()), due: None }],
-        vec![PushedEntry { key: "P-1".into(), start: None, due: None }],
+        vec![PushedEntry { key: "NOPE-1".into(), start: Some("2026-01-05".into()), due: None, assignee: None }],
+        vec![PushedEntry { key: "P-1".into(), start: None, due: None, assignee: None }],
     ] {
         let err = doc.apply(Command::RecordPush { entries }).unwrap_err();
         assert_eq!(err, EngineError::Invalid(Invalid::NothingToRecord));
@@ -217,13 +217,13 @@ fn a_pull_does_not_read_back_the_days_it_pushed() {
     assert_eq!(unknown.rows[0].fields, vec![PullField::Start, PullField::Due]);
 
     doc.apply(Command::RecordPush {
-        entries: vec![PushedEntry { key: "P-1".into(), start: Some("2026-01-05".into()), due: Some("2026-01-06".into()) }],
+        entries: vec![PushedEntry { key: "P-1".into(), start: Some("2026-01-05".into()), due: Some("2026-01-06".into()), assignee: None }],
     })
     .unwrap();
     let known = diff(&doc.project, &rows, 5);
     assert!(known.errors.is_empty());
     assert_eq!(known.rows[0].kind, PullKind::Same);
-    let err = doc.apply(Command::ApplyPull { rows, pulled_at: 5 }).unwrap_err();
+    let err = doc.apply(Command::ApplyPull { rows, pulled_at: 5, resolutions: None }).unwrap_err();
     assert_eq!(err, EngineError::Invalid(Invalid::NothingToPull));
     let task = by_key(&doc.project, "P-1");
     assert_eq!(task.constraint_type, ConstraintType::Asap);
@@ -234,13 +234,13 @@ fn a_pull_does_not_read_back_the_days_it_pushed() {
 fn a_different_day_at_the_source_is_a_real_change_and_applies() {
     let (mut doc, rows) = pulled();
     doc.apply(Command::RecordPush {
-        entries: vec![PushedEntry { key: "P-1".into(), start: Some("2026-01-05".into()), due: Some("2026-01-06".into()) }],
+        entries: vec![PushedEntry { key: "P-1".into(), start: Some("2026-01-05".into()), due: Some("2026-01-06".into()), assignee: None }],
     })
     .unwrap();
     let mut rows = echoed(&rows);
     rows[0].start = Some(at(2, 8));
     rows[0].due = Some(at(1, 17));
-    doc.apply(Command::ApplyPull { rows, pulled_at: 6 }).unwrap();
+    doc.apply(Command::ApplyPull { rows, pulled_at: 6, resolutions: None }).unwrap();
     let task = by_key(&doc.project, "P-1");
     assert_eq!(task.constraint_type, ConstraintType::Snet);
     assert_eq!(task.constraint_date, Some(at(2, 8)));
@@ -251,7 +251,7 @@ fn a_different_day_at_the_source_is_a_real_change_and_applies() {
 fn the_pushed_days_survive_a_file() {
     let (mut doc, _) = pulled();
     doc.apply(Command::RecordPush {
-        entries: vec![PushedEntry { key: "P-2".into(), start: None, due: Some("2026-01-05".into()) }],
+        entries: vec![PushedEntry { key: "P-2".into(), start: None, due: Some("2026-01-05".into()), assignee: None }],
     })
     .unwrap();
     let dir = std::env::temp_dir().join(format!("sheafly-push-{}", std::process::id()));

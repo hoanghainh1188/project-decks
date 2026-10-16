@@ -41,6 +41,7 @@ use crate::lang::Lang;
 use crate::model::{ConstraintType, DepKind, Dependency, Project, Task, TaskType};
 use crate::schedule::{normalize_outline, schedule};
 use crate::source::{ExternalLink, StatusClass};
+use crate::sync::{self, Resolution, Side, SyncField, Verdict};
 use crate::timeutil::{civil, date_key};
 use crate::work;
 
@@ -158,12 +159,33 @@ pub struct PullDiff {
     pub rows: Vec<PullRowDiff>,
     pub gone: Vec<GoneTask>,
     pub errors: Vec<PullError>,
+    /// Fields changed on both sides that no resolution settled (three-way pulls only).
+    pub conflicts: Vec<PullConflict>,
+    /// A base was updated without a task changing (a conflict resolved by keeping Sheafly,
+    /// or both sides changed to the same value): worth recording on its own.
+    pub bases_changed: bool,
+}
+
+/// A field that changed at the source and in Sheafly since the last sync, to different
+/// values. Values are the canonical text of `sync.rs`; `None` is no value.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct PullConflict {
+    pub row: u32,
+    pub key: String,
+    pub name: String,
+    pub uid: u32,
+    /// The field's key (`SyncField::key`).
+    pub field: String,
+    /// What the source held at the last sync.
+    pub base: Option<String>,
+    pub source: Option<String>,
+    pub local: Option<String>,
 }
 
 impl PullDiff {
     /// Nothing to add, change or mark.
     pub fn is_empty(&self) -> bool {
-        self.gone.is_empty() && self.rows.iter().all(|row| row.kind == PullKind::Same)
+        self.gone.is_empty() && !self.bases_changed && self.rows.iter().all(|row| row.kind == PullKind::Same)
     }
 
     pub fn has_errors(&self) -> bool {
@@ -173,8 +195,19 @@ impl PullDiff {
 
 /// What `ApplyPull` would do, without changing `project`.
 pub fn diff(project: &Project, rows: &[PullTask], pulled_at: i64) -> PullDiff {
+    diff_with(project, rows, pulled_at, None)
+}
+
+/// `diff`, three-way when `resolutions` is given (the conflicts it settles are applied; the
+/// rest are listed in `conflicts`).
+pub fn diff_with(
+    project: &Project,
+    rows: &[PullTask],
+    pulled_at: i64,
+    resolutions: Option<&[Resolution]>,
+) -> PullDiff {
     let mut copy = project.clone();
-    let mut result = match run(&mut copy, rows, pulled_at) {
+    let mut result = match run(&mut copy, rows, pulled_at, resolutions) {
         Ok(result) => result,
         Err(error) => return whole(error),
     };
@@ -208,10 +241,14 @@ pub(crate) fn apply_pull(
     project: &mut Project,
     rows: &[PullTask],
     pulled_at: i64,
+    resolutions: Option<&[Resolution]>,
 ) -> Result<(), EngineError> {
-    let result = run(project, rows, pulled_at)?;
+    let result = run(project, rows, pulled_at, resolutions)?;
     if result.has_errors() {
         return Err(Invalid::PullHasErrors.into());
+    }
+    if !result.conflicts.is_empty() {
+        return Err(Invalid::PullHasConflicts.into());
     }
     if result.is_empty() {
         return Err(Invalid::NothingToPull.into());
@@ -239,11 +276,30 @@ struct State {
     assignments: Vec<(u32, u32)>,
     statuses: Vec<(u32, f64)>,
     result: PullDiff,
+    /// Three-way: the user's choices; None is the legacy pull where the source wins.
+    resolutions: Option<Vec<Resolution>>,
+    /// Bases to write once every task has its final state.
+    base_updates: Vec<(u32, Vec<BaseUpdate>)>,
+}
+
+/// One field of one task's base to write at the end of a three-way pull.
+struct BaseUpdate {
+    field: SyncField,
+    /// What the source held (None: nothing).
+    source: Option<String>,
+    /// Record what the task holds then (false keeps the old, so a later change at the
+    /// source still conflicts with a value the user chose to keep).
+    refresh_local: bool,
 }
 
 /// Apply the rows to `project`, skipping what is wrong and listing it. The error is for a
 /// problem with the pull as a whole.
-fn run(project: &mut Project, rows: &[PullTask], pulled_at: i64) -> Result<PullDiff, EngineError> {
+fn run(
+    project: &mut Project,
+    rows: &[PullTask],
+    pulled_at: i64,
+    resolutions: Option<&[Resolution]>,
+) -> Result<PullDiff, EngineError> {
     if rows.len() > MAX_PULL_ROWS {
         return Err(Invalid::TooManyPullRows.into());
     }
@@ -271,6 +327,8 @@ fn run(project: &mut Project, rows: &[PullTask], pulled_at: i64) -> Result<PullD
         assignments: Vec::new(),
         statuses: Vec::new(),
         result: PullDiff::default(),
+        resolutions: resolutions.map(<[Resolution]>::to_vec),
+        base_updates: Vec::new(),
     };
     let mut slots: Vec<Option<usize>> = vec![None; rows.len()];
     for (index, input) in rows.iter().enumerate() {
@@ -301,6 +359,7 @@ fn run(project: &mut Project, rows: &[PullTask], pulled_at: i64) -> Result<PullD
     for (uid, percent) in std::mem::take(&mut state.statuses) {
         apply_one(project, &Command::SetPercentComplete { uid, percent })?;
     }
+    finalize_bases(project, std::mem::take(&mut state.base_updates));
     mark_gone(project, &mut state, rows, pulled_at);
     state.result.errors.sort_by_key(|error| error.row);
     Ok(state.result)
@@ -402,7 +461,11 @@ fn apply_row(
     let existing = state.known.get(&checked.key).copied();
     let (uid, kind, fields) = match existing {
         Some(uid) => {
-            let fields = update_task(project, state, input, &checked, uid, group, pulled_at)?;
+            let fields = if state.resolutions.is_some() {
+                update_task_sync(project, state, input, &checked, (uid, row), group, pulled_at)?
+            } else {
+                update_task(project, state, input, &checked, uid, group, pulled_at)?
+            };
             let kind = if fields.is_empty() { PullKind::Same } else { PullKind::Change };
             (uid, kind, fields)
         }
@@ -466,8 +529,17 @@ fn add_task(
         gone: false,
         pushed_start: None,
         pushed_due: None,
+        base: None,
     });
     project.tasks.insert(index, task);
+    if state.resolutions.is_some() {
+        // A new task starts in agreement with the source on everything the row says.
+        let updates = provided_fields(input, checked, group)
+            .into_iter()
+            .map(|field| BaseUpdate { field, source: source_value(input, checked, field).flatten(), refresh_local: true })
+            .collect();
+        state.base_updates.push((uid, updates));
+    }
     if !group {
         if let Some(person) = checked.assignee {
             state.assignments.push((uid, person));
@@ -581,6 +653,224 @@ fn update_task(
         }
     }
     Ok(changed)
+}
+
+/// The fields the row says something about, for a task that takes them: a group takes no
+/// effort, start, owner or progress.
+fn provided_fields(input: &PullTask, checked: &Checked, group: bool) -> Vec<SyncField> {
+    let mut fields = vec![SyncField::Name];
+    if !group {
+        if input.work.is_some() {
+            fields.push(SyncField::Work);
+        }
+        fields.push(SyncField::Start);
+        if input.status.is_some() {
+            fields.push(SyncField::Status);
+        }
+        if checked.assignee.is_some() {
+            fields.push(SyncField::Assignee);
+        }
+    }
+    fields.push(SyncField::Due);
+    fields.extend(checked.values.iter().map(|(id, _)| SyncField::Field(*id)));
+    fields
+}
+
+/// What the row holds for `field` in canonical text; `None` when the row says nothing
+/// about it, `Some(None)` when it says there is no value.
+fn source_value(input: &PullTask, checked: &Checked, field: SyncField) -> Option<Option<String>> {
+    match field {
+        SyncField::Name => Some(Some(checked.name.clone())),
+        SyncField::Work => input.work.map(|work| Some(work.to_string())),
+        SyncField::Start => Some(input.start.map(sync::day_text)),
+        SyncField::Due => Some(input.due.map(sync::day_text)),
+        SyncField::Status => input.status.map(|status| Some(sync::status_text(status).to_string())),
+        SyncField::Assignee => checked.assignee.map(|_| {
+            input.assignee_email.as_deref().map(|email| email.trim().to_lowercase())
+        }),
+        SyncField::Field(id) => checked
+            .values
+            .iter()
+            .find(|(field_id, _)| *field_id == id)
+            .map(|(_, value)| value.as_ref().map(sync::field_text)),
+    }
+}
+
+fn pull_field(field: SyncField) -> PullField {
+    match field {
+        SyncField::Name => PullField::Name,
+        SyncField::Work => PullField::Work,
+        SyncField::Start => PullField::Start,
+        SyncField::Due => PullField::Due,
+        SyncField::Status => PullField::Status,
+        SyncField::Assignee => PullField::Assignee,
+        SyncField::Field(_) => PullField::Fields,
+    }
+}
+
+/// Put the source's value of `field` on the task.
+fn apply_field(
+    project: &mut Project,
+    state: &mut State,
+    task: &Task,
+    field: SyncField,
+    input: &PullTask,
+    checked: &Checked,
+) -> Result<(), EngineError> {
+    let uid = task.uid;
+    match field {
+        SyncField::Name => {
+            apply_one(project, &Command::RenameTask { uid, name: checked.name.clone() })?;
+        }
+        SyncField::Work => {
+            if let Some(minutes) = input.work {
+                apply_one(project, &Command::SetWork { uid, minutes })?;
+            }
+        }
+        SyncField::Start => match input.start {
+            Some(date) => apply_one(
+                project,
+                &Command::SetConstraint { uid, constraint_type: ConstraintType::Snet, date: Some(date) },
+            )?,
+            None if task.constraint_type == ConstraintType::Snet => apply_one(
+                project,
+                &Command::SetConstraint { uid, constraint_type: ConstraintType::Asap, date: None },
+            )?,
+            None => {}
+        },
+        SyncField::Due => apply_one(project, &Command::SetDeadline { uid, date: input.due })?,
+        SyncField::Status => {
+            if let Some(status) = input.status {
+                state.statuses.push((uid, percent_for(status, task.percent_complete)));
+            }
+        }
+        SyncField::Assignee => {
+            if let Some(person) = checked.assignee {
+                let old: Vec<u32> = project
+                    .assignments
+                    .iter()
+                    .filter(|assignment| assignment.task_uid == uid)
+                    .map(|assignment| assignment.uid)
+                    .collect();
+                for assignment in old {
+                    apply_one(project, &Command::RemoveAssignment { uid: assignment })?;
+                }
+                work::add_assignment(project, uid, person, 1.0);
+            }
+        }
+        SyncField::Field(id) => {
+            if let Some((_, value)) = checked.values.iter().find(|(field_id, _)| *field_id == id) {
+                apply_one(project, &Command::SetFieldValue { uid, field_id: id, value: value.clone() })?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// The three-way version of `update_task` (`sync.rs`): a field moves only when the source
+/// changed it and Sheafly did not (or the user chose the source). Returns the fields that
+/// changed on the task.
+fn update_task_sync(
+    project: &mut Project,
+    state: &mut State,
+    input: &PullTask,
+    checked: &Checked,
+    (uid, row): (u32, u32),
+    group: bool,
+    pulled_at: i64,
+) -> Result<Vec<PullField>, EngineError> {
+    let task = project.task(uid).ok_or(EngineError::TaskNotFound)?.clone();
+    let group = group || task.summary;
+    let link = task.external.clone().ok_or(EngineError::TaskNotFound)?;
+    let mut changed: Vec<PullField> = Vec::new();
+    let mut updates = Vec::new();
+    for field in provided_fields(input, checked, group) {
+        let Some(source) = source_value(input, checked, field) else { continue };
+        let local = sync::local_value(project, &task, field);
+        let pushed = match field {
+            SyncField::Start => link.pushed_start.as_deref(),
+            SyncField::Due => link.pushed_due.as_deref(),
+            _ => None,
+        };
+        let (apply, refresh_local) = match sync::decide(link.base.as_ref(), field, &source, &local, pushed) {
+            Verdict::Keep => continue,
+            Verdict::Agree { real } => {
+                state.result.bases_changed |= real;
+                (false, true)
+            }
+            Verdict::Take => (true, true),
+            Verdict::Conflict => {
+                let key = field.key();
+                let choice = state
+                    .resolutions
+                    .iter()
+                    .flatten()
+                    .find(|resolution| resolution.key == checked.key && resolution.field == key)
+                    .map(|resolution| resolution.keep);
+                match choice {
+                    Some(Side::Source) => (true, true),
+                    Some(Side::Sheafly) => {
+                        state.result.bases_changed = true;
+                        (false, false)
+                    }
+                    None => {
+                        state.result.conflicts.push(PullConflict {
+                            row,
+                            key: checked.key.clone(),
+                            name: checked.name.clone(),
+                            uid,
+                            field: key.clone(),
+                            base: link.base.as_ref().and_then(|base| base.source.get(&key).cloned()),
+                            source,
+                            local,
+                        });
+                        continue;
+                    }
+                }
+            }
+        };
+        if apply {
+            apply_field(project, state, &task, field, input, checked)?;
+            let shown = pull_field(field);
+            if !changed.contains(&shown) {
+                changed.push(shown);
+            }
+        }
+        updates.push(BaseUpdate { field, source, refresh_local });
+    }
+    if !updates.is_empty() {
+        state.base_updates.push((uid, updates));
+    }
+    if link.gone {
+        changed.push(PullField::Present);
+    }
+    if !changed.is_empty() {
+        if let Some(link) = project.task_mut(uid).and_then(|task| task.external.as_mut()) {
+            link.synced_at = pulled_at;
+            link.gone = false;
+        }
+    }
+    Ok(changed)
+}
+
+/// Write the bases of a three-way pull, now that every task has its final state.
+fn finalize_bases(project: &mut Project, updates: Vec<(u32, Vec<BaseUpdate>)>) {
+    for (uid, list) in updates {
+        let Some(task) = project.task(uid).cloned() else { continue };
+        let locals: Vec<Option<String>> = list
+            .iter()
+            .map(|update| update.refresh_local.then(|| sync::local_value(project, &task, update.field)).flatten())
+            .collect();
+        let Some(link) = project.task_mut(uid).and_then(|task| task.external.as_mut()) else { continue };
+        let base = sync::base_of(link);
+        for (update, local) in list.iter().zip(locals) {
+            let key = update.field.key();
+            sync::set(&mut base.source, &key, update.source.clone());
+            if update.refresh_local {
+                sync::set(&mut base.local, &key, local);
+            }
+        }
+    }
 }
 
 /// Finish-to-start links from `after`, once every row has its task. An issue the pull

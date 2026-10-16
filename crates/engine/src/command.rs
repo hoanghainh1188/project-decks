@@ -10,6 +10,7 @@ use crate::import::{self, ImportResource, ImportTask};
 use crate::plan;
 use crate::pull::{self, PullTask};
 use crate::push::{self, PushedEntry};
+use crate::sync::Resolution;
 use crate::level_order::{self, SortKey};
 use crate::level::level_project;
 use crate::model::{
@@ -412,6 +413,12 @@ pub enum Command {
     ApplyPull {
         rows: Vec<PullTask>,
         pulled_at: i64,
+        /// Present (even empty) for a three-way pull, where a field moves only when the
+        /// source changed it and Sheafly did not, and fields changed on both sides need a
+        /// choice here (`sync.rs`). Absent for the original pull where the source wins,
+        /// which is how older logs replay.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        resolutions: Option<Vec<Resolution>>,
     },
     /// Remember the days a push wrote to the tracker, on the linked tasks (`push.rs`), so a
     /// later pull knows them as its own. One undo step.
@@ -1154,7 +1161,9 @@ fn apply_inner(project: &mut Project, command: &Command) -> Result<(), EngineErr
         } => plan::apply_plan(project, assignments, delays, splits)?,
         Command::SetResourceEmail { uid, email } => source::set_resource_email(project, *uid, email)?,
         Command::SetSource { source } => source::set_source(project, source)?,
-        Command::ApplyPull { rows, pulled_at } => pull::apply_pull(project, rows, *pulled_at)?,
+        Command::ApplyPull { rows, pulled_at, resolutions } => {
+            pull::apply_pull(project, rows, *pulled_at, resolutions.as_deref())?
+        }
         Command::RecordPush { entries } => push::record_push(project, entries)?,
     }
     Ok(())

@@ -61,6 +61,7 @@ fn pull(doc: &mut Document, rows: Vec<PullTask>) -> Result<(), EngineError> {
     doc.apply(Command::ApplyPull {
         rows,
         pulled_at: PULLED,
+        resolutions: None,
     })
     .map(|_| ())
 }
@@ -247,7 +248,7 @@ fn pulling_unchanged_data_changes_nothing_and_adds_no_undo_step() {
     assert!(preview.rows.iter().all(|row| row.kind == PullKind::Same));
 
     let err = doc
-        .apply(Command::ApplyPull { rows: sample(), pulled_at: PULLED + 500 })
+        .apply(Command::ApplyPull { rows: sample(), pulled_at: PULLED + 500, resolutions: None })
         .unwrap_err();
     assert_eq!(err, EngineError::Invalid(Invalid::NothingToPull));
     assert_eq!(doc.commands.len(), steps);
@@ -283,7 +284,7 @@ fn a_changed_issue_updates_only_its_task_and_its_sync_time() {
     );
     assert_eq!(preview.rows[2].fields, vec![PullField::Start]);
 
-    doc.apply(Command::ApplyPull { rows: rows.clone(), pulled_at: PULLED + 7 }).unwrap();
+    doc.apply(Command::ApplyPull { rows: rows.clone(), pulled_at: PULLED + 7, resolutions: None }).unwrap();
     let project = &doc.project;
     let child = by_key(project, "P-2");
     assert_eq!(child.name, "Con (đổi tên)");
@@ -296,7 +297,7 @@ fn a_changed_issue_updates_only_its_task_and_its_sync_time() {
     assert_eq!(by_key(project, "P-3").constraint_date, Some(at(12, 8, 0)));
 
     // The same rows again are now nothing to pull.
-    let err = doc.apply(Command::ApplyPull { rows, pulled_at: PULLED + 9 }).unwrap_err();
+    let err = doc.apply(Command::ApplyPull { rows, pulled_at: PULLED + 9, resolutions: None }).unwrap_err();
     assert_eq!(err, EngineError::Invalid(Invalid::NothingToPull));
 }
 
@@ -324,7 +325,7 @@ fn in_progress_keeps_a_percent_set_by_hand() {
     doc.apply(Command::SetPercentComplete { uid, percent: 30.0 }).unwrap();
     let before = doc.project.clone();
     let err = doc
-        .apply(Command::ApplyPull { rows: sample(), pulled_at: PULLED + 1 })
+        .apply(Command::ApplyPull { rows: sample(), pulled_at: PULLED + 1, resolutions: None })
         .unwrap_err();
     assert_eq!(err, EngineError::Invalid(Invalid::NothingToPull));
     assert_eq!(doc.project, before);
@@ -362,7 +363,7 @@ fn issues_missing_from_the_pull_are_marked_gone_and_come_back() {
     // Marked once: pulling the same short list again has nothing more to say.
     let rows: Vec<PullTask> = sample().into_iter().take(2).collect();
     assert_eq!(
-        doc.apply(Command::ApplyPull { rows, pulled_at: PULLED + 4 }).unwrap_err(),
+        doc.apply(Command::ApplyPull { rows, pulled_at: PULLED + 4, resolutions: None }).unwrap_err(),
         EngineError::Invalid(Invalid::NothingToPull)
     );
 
