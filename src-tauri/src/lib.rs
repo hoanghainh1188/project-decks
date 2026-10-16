@@ -1,8 +1,10 @@
+mod backlog;
 mod delta;
 mod i18n;
 mod menu_icons;
 mod settings;
 mod table;
+mod tracker;
 
 use settings::Theme;
 
@@ -28,6 +30,9 @@ use sheafly_engine::load_map::{self, Bucket, LoadMap};
 use sheafly_engine::plan::{self, PlanPreview};
 use sheafly_engine::timeutil::parse_date_key;
 use sheafly_engine::skills::TaskAssignment;
+use sheafly_engine::pull::PullTask;
+use sheafly_engine::source::{self, Source};
+use tracker::PullPreview;
 use sheafly_engine::{Command, Document, EngineError, Lang, Snapshot};
 use tauri::menu::{AboutMetadata, CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::path::BaseDirectory;
@@ -71,6 +76,8 @@ struct AppState {
     plan_base: Mutex<Option<(sheafly_engine::Project, PlanPreview)>>,
     /// Stops the finish forecast still running when a newer one starts.
     forecast_cancel: Mutex<Arc<AtomicBool>>,
+    /// Stops the pull from a tracker still fetching when it is cancelled or a newer one starts.
+    tracker_cancel: Mutex<Arc<AtomicBool>>,
     /// The snapshot sent last, the base of the patch an edit, undo or redo answers with.
     delta: delta::Delta,
 }
@@ -95,6 +102,7 @@ impl AppState {
             import_table: Mutex::new(None),
             plan_base: Mutex::new(None),
             forecast_cancel: Mutex::new(Arc::new(AtomicBool::new(false))),
+            tracker_cancel: Mutex::new(Arc::new(AtomicBool::new(false))),
             delta: delta::Delta::default(),
         }
     }
@@ -551,6 +559,88 @@ fn check_import(
             column: problem.column,
         })
         .collect()
+}
+
+/// Save the API key for a tracker's site in the operating system's credential store.
+/// The key goes in once, from the dialog, and is never sent back to the webview.
+#[tauri::command]
+fn tracker_save_key(state: State<'_, AppState>, site: String, key: String) -> Result<(), String> {
+    let lang = lang(&state);
+    if key.trim().is_empty() {
+        return Err(tracker::TrackerError::NoKey.message(lang).into());
+    }
+    tracker::save_key(&site.trim().to_lowercase(), &key).map_err(|error| error.message(lang).into())
+}
+
+/// Whether a key is saved for the site (the key itself is never read out).
+#[tauri::command]
+fn tracker_has_key(site: String) -> bool {
+    matches!(tracker::load_key(&site.trim().to_lowercase()), Ok(Some(_)))
+}
+
+#[tauri::command]
+fn tracker_forget_key(state: State<'_, AppState>, site: String) -> Result<(), String> {
+    tracker::forget_key(&site.trim().to_lowercase()).map_err(|error| error.message(lang(&state)).into())
+}
+
+/// Check the saved key and project key against the tracker; the project's name.
+#[tauri::command(async)]
+fn tracker_test(state: State<'_, AppState>, source: Source) -> Result<String, String> {
+    let lang = lang(&state);
+    let say = |error: tracker::TrackerError| error.message(lang).to_string();
+    let source = source::validate(&source).map_err(engine_message(&state))?;
+    let api = tracker::HttpApi::for_site(&source.site).map_err(say)?;
+    backlog::project(&api, &source.project_key).map(|(_, name)| name).map_err(say)
+}
+
+/// Fetch the source's issues and say what pulling them would do to the project. Reads
+/// only: the project changes when the frontend sends the rows in `apply_pull`. Answers
+/// `None` when cancelled (`tracker_cancel`, or a newer pull). Progress arrives as
+/// `tracker-progress` events.
+#[tauri::command(async)]
+fn tracker_pull(app: AppHandle, state: State<'_, AppState>, source: Source) -> Result<Option<PullPreview>, String> {
+    let lang = lang(&state);
+    let say = |error: tracker::TrackerError| error.message(lang).to_string();
+    let source = source::validate(&source).map_err(engine_message(&state))?;
+    let cancel = Arc::new(AtomicBool::new(false));
+    {
+        let mut running = state.tracker_cancel.lock().unwrap_or_else(|err| err.into_inner());
+        running.store(true, Ordering::Relaxed);
+        *running = cancel.clone();
+    }
+    let api = tracker::HttpApi::for_site(&source.site).map_err(say)?;
+    let fetched = backlog::fetch(&api, &source, &cancel, &mut |progress| {
+        let _ = app.emit("tracker-progress", progress);
+    });
+    let issues = match fetched {
+        Ok(issues) => issues,
+        Err(tracker::TrackerError::Cancelled) => return Ok(None),
+        Err(error) => return Err(say(error)),
+    };
+    let converted = backlog::convert(&issues, &source);
+    let pulled_at = now_millis();
+    let project = lock(&state).project.clone();
+    let changes = tracker::changes(&project, &converted.rows, pulled_at, lang);
+    Ok(Some(PullPreview {
+        rows: converted.rows,
+        pulled_at,
+        warnings: converted.warnings,
+        changes,
+    }))
+}
+
+/// What pulling `rows` would do to the project as it is now, for when something changed
+/// since the fetch (an email added to a person, an edit) and the rows are still good.
+#[tauri::command(async)]
+fn tracker_check(state: State<'_, AppState>, rows: Vec<PullTask>, pulled_at: i64) -> tracker::PullChanges {
+    let project = lock(&state).project.clone();
+    tracker::changes(&project, &rows, pulled_at, lang(&state))
+}
+
+/// Stop the pull that is fetching.
+#[tauri::command]
+fn tracker_cancel(state: State<'_, AppState>) {
+    state.tracker_cancel.lock().unwrap_or_else(|err| err.into_inner()).store(true, Ordering::Relaxed);
 }
 
 /// Work and capacity by person for the days `from` to `to` (`YYYY-MM-DD`), by day or week.
@@ -1358,6 +1448,13 @@ pub fn run() {
             pick_table,
             read_table_sheet,
             check_import,
+            tracker_save_key,
+            tracker_has_key,
+            tracker_forget_key,
+            tracker_test,
+            tracker_pull,
+            tracker_check,
+            tracker_cancel,
             preview_plan,
             load_map,
             forecast,
