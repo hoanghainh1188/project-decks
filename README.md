@@ -35,6 +35,8 @@ xattr -dr com.apple.quarantine /Applications/Sheafly.app
 
 On Windows, SmartScreen may ask first; choose **More info → Run anyway**.
 
+Each release also has `SHA256SUMS.txt`. To check a download, run `shasum -a 256 <file>` (macOS, Linux) or `certutil -hashfile <file> SHA256` (Windows) and compare the result with its line there.
+
 ## Build from source
 
 You need [Rust](https://rustup.rs) (stable), Node.js 22 (or 20.19 and later) and [pnpm](https://pnpm.io). Linux also needs Tauri's system packages (see the [Tauri prerequisites](https://tauri.app/start/prerequisites/)).
@@ -77,4 +79,6 @@ cargo bench -p sheafly-engine --bench large_project -- leveling  # leveling 500 
 
 MIT. The app bundles open-source packages and the Be Vietnam Pro font (SIL Open Font License); their copyright notices and license texts are in [`src-tauri/THIRD_PARTY_LICENSES.txt`](src-tauri/THIRD_PARTY_LICENSES.txt), which every installer includes and Help → Third-Party Licenses opens. Regenerate it with `node scripts/third-party-licenses.mjs` after changing dependencies; CI checks that it is current.
 
-Microsoft Project is a trademark of Microsoft Corporation. Sheafly is independent software, not affiliated with Microsoft.
+## Trademarks
+
+Microsoft Project and Windows are trademarks of Microsoft Corporation; macOS is a trademark of Apple Inc.; Jira is a trademark of Atlassian; Asana is a trademark of Asana, Inc.; Backlog is a trademark of Nulab Inc. Other names belong to their owners. They are mentioned only to describe compatibility. Sheafly is independent software, not affiliated with, sponsored or endorsed by any of them.

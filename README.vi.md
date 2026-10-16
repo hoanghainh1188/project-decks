@@ -35,6 +35,8 @@ xattr -dr com.apple.quarantine /Applications/Sheafly.app
 
 Trên Windows, SmartScreen có thể hỏi; chọn **More info → Run anyway**.
 
+Mỗi bản phát hành có thêm tệp `SHA256SUMS.txt`. Để kiểm tra tệp đã tải, chạy `shasum -a 256 <tệp>` (macOS, Linux) hoặc `certutil -hashfile <tệp> SHA256` (Windows) rồi so với dòng của tệp đó.
+
 ## Build từ mã nguồn
 
 Cần [Rust](https://rustup.rs) (bản stable), Node.js 22 (hoặc 20.19 trở lên) và [pnpm](https://pnpm.io). Trên Linux cần thêm các gói hệ thống của Tauri (xem [hướng dẫn của Tauri](https://tauri.app/start/prerequisites/)).
@@ -77,4 +79,6 @@ cargo bench -p sheafly-engine --bench large_project -- leveling  # cân bằng 5
 
 MIT. App đóng gói các thư viện mã nguồn mở và phông Be Vietnam Pro (SIL Open Font License); thông báo bản quyền và nguyên văn giấy phép của chúng nằm trong [`src-tauri/THIRD_PARTY_LICENSES.txt`](src-tauri/THIRD_PARTY_LICENSES.txt), có trong mọi bản cài và mở được bằng Trợ giúp → Giấy phép bên thứ ba. Sau khi đổi thư viện, chạy lại `node scripts/third-party-licenses.mjs`; CI kiểm tra tệp này luôn khớp.
 
-Microsoft Project là nhãn hiệu của Microsoft Corporation. Sheafly là phần mềm độc lập, không liên quan đến Microsoft.
+## Nhãn hiệu
+
+Microsoft Project và Windows là nhãn hiệu của Microsoft Corporation; macOS là nhãn hiệu của Apple Inc.; Jira là nhãn hiệu của Atlassian; Asana là nhãn hiệu của Asana, Inc.; Backlog là nhãn hiệu của Nulab Inc. Các tên khác thuộc về chủ sở hữu của chúng. Chúng chỉ được nhắc đến để mô tả khả năng tương thích. Sheafly là phần mềm độc lập, không liên kết, không được tài trợ hay bảo trợ bởi bên nào trong số đó.

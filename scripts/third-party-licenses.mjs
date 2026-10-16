@@ -170,7 +170,25 @@ function render(packages) {
   return `${parts.join("\n")}\n`;
 }
 
-const text = render([...npmPackages(), ...rustCrates(), bundledFont()]);
+// The app is MIT, so every shipped package must offer a license without strong copyleft
+// (an "A OR GPL" package is fine: we take A). LGPL and MPL-2.0 (unmodified) are allowed.
+const COPYLEFT = /\b(A?GPL|SSPL|EUPL|OSL|CC-BY-SA)\b/i;
+function copyleftOnly(expression) {
+  return expression
+    .replace(/[()]/g, "")
+    .split(/\s+OR\s+|\//i)
+    .every((choice) => COPYLEFT.test(choice.replace(/LGPL/gi, "")));
+}
+
+const packages = [...npmPackages(), ...rustCrates(), bundledFont()];
+const copyleft = packages.filter((pkg) => copyleftOnly(pkg.license));
+if (copyleft.length) {
+  console.error("These packages are only under a copyleft license the MIT app cannot ship:");
+  for (const pkg of copyleft) console.error(`  ${pkg.name} ${pkg.version} (${pkg.license})`);
+  process.exit(1);
+}
+
+const text = render(packages);
 if (process.argv.includes("--check")) {
   const current = existsSync(output) ? readFileSync(output, "utf8") : "";
   if (current !== text) {
