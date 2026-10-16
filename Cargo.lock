@@ -3697,7 +3697,7 @@ dependencies = [
 
 [[package]]
 name = "sheafly"
-version = "1.4.0"
+version = "1.5.0"
 dependencies = [
  "calamine",
  "chrono",
@@ -3720,7 +3720,7 @@ dependencies = [
 
 [[package]]
 name = "sheafly-engine"
-version = "1.4.0"
+version = "1.5.0"
 dependencies = [
  "chrono",
  "quick-xml 0.37.5",
