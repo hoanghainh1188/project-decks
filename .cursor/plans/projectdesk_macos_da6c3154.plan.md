@@ -758,6 +758,7 @@ Kết quả đúng: không còn quá tải, không có giờ rảnh xen giữa c
 - **PR C — giao diện (M).** Hộp thoại "Đẩy ngày về tracker": chọn trường và chế độ, xem trước cũ → mới theo issue, xác nhận, tiến độ, kết quả; sau đó gửi `record_push`.
   - **PR C xong (16/10/2026).** Như plan: hộp thoại "Đẩy ngày về task tracker" (menu Tệp → Xuất), chọn ghi gì và chế độ điền ô trống hay ghi đè, xem trước từng issue cũ → mới, ghi chỉ khi bấm nút "Ghi N việc lên Backlog", tiến độ và Dừng, kết quả (đã ghi, lỗi, chưa gửi) và gửi `record_push` ngay khi có báo cáo. Khi đang ghi thì không đóng được hộp thoại (chỉ Dừng) để không mất dấu việc đã ghi. Chưa thử trên Backlog thật.
 - **PR D — tài liệu.**
+  - **PR D xong (16/10/2026). Pha 2 xong về mã.** README và README.vi mô tả đẩy ngày và giới hạn mới; `CLAUDE.md` đã có ba mục (engine, Tauri, hộp thoại) từ các PR trước. **Còn lại trước khi coi pha 2 là xong hẳn:** thử trên một space Backlog thử (quyền sửa issue; ngày và người được giao đúng chỗ; kéo ngay sau khi đẩy không đổi gì; hành vi khi gặp giới hạn tốc độ), xem hộp thoại ở hai chủ đề, và build Windows/Linux (chỉ chạy khi gắn tag). Chưa có gì phát hiện được khi cả hai phía cùng đổi một trường: đó là pha 3.
 
 **Xong khi.** Xem trước đúng với kết quả ghi; không ghi gì khi chưa xác nhận; ghi lại cùng dữ liệu thì không có thay đổi nào; kéo ngay sau khi đẩy không biến ngày đã đẩy thành ràng buộc hay hạn chót; khóa API không xuất hiện trong tệp, log hay thông báo lỗi; giao diện và lỗi có tiếng Việt và tiếng Anh.
 
