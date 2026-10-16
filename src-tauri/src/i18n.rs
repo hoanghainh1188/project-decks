@@ -338,6 +338,7 @@ pub const PROJECT_MENU: &[Entry] = &[
             item("project-info", "Thông tin dự án…", "Project Information…", None),
             item("custom-fields", "Trường tùy chỉnh…", "Custom Fields…", None),
             item("working-time", "Lịch làm việc…", "Working Time…", None),
+            item("tracker-settings", "Đồng bộ task tracker…", "Task Tracker Sync…", None),
         ],
     ),
     Entry::Separator,
