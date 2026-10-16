@@ -158,6 +158,27 @@ describe("convertTable for tasks", () => {
   });
 });
 
+describe("effort range columns", () => {
+  it("are guessed from their headers in both languages", () => {
+    expect(guessColumns(["Tên", "Effort", "Effort thấp", "Effort cao"], "tasks", [])).toEqual(["name", "work", "work_low", "work_high"]);
+    expect(guessColumns(["Task", "Low effort", "High effort"], "tasks", [])).toEqual(["name", "work_low", "work_high"]);
+  });
+
+  it("read like the effort, and an engine problem on them points at the column", () => {
+    const setup = tasksSetup(["name", "work", "work_low", "work_high"]);
+    const converted = convertTable(sheet([["Tên", "Effort", "Thấp", "Cao"], ["A", "16", "8", "3 ngày"], ["B", "8", "x", ""]]), setup, project);
+    expect(converted.tasks[0]).toMatchObject({ work: 16 * 60, work_low: 8 * 60, work_high: 3 * 480 });
+    expect(converted.issues).toEqual([{ line: 3, column: 2, message: expect.stringContaining("Effort") }]);
+    const issues = engineIssues(
+      [{ table: "tasks", row: 0, column: "work_high", message: "Khoảng effort không hợp lệ" }],
+      converted,
+      setup,
+      project.fields,
+    );
+    expect(issues).toEqual([{ line: 2, column: 3, message: "Khoảng effort không hợp lệ" }]);
+  });
+});
+
 describe("convertTable for resources", () => {
   it("reads kinds, units, rates and skills", () => {
     const converted = convertTable(

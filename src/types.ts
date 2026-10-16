@@ -291,6 +291,35 @@ export interface LoadMap {
   rows: { resource_uid: number; cells: LoadCell[] }[];
 }
 
+/** Mirror of `forecast::Percentiles`: finish dates (ms) by which that share of runs had finished. */
+export interface Percentiles {
+  p50: number;
+  p80: number;
+  p90: number;
+}
+
+/** Mirror of `forecast::TaskForecast`. */
+export interface TaskForecast extends Percentiles {
+  uid: number;
+  /** Share of runs finished by the task's deadline; null without one. */
+  on_time: number | null;
+  /** Share of runs in which the task was critical. */
+  criticality: number;
+}
+
+/** Mirror of `forecast::Forecast`. */
+export interface Forecast {
+  iterations: number;
+  /** The project finish as scheduled now. */
+  planned_finish: number;
+  /** The project finish once leveled, with today's effort and no variation. */
+  leveled_finish: number;
+  finish: Percentiles;
+  /** Runs finishing the project on each day (midnight of that day, ms), in date order. */
+  histogram: [number, number][];
+  tasks: TaskForecast[];
+}
+
 /** Mirror of `command::LevelingDelay`. */
 export interface LevelingDelay {
   uid: number;

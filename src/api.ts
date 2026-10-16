@@ -4,6 +4,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { defineMessages, isLang, pick, type Lang } from "./i18n";
 import { isThemeChoice, type ThemeChoice } from "./theme";
 import type {
+  Forecast,
   Command,
   ImportProblem,
   ImportResource,
@@ -99,6 +100,14 @@ export function suggestAssignments(): Promise<Suggestion[]> {
 /** Work and capacity by person from `from` to `to` ("YYYY-MM-DD", both included). */
 export function loadMap(from: string, to: string, bucket: LoadBucket): Promise<LoadMap> {
   return inOrder(() => invoke<LoadMap>("load_map", { from, to, bucket }));
+}
+
+/**
+ * The finish forecast of the project as it is now. Not queued behind edits (it takes about
+ * a second on a large project); a newer call stops this one, which then answers null.
+ */
+export function forecast(iterations: number): Promise<Forecast | null> {
+  return invoke<Forecast | null>("forecast", { iterations });
 }
 
 /** What assigning `assignments` and leveling would do; the project does not change. */
