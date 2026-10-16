@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 import { defineMessages, isLang, pick, type Lang } from "./i18n";
+import { SnapshotCache, type FullSnapshot, type SnapshotAnswer } from "./snapshotPatch";
 import { isThemeChoice, type ThemeChoice } from "./theme";
 import type {
   Forecast,
@@ -80,8 +81,14 @@ export function setTheme(theme: ThemeChoice): Promise<void> {
   return invoke<void>("set_theme", { theme });
 }
 
+// Edits, undo and redo answer with patches against the snapshot held here; every other
+// answer that is a snapshot passes through it too, so a patch never lands on the wrong base.
+const snapshots = new SnapshotCache();
+const wholeState = () => invoke<FullSnapshot>("project_state");
+const received = (answer: Promise<SnapshotAnswer>) => answer.then((value) => snapshots.receive(value, wholeState));
+
 export function loadState(): Promise<Snapshot> {
-  return inOrder(() => invoke<Snapshot>("project_state"));
+  return inOrder(() => received(wholeState()));
 }
 
 export function loadMetrics(): Promise<ProjectMetrics> {
@@ -118,7 +125,7 @@ export function previewPlan(assignments: TaskAssignment[]): Promise<PlanPreview>
 /** Apply the plan last previewed as one undo step; refused when the project changed since. */
 export function applyPlan(plan: PlanPreview): Promise<Snapshot> {
   return inOrder(() =>
-    invoke<Snapshot>("apply_plan", { assignments: plan.assignments, delays: plan.delays, splits: plan.splits }),
+    received(invoke<SnapshotAnswer>("apply_plan", { assignments: plan.assignments, delays: plan.delays, splits: plan.splits })),
   );
 }
 
@@ -143,28 +150,28 @@ export function copyTasks(uids: number[]): Promise<TaskClipboard> {
 }
 
 export function applyCommand(command: Command): Promise<Snapshot> {
-  return inOrder(() => invoke<Snapshot>("apply_command", { command }));
+  return inOrder(() => received(invoke<SnapshotAnswer>("apply_command", { command })));
 }
 
 export function undo(): Promise<Snapshot> {
-  return inOrder(() => invoke<Snapshot>("undo"));
+  return inOrder(() => received(invoke<SnapshotAnswer>("undo")));
 }
 
 export function redo(): Promise<Snapshot> {
-  return inOrder(() => invoke<Snapshot>("redo"));
+  return inOrder(() => received(invoke<SnapshotAnswer>("redo")));
 }
 
 export function newProject(): Promise<Snapshot> {
-  return afterQueued(() => invoke<Snapshot>("new_project"));
+  return afterQueued(() => received(invoke<SnapshotAnswer>("new_project")));
 }
 
 export function openProject(): Promise<Snapshot> {
-  return afterQueued(() => invoke<Snapshot>("open_project"));
+  return afterQueued(() => received(invoke<SnapshotAnswer>("open_project")));
 }
 
 /** File → Open Recent → the file at `index` (0 is the most recent). */
 export function openRecent(index: number): Promise<Snapshot> {
-  return afterQueued(() => invoke<Snapshot>("open_recent", { index }));
+  return afterQueued(() => received(invoke<SnapshotAnswer>("open_recent", { index })));
 }
 
 /**
@@ -172,7 +179,7 @@ export function openRecent(index: number): Promise<Snapshot> {
  * nothing is queued or a dialog is up; the file then stays queued for a later call.
  */
 export function openPending(): Promise<Snapshot | null> {
-  return afterQueued(() => invoke<Snapshot | null>("open_pending"));
+  return afterQueued(() => invoke<FullSnapshot | null>("open_pending").then((value) => (value ? snapshots.receive(value, wholeState) : null)));
 }
 
 /** The system asked to open a project file; call `openPending` when no dialog is up. */
@@ -181,25 +188,25 @@ export function onOpenFile(handler: () => void): Promise<UnlistenFn> {
 }
 
 export function saveProject(): Promise<Snapshot> {
-  return afterQueued(() => invoke<Snapshot>("save_project"));
+  return afterQueued(() => received(invoke<SnapshotAnswer>("save_project")));
 }
 
 export function saveProjectAs(): Promise<Snapshot> {
-  return afterQueued(() => invoke<Snapshot>("save_project_as"));
+  return afterQueued(() => received(invoke<SnapshotAnswer>("save_project_as")));
 }
 
 export function importMspdi(): Promise<Snapshot> {
-  return afterQueued(() => invoke<Snapshot>("import_mspdi"));
+  return afterQueued(() => received(invoke<SnapshotAnswer>("import_mspdi")));
 }
 
 /** After a crash, offers the autosaved project back; the restored snapshot, or null. */
 export function checkAutosave(): Promise<Snapshot | null> {
-  return afterQueued(() => invoke<Snapshot | null>("check_autosave"));
+  return afterQueued(() => invoke<FullSnapshot | null>("check_autosave").then((value) => (value ? snapshots.receive(value, wholeState) : null)));
 }
 
 /** Asks, then folds old undo steps into the project's starting state. */
 export function compactHistory(): Promise<Snapshot> {
-  return afterQueued(() => invoke<Snapshot>("compact_history"));
+  return afterQueued(() => received(invoke<SnapshotAnswer>("compact_history")));
 }
 
 export function exportMspdi(): Promise<void> {
