@@ -13,37 +13,12 @@
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use serde::Serialize;
 use sheafly_engine::push::{PushChange, PushedEntry};
 use sheafly_engine::Lang;
 
 use crate::backlog_fields::{parse_ref, FieldRef};
+use crate::connector::{PushFailure, PushProgress, PushReport};
 use crate::tracker::{Api, TrackerError};
-
-#[derive(Clone, Copy, Debug, Serialize)]
-pub struct PushProgress {
-    pub done: usize,
-    pub total: usize,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-pub struct PushFailure {
-    pub key: String,
-    pub message: String,
-}
-
-#[derive(Debug, Default, Serialize)]
-pub struct PushReport {
-    /// Keys of the issues written.
-    pub done: Vec<String>,
-    /// What was written (days and assignee), for `RecordPush`.
-    pub entries: Vec<PushedEntry>,
-    pub failed: Vec<PushFailure>,
-    /// Keys not reached because the push stopped.
-    pub not_sent: Vec<String>,
-    /// Why the push stopped early, if it did.
-    pub stopped: Option<String>,
-}
 
 /// An issue key is safe in a path.
 fn key_safe(key: &str) -> bool {
@@ -51,14 +26,14 @@ fn key_safe(key: &str) -> bool {
 }
 
 /// The project's users by lower-cased email, to their ids.
-pub fn users(api: &dyn Api, project_key: &str) -> Result<HashMap<String, i64>, TrackerError> {
+pub fn users(api: &dyn Api, project_key: &str) -> Result<HashMap<String, String>, TrackerError> {
     let body = api.get(&format!("/api/v2/projects/{project_key}/users"), &[])?;
     let list = body.as_array().ok_or(TrackerError::BadResponse)?;
     Ok(list
         .iter()
         .filter_map(|user| {
             let email = user.get("mailAddress")?.as_str()?.trim().to_lowercase();
-            let id = user.get("id")?.as_i64()?;
+            let id = user.get("id")?.as_i64()?.to_string();
             (!email.is_empty()).then_some((email, id))
         })
         .collect())
@@ -73,7 +48,7 @@ fn stops_the_push(error: TrackerError) -> bool {
 }
 
 /// The name of the form field a day goes to: the tracker's own, or `customField_<id>`.
-fn day_field(native: &str, custom: &Option<String>, ids: &HashMap<String, i64>) -> Result<String, TrackerError> {
+fn day_field(native: &str, custom: &Option<String>, ids: &HashMap<String, String>) -> Result<String, TrackerError> {
     match custom {
         None => Ok(native.to_string()),
         Some(reference) => match parse_ref(reference)? {
@@ -89,8 +64,8 @@ fn day_field(native: &str, custom: &Option<String>, ids: &HashMap<String, i64>) 
 /// The form fields of one change; the person's id comes from `users`, a custom field's from `ids`.
 fn form_of(
     change: &PushChange,
-    users: &HashMap<String, i64>,
-    ids: &HashMap<String, i64>,
+    users: &HashMap<String, String>,
+    ids: &HashMap<String, String>,
 ) -> Result<Vec<(String, String)>, TrackerError> {
     let mut form = Vec::new();
     if let Some(start) = &change.start {
@@ -101,7 +76,7 @@ fn form_of(
     }
     if let Some(assignee) = &change.assignee {
         let id = users.get(&assignee.to.trim().to_lowercase()).ok_or(TrackerError::NoUser)?;
-        form.push(("assigneeId".to_string(), id.to_string()));
+        form.push(("assigneeId".to_string(), id.clone()));
     }
     Ok(form)
 }
@@ -111,8 +86,8 @@ fn form_of(
 pub fn push_issues(
     api: &dyn Api,
     changes: &[PushChange],
-    users: &HashMap<String, i64>,
-    ids: &HashMap<String, i64>,
+    users: &HashMap<String, String>,
+    ids: &HashMap<String, String>,
     lang: Lang,
     cancel: &AtomicBool,
     progress: &mut dyn FnMut(PushProgress),
@@ -246,7 +221,7 @@ mod tests {
     #[test]
     fn users_are_found_by_lower_cased_email_and_those_without_one_are_left_out() {
         let found = users(&Fake::new(&[]), "PROJ").unwrap();
-        assert_eq!(found, HashMap::from([("an@example.com".to_string(), 5)]));
+        assert_eq!(found, HashMap::from([("an@example.com".to_string(), "5".to_string())]));
     }
 
     #[test]
@@ -280,7 +255,7 @@ mod tests {
     #[test]
     fn a_day_sent_to_a_date_custom_field_goes_there_and_is_recorded_under_its_own_key() {
         let fake = Fake::new(&[]);
-        let ids = HashMap::from([("bắt đầu dự kiến".to_string(), 11)]);
+        let ids = HashMap::from([("bắt đầu dự kiến".to_string(), "11".to_string())]);
         let mut sent = change("PROJ-1", Some("2026-01-05"), Some("2026-01-06"));
         sent.start_field = Some("custom:Bắt đầu dự kiến".into());
         let users = users(&fake, "PROJ").unwrap();

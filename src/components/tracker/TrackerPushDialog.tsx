@@ -59,7 +59,7 @@ export function TrackerPushDialog({
   useEffect(() => {
     if (!source) return;
     let current = true;
-    trackerHasKey(source.site)
+    trackerHasKey(source.kind, source.site)
       .then((has) => current && setHasKey(has))
       .catch(() => current && setHasKey(false));
     return () => {

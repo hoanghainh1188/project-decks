@@ -70,7 +70,7 @@ export function TrackerDialog({
       return;
     }
     let current = true;
-    trackerHasKey(source.site)
+    trackerHasKey(source.kind, source.site)
       .then((has) => current && setHasKey(has))
       .catch(() => current && setHasKey(false));
     return () => {
@@ -130,7 +130,7 @@ export function TrackerDialog({
 
   async function saveTypedKey() {
     if (!keyInput.trim()) return;
-    await trackerSaveKey(source.site, keyInput);
+    await trackerSaveKey(source.kind, source.site, keyInput);
     setKeyInput("");
     setHasKey(true);
   }
@@ -169,7 +169,7 @@ export function TrackerDialog({
 
   async function forgetKey() {
     try {
-      await trackerForgetKey(source.site);
+      await trackerForgetKey(source.kind, source.site);
       setHasKey(false);
       setNote(null);
     } catch (err) {

@@ -31,7 +31,6 @@ use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use chrono::{Datelike, NaiveDate};
-use serde::Serialize;
 use serde_json::Value;
 use sheafly_engine::fields::{FieldDef, FieldKind, FieldValue};
 use sheafly_engine::pull::{PullTask, MAX_PULL_ROWS};
@@ -39,6 +38,7 @@ use sheafly_engine::source::{Source, StatusClass};
 use sheafly_engine::timeutil::timestamp;
 
 use crate::backlog_fields::{DateSource, ReadPlan, WorkSource};
+use crate::connector::{Converted, Progress, PullWarning, WarningKind};
 use crate::tracker::{Api, TrackerError};
 
 /// Issues one request returns at most.
@@ -67,35 +67,6 @@ const FILTER_NAMES: &[&str] = &[
     "dueDateSince",
     "dueDateUntil",
 ];
-
-#[derive(Clone, Copy, Debug, Serialize)]
-pub struct Progress {
-    pub fetched: usize,
-    pub total: Option<usize>,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum WarningKind {
-    /// The issue has an assignee, but Backlog gave no email, so nobody can be matched.
-    NoEmail,
-    /// The issue could not be read (no key or title) and was left out.
-    Skipped,
-    /// A custom field's value does not read as a number, so the field was left as it was.
-    FieldValue,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-pub struct PullWarning {
-    pub key: String,
-    pub kind: WarningKind,
-}
-
-#[derive(Debug, Default)]
-pub struct Converted {
-    pub rows: Vec<PullTask>,
-    pub warnings: Vec<PullWarning>,
-}
 
 /// A project key or id is safe in a path.
 fn path_safe(project: &str) -> bool {

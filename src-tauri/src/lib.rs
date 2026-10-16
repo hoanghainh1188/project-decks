@@ -1,12 +1,15 @@
 mod backlog;
+mod backlog_connector;
 mod backlog_fields;
 mod backlog_push;
+mod connector;
 mod delta;
 mod i18n;
 mod menu_icons;
 mod settings;
 mod table;
 mod tracker;
+mod tracker_commands;
 
 use settings::Theme;
 
@@ -32,11 +35,6 @@ use sheafly_engine::load_map::{self, Bucket, LoadMap};
 use sheafly_engine::plan::{self, PlanPreview};
 use sheafly_engine::timeutil::parse_date_key;
 use sheafly_engine::skills::TaskAssignment;
-use sheafly_engine::pull::PullTask;
-use sheafly_engine::sync::Resolution;
-use sheafly_engine::push::{self, PushOptions, PushPlan};
-use sheafly_engine::source::{self, Source};
-use tracker::PullPreview;
 use sheafly_engine::{Command, Document, EngineError, Lang, Snapshot};
 use tauri::menu::{AboutMetadata, CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::path::BaseDirectory;
@@ -84,7 +82,7 @@ struct AppState {
     tracker_cancel: Mutex<Arc<AtomicBool>>,
     /// The push `tracker_push_preview` last made: `tracker_push` writes exactly that plan,
     /// and only while the project and the settings are still the ones it was made for.
-    push_base: Mutex<Option<PushBase>>,
+    push_base: Mutex<Option<tracker_commands::PushBase>>,
     /// The snapshot sent last, the base of the patch an edit, undo or redo answers with.
     delta: delta::Delta,
 }
@@ -567,216 +565,6 @@ fn check_import(
             column: problem.column,
         })
         .collect()
-}
-
-/// Save the API key for a tracker's site in the operating system's credential store.
-/// The key goes in once, from the dialog, and is never sent back to the webview.
-#[tauri::command]
-fn tracker_save_key(state: State<'_, AppState>, site: String, key: String) -> Result<(), String> {
-    let lang = lang(&state);
-    if key.trim().is_empty() {
-        return Err(tracker::TrackerError::NoKey.message(lang).into());
-    }
-    tracker::save_key(&site.trim().to_lowercase(), &key).map_err(|error| error.message(lang).into())
-}
-
-/// Whether a key is saved for the site (the key itself is never read out).
-#[tauri::command]
-fn tracker_has_key(site: String) -> bool {
-    matches!(tracker::load_key(&site.trim().to_lowercase()), Ok(Some(_)))
-}
-
-#[tauri::command]
-fn tracker_forget_key(state: State<'_, AppState>, site: String) -> Result<(), String> {
-    tracker::forget_key(&site.trim().to_lowercase()).map_err(|error| error.message(lang(&state)).into())
-}
-
-/// Check the saved key and project key against the tracker; the project's name.
-#[tauri::command(async)]
-fn tracker_test(state: State<'_, AppState>, source: Source) -> Result<String, String> {
-    let lang = lang(&state);
-    let say = |error: tracker::TrackerError| error.message(lang).to_string();
-    let source = source::validate(&source).map_err(engine_message(&state))?;
-    let api = tracker::HttpApi::for_site(&source.site).map_err(say)?;
-    let (_, name) = backlog::project(&api, &source.project_key).map_err(say)?;
-    // The settings' references are checked too, so a wrong name shows up here.
-    let fields = lock(&state).project.fields.clone();
-    backlog_fields::plan_for(&api, &source, &fields).map_err(say)?;
-    Ok(name)
-}
-
-/// Fetch the source's issues and say what pulling them would do to the project. Reads
-/// only: the project changes when the frontend sends the rows in `apply_pull`. Answers
-/// `None` when cancelled (`tracker_cancel`, or a newer pull). Progress arrives as
-/// `tracker-progress` events.
-#[tauri::command(async)]
-fn tracker_pull(app: AppHandle, state: State<'_, AppState>, source: Source) -> Result<Option<PullPreview>, String> {
-    let lang = lang(&state);
-    let say = |error: tracker::TrackerError| error.message(lang).to_string();
-    let source = source::validate(&source).map_err(engine_message(&state))?;
-    let cancel = new_tracker_cancel(&state);
-    let api = tracker::HttpApi::for_site(&source.site).map_err(say)?;
-    let project = lock(&state).project.clone();
-    let (reads, _) = backlog_fields::plan_for(&api, &source, &project.fields).map_err(say)?;
-    let Some(issues) = fetch_issues(&app, &api, &source, &cancel).map_err(say)? else {
-        return Ok(None);
-    };
-    let converted = backlog::convert(&issues, &source, &project.fields, &reads);
-    let pulled_at = now_millis();
-    let changes = tracker::changes(&project, &converted.rows, pulled_at, &[], lang);
-    Ok(Some(PullPreview {
-        rows: converted.rows,
-        pulled_at,
-        warnings: converted.warnings,
-        changes,
-    }))
-}
-
-/// A fresh cancel flag for the tracker call about to start; the one before is set, so a
-/// call still running stops.
-fn new_tracker_cancel(state: &AppState) -> Arc<AtomicBool> {
-    let cancel = Arc::new(AtomicBool::new(false));
-    let mut running = state.tracker_cancel.lock().unwrap_or_else(|err| err.into_inner());
-    running.store(true, Ordering::Relaxed);
-    *running = cancel.clone();
-    cancel
-}
-
-/// The source's issues, with `tracker-progress` events; `None` when cancelled.
-fn fetch_issues(
-    app: &AppHandle,
-    api: &dyn tracker::Api,
-    source: &Source,
-    cancel: &AtomicBool,
-) -> Result<Option<Vec<serde_json::Value>>, tracker::TrackerError> {
-    match backlog::fetch(api, source, cancel, &mut |progress| {
-        let _ = app.emit("tracker-progress", progress);
-    }) {
-        Ok(issues) => Ok(Some(issues)),
-        Err(tracker::TrackerError::Cancelled) => Ok(None),
-        Err(error) => Err(error),
-    }
-}
-
-/// What a push would write, and the people it cannot find at the source.
-#[derive(serde::Serialize)]
-struct PushPreview {
-    plan: PushPlan,
-    /// Emails of the people to assign that no one at the source has.
-    unknown_assignees: Vec<String>,
-}
-
-/// What `tracker_push` needs to write the plan and to know it is still the right one.
-struct PushBase {
-    project: sheafly_engine::Project,
-    source: Source,
-    options: PushOptions,
-    plan: PushPlan,
-    users: std::collections::HashMap<String, i64>,
-    /// The ids of the date custom fields the plan writes to, by lower-cased name.
-    custom_ids: std::collections::HashMap<String, i64>,
-}
-
-/// Fetch the source's issues and list what pushing the computed dates (and assignees)
-/// would write. Nothing is written. `None` when cancelled.
-#[tauri::command(async)]
-fn tracker_push_preview(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    source: Source,
-    options: PushOptions,
-) -> Result<Option<PushPreview>, String> {
-    let lang = lang(&state);
-    let say = |error: tracker::TrackerError| error.message(lang).to_string();
-    let source = source::validate(&source).map_err(engine_message(&state))?;
-    let cancel = new_tracker_cancel(&state);
-    let api = tracker::HttpApi::for_site(&source.site).map_err(say)?;
-    let project = lock(&state).project.clone();
-    let (reads, defs) = backlog_fields::plan_for(&api, &source, &project.fields).map_err(say)?;
-    let Some(issues) = fetch_issues(&app, &api, &source, &cancel).map_err(say)? else {
-        return Ok(None);
-    };
-    let rows = backlog::convert(&issues, &source, &[], &reads).rows;
-    let plan = push::plan(&project, &rows, options);
-    // A day sent to a date custom field of its own needs that field's id; a field that is not
-    // a date field of the project refuses the whole push before anything is written.
-    let references: Vec<&str> = plan
-        .changes
-        .iter()
-        .flat_map(|change| [change.start_field.as_deref(), change.due_field.as_deref()])
-        .flatten()
-        .collect();
-    let custom_ids = backlog_fields::push_targets(&defs, &references).map_err(say)?;
-    let wants_people = plan.changes.iter().any(|change| change.assignee.is_some());
-    let users = if wants_people {
-        backlog_push::users(&api, &source.project_key).map_err(say)?
-    } else {
-        Default::default()
-    };
-    let mut unknown_assignees: Vec<String> = plan
-        .changes
-        .iter()
-        .filter_map(|change| change.assignee.as_ref())
-        .map(|assignee| assignee.to.clone())
-        .filter(|email| !users.contains_key(&email.trim().to_lowercase()))
-        .collect();
-    unknown_assignees.sort();
-    unknown_assignees.dedup();
-    *state.push_base.lock().unwrap_or_else(|err| err.into_inner()) = Some(PushBase {
-        project,
-        source,
-        options,
-        plan: plan.clone(),
-        users,
-        custom_ids,
-    });
-    Ok(Some(PushPreview { plan, unknown_assignees }))
-}
-
-/// Write the plan last previewed, one issue at a time, with `tracker-push-progress`
-/// events. Refused when the project or the settings changed since the preview, and a
-/// preview is good for one push. The report says what went through; the frontend then
-/// sends `record_push` with its `entries`.
-#[tauri::command(async)]
-fn tracker_push(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    source: Source,
-    options: PushOptions,
-) -> Result<backlog_push::PushReport, String> {
-    let lang = lang(&state);
-    let say = |error: tracker::TrackerError| error.message(lang).to_string();
-    let source = source::validate(&source).map_err(engine_message(&state))?;
-    let base = state.push_base.lock().unwrap_or_else(|err| err.into_inner()).take();
-    let current = lock(&state).project.clone();
-    let base = base
-        .filter(|base| base.project == current && base.source == source && base.options == options)
-        .ok_or_else(|| say(tracker::TrackerError::Stale))?;
-    let cancel = new_tracker_cancel(&state);
-    let api = tracker::HttpApi::for_site(&source.site).map_err(say)?;
-    Ok(backlog_push::push_issues(&api, &base.plan.changes, &base.users, &base.custom_ids, lang, &cancel, &mut |progress| {
-        let _ = app.emit("tracker-push-progress", progress);
-    }))
-}
-
-/// What pulling `rows` would do to the project as it is now, for when something changed
-/// since the fetch (an email added to a person, an edit) and the rows are still good, or
-/// under the choices made for the conflicts.
-#[tauri::command(async)]
-fn tracker_check(
-    state: State<'_, AppState>,
-    rows: Vec<PullTask>,
-    pulled_at: i64,
-    resolutions: Vec<Resolution>,
-) -> tracker::PullChanges {
-    let project = lock(&state).project.clone();
-    tracker::changes(&project, &rows, pulled_at, &resolutions, lang(&state))
-}
-
-/// Stop the pull that is fetching.
-#[tauri::command]
-fn tracker_cancel(state: State<'_, AppState>) {
-    state.tracker_cancel.lock().unwrap_or_else(|err| err.into_inner()).store(true, Ordering::Relaxed);
 }
 
 /// Work and capacity by person for the days `from` to `to` (`YYYY-MM-DD`), by day or week.
@@ -1584,15 +1372,15 @@ pub fn run() {
             pick_table,
             read_table_sheet,
             check_import,
-            tracker_save_key,
-            tracker_has_key,
-            tracker_forget_key,
-            tracker_test,
-            tracker_pull,
-            tracker_check,
-            tracker_cancel,
-            tracker_push_preview,
-            tracker_push,
+            tracker_commands::tracker_save_key,
+            tracker_commands::tracker_has_key,
+            tracker_commands::tracker_forget_key,
+            tracker_commands::tracker_test,
+            tracker_commands::tracker_pull,
+            tracker_commands::tracker_check,
+            tracker_commands::tracker_cancel,
+            tracker_commands::tracker_push_preview,
+            tracker_commands::tracker_push,
             preview_plan,
             load_map,
             forecast,
