@@ -590,6 +590,16 @@ export interface ExternalLink {
   key: string;
   synced_at: number;
   gone?: boolean;
+  /** The days (`YYYY-MM-DD`) last written to the source by a push. */
+  pushed_start?: string | null;
+  pushed_due?: string | null;
+}
+
+/** Mirror of `push::PushedEntry`: the days a push wrote for one issue. */
+export interface PushedEntry {
+  key: string;
+  start?: string | null;
+  due?: string | null;
 }
 
 /** Mirror of `pull::PullTask`, one issue of `apply_pull` as the adapter read it. */
@@ -739,6 +749,7 @@ export type Command =
   | { type: "set_resource_email"; uid: number; email: string }
   | { type: "set_source"; source: Source | null }
   | { type: "apply_pull"; rows: PullTask[]; pulled_at: number }
+  | { type: "record_push"; entries: PushedEntry[] }
   | { type: "import_rows"; after_uid: number | null; resources: ImportResource[]; tasks: ImportTask[] }
   | { type: "apply_plan"; assignments: TaskAssignment[]; delays: LevelingDelay[]; splits: LevelingSplits[] };
 

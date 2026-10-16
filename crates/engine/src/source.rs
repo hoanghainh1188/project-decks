@@ -79,6 +79,13 @@ pub struct ExternalLink {
     /// The issue is no longer at the source (deleted, moved, or outside the filter).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub gone: bool,
+    /// The start and due days (`YYYY-MM-DD`) last written to the source by a push. A pull
+    /// that finds the same day there knows it is its own and reads nothing from it, so a
+    /// pushed date does not come back as a constraint or a deadline.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pushed_start: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pushed_due: Option<String>,
 }
 
 /// `SetSource`: replace or clear the project's source, checked and tidied.

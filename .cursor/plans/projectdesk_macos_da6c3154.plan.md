@@ -739,6 +739,28 @@ Kết quả đúng: không còn quá tải, không có giờ rảnh xen giữa c
 
 **Ngoài phạm vi pha 1.** Đẩy ngày về nguồn, xung đột, Jira Server/Data Center, theo dõi việc đổi cha ở nguồn, nhiều nguồn trong một dự án, xóa task khi nguồn xóa (chỉ đánh dấu).
 
+#### Pha 19, pha 2 — đẩy ngày về nguồn (M–L, tách 4 PR)
+
+**Nhu cầu.** Sau khi cân bằng trong Sheafly, ghi ngày bắt đầu, ngày kết thúc (và tùy chọn người được giao) về Backlog để nhóm thấy kế hoạch ở tracker họ đang dùng. Ghi lên dịch vụ ngoài là việc khó hoàn tác, nên luôn xem trước và xác nhận, và không ghi gì khi người dùng chưa bấm.
+
+**Quyết định.**
+- **Chỉ đẩy khác biệt.** Lấy lại dữ liệu hiện tại ở nguồn (như một lần kéo), so với ngày Sheafly tính, chỉ ghi những issue khác. Backlog chỉ có ngày (không có giờ), so theo ngày. Không bao giờ xóa một trường ở nguồn (tài liệu API không nói cách xóa).
+- **Trường nào.** Người dùng chọn: bắt đầu → `startDate`, kết thúc → `dueDate`, người được giao → `assigneeId` (tra theo email qua danh sách người dùng của dự án; chỉ khi task có đúng một người có email). Mặc định bật hai ngày, tắt người được giao. Có chế độ "chỉ điền ô trống" (mặc định) hoặc "ghi đè" (như Auto-schedule của Jira Plans).
+- **Cảnh báo `dueDate`.** Kéo đọc `dueDate` thành hạn chót, nên đẩy ngày kết thúc vào `dueDate` rồi kéo lại sẽ biến hạn chót thành ngày kết thúc. Hộp thoại nói rõ điều này; chế độ "chỉ điền ô trống" không động tới `dueDate` đã có.
+- **Không để kéo hiểu nhầm chính giá trị mình vừa đẩy.** `ExternalLink` nhớ ngày đã ghi lần cuối (`pushed_start`, `pushed_due`); khi kéo, nếu ngày ở nguồn trùng ngày đã đẩy thì bỏ qua (không biến ngày tính ra thành ràng buộc "bắt đầu không sớm hơn" hay hạn chót), nếu khác thì là thay đổi thật ở nguồn. Đây là bản nhỏ của ba bên (nguồn, lần cuối, Sheafly) mà pha 3 sẽ làm đầy đủ.
+- **Ghi một issue một lần, từng cái một**, có tiến độ và nút Dừng, dừng ngay khi bị giới hạn tốc độ (429) hoặc bị từ chối; báo cái nào đã ghi, cái nào lỗi. Không có hoàn tác ở nguồn, nên chỉ những issue ghi thành công mới được ghi nhớ (`RecordPush`, một bước hoàn tác).
+- **Xem trước phải còn đúng lúc ghi:** đẩy chỉ chạy khi dự án chưa đổi từ lúc xem trước (như `apply_plan`).
+
+**PR.**
+- **PR A — engine (M), không mạng.** `FORMAT_VERSION` 18. `ExternalLink.pushed_start/pushed_due` (chuỗi `YYYY-MM-DD`). `Command::RecordPush { entries }`. Mô-đun `push.rs`: `plan(project, rows, options) -> PushPlan` (hàm thuần: các thay đổi theo issue với giá trị cũ/mới, các task bị bỏ qua kèm lý do, các issue không còn ở nguồn). `pull` bỏ qua ngày trùng ngày đã đẩy. Test `tests/push.rs`.
+- **PR B — Tauri (M).** Ghi `PATCH /api/v2/issues/:key` (form-urlencoded, `startDate`/`dueDate` dạng `yyyy-MM-dd`, `assigneeId`), tra `assigneeId` theo email qua `GET /api/v2/projects/:key/users`, lệnh `tracker_push_preview` và `tracker_push` (tiến độ, hủy, dừng khi 429), test với phản hồi viết tay.
+- **PR C — giao diện (M).** Hộp thoại "Đẩy ngày về tracker": chọn trường và chế độ, xem trước cũ → mới theo issue, xác nhận, tiến độ, kết quả; sau đó gửi `record_push`.
+- **PR D — tài liệu.**
+
+**Xong khi.** Xem trước đúng với kết quả ghi; không ghi gì khi chưa xác nhận; ghi lại cùng dữ liệu thì không có thay đổi nào; kéo ngay sau khi đẩy không biến ngày đã đẩy thành ràng buộc hay hạn chót; khóa API không xuất hiện trong tệp, log hay thông báo lỗi; giao diện và lỗi có tiếng Việt và tiếng Anh.
+
+**Ngoài phạm vi.** Hai chiều và xung đột (pha 3), ghi vào trường tùy chỉnh của Backlog (định dạng giá trị không có trong tài liệu), xóa giá trị ở nguồn, đẩy effort hoặc trạng thái, Jira và Asana.
+
 ### Tiếng Anh (sau v1.0.0) — đã xong
 
 Giao diện có tiếng Việt và tiếng Anh. Lần đầu mở theo ngôn ngữ hệ thống (máy tiếng Việt thì tiếng Việt, còn lại tiếng Anh, không lưu); Xem → Ngôn ngữ đổi ngay và lưu lựa chọn vào `settings.json`. Mỗi vùng giao diện có catalog `<Tên>.i18n.ts` (`defineMessages(vi, en)`, kiểu của `en` lấy từ `vi` nên thiếu khóa là lỗi biên dịch). Tiếng Anh dùng ngày ISO `2026-01-05 08:00`, dấu chấm thập phân, `7.5 days`, thuật ngữ Microsoft Project (As Soon As Possible, Fixed Units, Effort driven…). Ô nhập nhận cả hai kiểu ở cả hai ngôn ngữ. Menu, hộp hỏi lưu, hộp Giới thiệu, thông báo lỗi của engine và báo cáo khôi phục tệp theo ngôn ngữ đang chọn (`src-tauri/src/i18n.rs`, `EngineError::message(lang)`). Tên đã ghi vào tệp là dữ liệu, không đổi khi đổi ngôn ngữ, nên replay và tệp đã lưu không phụ thuộc ngôn ngữ. Tên mặc định theo ngôn ngữ lúc tạo: giao diện gửi tên cho công việc, nguồn lực, mốc, lịch, chuỗi lặp mới; dự án mới dùng `Document::new_in(lang)` ("New project", "Task 1", lịch "Standard"). Tiếng Anh chỉ nhận ngày dạng ISO để `1/5/2026` không bị hiểu nhầm; độ trễ gõ "2 hrs", "30 mins" được chuẩn hóa thành "2h", "30m" trước khi gửi, để tệp vẫn mở được ở bản cũ.
