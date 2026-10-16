@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { ganttPageGrid, pdfSuggestedName } from "./ganttPdf";
+import { ganttPageGrid, pdfFieldColumns, pdfSuggestedName } from "./ganttPdf";
+import type { FieldDef } from "./types";
 import { pdfMessages } from "./ganttPdf.i18n";
 import { pick, setCurrentLang } from "./i18n";
 
@@ -40,5 +41,22 @@ describe("Gantt PDF pages", () => {
     expect([grid.rowPages, grid.dayPages, grid.pageCount]).toEqual([3, 2, 6]);
     // Wider days at the day scale than at the month scale: fewer per page.
     expect(ganttPageGrid(1, 1, 4).daysPerPage).toBeGreaterThan(one.daysPerPage);
+  });
+});
+
+describe("Gantt PDF field columns", () => {
+  const field = (id: number) => ({ id, name: `F${id}`, kind: { type: "text" } }) as FieldDef;
+
+  it("keeps the fields that fit and leaves the timeline its room", () => {
+    const fitted = pdfFieldColumns([1, 2, 3, 4, 5, 6].map(field));
+    expect(fitted.map((item) => item.id)).toEqual([1, 2, 3]);
+    expect(pdfFieldColumns([])).toEqual([]);
+  });
+
+  it("moves the timeline right by the width of the field columns", () => {
+    const plain = ganttPageGrid(5, 20, 28);
+    const wider = ganttPageGrid(5, 20, 28, 102 + 48);
+    expect(wider.ganttLeft - plain.ganttLeft).toBeCloseTo(48);
+    expect(wider.daysPerPage).toBeLessThan(plain.daysPerPage);
   });
 });
