@@ -71,7 +71,7 @@ Sơ đồ mạng; xuất PDF và trao đổi MSPDI với Microsoft Project.\n\n\
 Engine lập lịch viết bằng Rust; giao diện Tauri 2 và React 19. \
 Biểu tượng: Lucide (ISC). Phông PDF: Be Vietnam Pro (OFL). \
 Giấy phép của mọi thành phần bên thứ ba: Trợ giúp → Giấy phép bên thứ ba.",
-    copyright: "© 2026 Harry’s Forge · Giấy phép MIT",
+    copyright: "© 2026 Hoàng Hải Nguyễn · Giấy phép MIT",
     dialog_busy: "Đang mở một hộp thoại. Hãy đóng nó trước.",
     save: "Lưu",
     dont_save: "Không lưu",
@@ -118,7 +118,7 @@ Task Usage and Network Diagram; PDF export and MSPDI exchange with Microsoft Pro
 Scheduling engine written in Rust; interface built with Tauri 2 and React 19. \
 Icons: Lucide (ISC). PDF font: Be Vietnam Pro (OFL). \
 Licenses of all third-party components: Help → Third-Party Licenses.",
-    copyright: "© 2026 Harry’s Forge · MIT License",
+    copyright: "© 2026 Hoàng Hải Nguyễn · MIT License",
     dialog_busy: "A dialog is already open. Close it first.",
     save: "Save",
     dont_save: "Don’t Save",
