@@ -1,7 +1,7 @@
 import { parseUnits } from "./assignmentUnits";
 import { parseFieldValue } from "./fieldValues";
-import { MINUTES_PER_DAY, parseDuration, parseInstant } from "./format";
-import { getLang, pick } from "./i18n";
+import { MINUTES_PER_DAY, parseDuration, parseInstant, parseMoney } from "./format";
+import { pick } from "./i18n";
 import { fieldOfColumn, fold, type BareUnit, type ImportSetup } from "./importColumns";
 import { importConvertMessages } from "./importConvert.i18n";
 import type { FieldDef, ImportAssignee, ImportProblem, ImportResource, ImportSheet, ImportTask, Project } from "./types";
@@ -42,17 +42,9 @@ function list(cell: string): string[] {
 }
 
 /** Thousands grouped the way the language writes money: "3.480.000", "3,480,000". */
-const GROUPED = { vi: /^\d{1,3}(\.\d{3})+$/, en: /^\d{1,3}(,\d{3})+$/ };
-
-/**
- * A decimal with either mark. With `grouped`, a number grouped in thousands the way the
- * language writes money also reads ("3.480.000" in Vietnamese); anything else is a plain
- * decimal, so a spreadsheet's "12.5" stays 12.5.
- */
-function decimal(cell: string, grouped = false): number | null {
-  let cleaned = cell.replace(/\s/g, "");
-  const lang = getLang() === "en" ? "en" : "vi";
-  if (grouped && GROUPED[lang].test(cleaned)) cleaned = cleaned.replace(/[.,]/g, "");
+/** A decimal with either mark; a spreadsheet's "12.5" stays 12.5. */
+function decimal(cell: string): number | null {
+  const cleaned = cell.replace(/\s/g, "");
   if (!/^-?(\d+([.,]\d+)?|[.,]\d+)$/.test(cleaned)) return null;
   return Number(cleaned.replace(",", "."));
 }
@@ -230,7 +222,8 @@ function resourceRow(cells: string[], context: Context): ImportResource {
       if (value == null || value <= 0) issue(context, column, m.units);
       else resource.max_units = value;
     } else if (kind === "rate") {
-      const value = decimal(cell, true);
+      // Grouped the way the language writes money ("3.480.000"), as the money fields read it.
+      const value = parseMoney(cell);
       if (value == null || value < 0) issue(context, column, m.rate);
       else resource.standard_rate = value;
     } else if (kind === "skills") {

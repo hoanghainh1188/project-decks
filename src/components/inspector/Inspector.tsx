@@ -4,6 +4,7 @@ import type { Accrual, Command, ConstraintType, Project, Task, TaskType } from "
 import { valueOf } from "../../fieldValues";
 import { DateTimeField } from "../DateTimeField";
 import { FieldInput } from "../FieldInput";
+import { MoneyInput } from "../MoneyInput";
 import { AssignmentEditor } from "./AssignmentEditor";
 import { EstimateGroup } from "./EstimateGroup";
 import { canSplit, SplitSection } from "./SplitSection";
@@ -370,39 +371,27 @@ function CostGroup({ project, task, send }: Props) {
       <legend>{m.cost}</legend>
       <div>
         <label>{m.fixedCost}</label>
-        <input
-          aria-label={m.fixedCost}
+        <MoneyInput
+          ariaLabel={m.fixedCost}
           className="narrow"
-          defaultValue={task.fixed_cost}
-          key={`c-${task.uid}-${task.fixed_cost}`}
-          onBlur={(event) =>
-            send({
-              type: "set_fixed_cost",
-              uid: task.uid,
-              cost: Number(event.target.value) || 0,
-              accrual: task.fixed_cost_accrual,
-            })
+          value={task.fixed_cost}
+          onCommit={(cost) =>
+            send({ type: "set_fixed_cost", uid: task.uid, cost: cost ?? 0, accrual: task.fixed_cost_accrual })
           }
         />
       </div>
       <div>
         <label title={m.actualCostTip}>{m.actualCost}</label>
-        <input
-          aria-label={m.actualCost}
+        <MoneyInput
+          ariaLabel={m.actualCost}
           className="narrow"
           title={m.actualCostTip}
           disabled={!editable}
-          defaultValue={editable ? (task.manual_actual_cost ?? "") : Math.round(task.actual_cost)}
-          key={`ac-${task.uid}-${editable}-${task.manual_actual_cost}-${task.actual_cost}`}
-          onBlur={(event) => {
-            const text = event.target.value.trim();
-            const cost = text === "" ? null : Number(text);
-            if (cost !== null && !Number.isFinite(cost)) {
-              event.target.value = String(task.manual_actual_cost ?? "");
-              return;
-            }
-            if (cost !== task.manual_actual_cost) send({ type: "set_task_actual_cost", uid: task.uid, cost });
-          }}
+          optional
+          // Empty goes back to the computed cost, shown as the placeholder.
+          value={editable ? (task.manual_actual_cost ?? null) : Math.round(task.actual_cost)}
+          placeholder={editable ? formatMoney(task.actual_cost) : undefined}
+          onCommit={(cost) => send({ type: "set_task_actual_cost", uid: task.uid, cost })}
         />
       </div>
       <div>

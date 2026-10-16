@@ -827,3 +827,20 @@ input.bad { color: var(--critical-text); border-color: var(--critical-text); fon
 .forecast-tab > p { margin: 0; }
 .forecast-tab section { display: grid; justify-items: start; gap: 4px; }
 .forecast-tab section .meta { margin: 0; }
+
+/* Dự báo: the finish forecast view. */
+.forecast-view { display: grid; align-content: start; gap: 14px; padding: 12px 16px; overflow: auto; height: 100%; box-sizing: border-box; }
+.forecast-view > p { margin: 0; }
+.forecast-summary { display: flex; flex-wrap: wrap; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.forecast-card { display: grid; gap: 2px; min-width: 150px; padding: 10px 12px; border: 1px solid var(--border-subtle); border-radius: 8px; background: var(--surface); }
+.forecast-card-label { color: var(--text-muted); font-size: 12px; }
+.forecast-card strong { font-size: 18px; font-variant-numeric: tabular-nums; }
+.forecast-spread { margin: 0; max-width: 900px; padding: 8px; border: 1px solid var(--border-subtle); border-radius: 8px; background: var(--chart-bg); }
+.forecast-spread svg { display: block; width: 100%; height: auto; }
+.forecast-spread figcaption { margin-top: 4px; }
+.forecast-risky { display: grid; gap: 6px; max-width: 900px; }
+.forecast-risky .dialog-subhead, .forecast-risky .meta { margin: 0; }
+.link-button { padding: 0; border: 0; background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+.link-button:hover, .link-button:focus-visible { text-decoration: underline solid; }
+.forecast-result { display: grid; gap: 14px; }
+.forecast-result.stale { opacity: 0.6; transition: opacity 150ms; }

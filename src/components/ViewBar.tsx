@@ -1,4 +1,4 @@
-import { ChartGantt, Grid3x3, ListChecks, Network, Table2, Users, type LucideIcon } from "lucide-react";
+import { ChartColumnIncreasing, ChartGantt, Grid3x3, ListChecks, Network, Table2, Users, type LucideIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, type KeyboardEvent } from "react";
 
 import { distinctValues, formatFieldValue, valueKey } from "../fieldValues";
@@ -14,6 +14,7 @@ const VIEWS: { id: ViewId; Icon: LucideIcon }[] = [
   { id: "resources", Icon: Users },
   { id: "usage", Icon: Table2 },
   { id: "load", Icon: Grid3x3 },
+  { id: "forecast", Icon: ChartColumnIncreasing },
   { id: "network", Icon: Network },
 ];
 
@@ -51,6 +52,9 @@ interface Props {
   /** Whether the task sheet shows the interrupt flag as a column. */
   interruptsColumn: boolean;
   onInterruptsColumn: (show: boolean) => void;
+  /** Whether the task sheet shows the forecast finish dates and on-time chance. */
+  forecastColumns?: boolean;
+  onForecastColumns?: (show: boolean) => void;
   /** Whether the task sheet shows the effort range (finish forecast) as two columns. */
   estimateColumns?: boolean;
   onEstimateColumns?: (show: boolean) => void;
@@ -271,6 +275,16 @@ export function ViewBar(props: Props) {
                 onChange={(event) => props.onEstimateColumns?.(event.target.checked)}
               />
               {m.estimateColumns}
+            </label>
+          )}
+          {chart && props.onForecastColumns && (
+            <label className="view-control">
+              <input
+                type="checkbox"
+                checked={props.forecastColumns ?? false}
+                onChange={(event) => props.onForecastColumns?.(event.target.checked)}
+              />
+              {m.forecastColumns}
             </label>
           )}
         </div>

@@ -677,7 +677,7 @@ export type FillField =
   | "work_range"
   | { field: number };
 
-export type ViewId = "gantt" | "tracking" | "resources" | "usage" | "load" | "network";
+export type ViewId = "gantt" | "tracking" | "resources" | "usage" | "load" | "forecast" | "network";
 
 export interface NetworkOptions {
   include_summary: boolean;
