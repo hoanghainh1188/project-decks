@@ -157,3 +157,30 @@ describe("ViewBar custom fields", () => {
     expect(screen.queryByRole("button", { name: /về cỡ gốc/ })).not.toBeInTheDocument();
   });
 });
+
+describe("ViewBar field columns", () => {
+  const withFields = () =>
+    makeProject({
+      fields: [
+        { id: 1, name: "Khách hàng", kind: { type: "text" } },
+        { id: 2, name: "Điểm", kind: { type: "number" } },
+      ] as Project["fields"],
+    });
+
+  it("lists each custom field with a checkbox and reports the toggle", async () => {
+    const onFieldColumn = vi.fn();
+    const { user } = renderBar("gantt", withFields(), { hiddenFields: new Set([2]), onFieldColumn });
+    await user.click(screen.getByText("Cột trường (1/2)"));
+    expect(screen.getByRole("checkbox", { name: "Khách hàng" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Điểm" })).not.toBeChecked();
+    await user.click(screen.getByRole("checkbox", { name: "Điểm" }));
+    expect(onFieldColumn).toHaveBeenCalledWith(2, true);
+    await user.click(screen.getByRole("checkbox", { name: "Khách hàng" }));
+    expect(onFieldColumn).toHaveBeenCalledWith(1, false);
+  });
+
+  it("has no picker without custom fields or outside the Gantt views", () => {
+    renderBar("gantt", makeProject(), { onFieldColumn: vi.fn() });
+    expect(screen.queryByText(/Cột trường/)).not.toBeInTheDocument();
+  });
+});
