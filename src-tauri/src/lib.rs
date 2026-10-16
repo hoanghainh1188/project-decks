@@ -1,4 +1,5 @@
 mod backlog;
+mod backlog_push;
 mod delta;
 mod i18n;
 mod menu_icons;
@@ -31,6 +32,7 @@ use sheafly_engine::plan::{self, PlanPreview};
 use sheafly_engine::timeutil::parse_date_key;
 use sheafly_engine::skills::TaskAssignment;
 use sheafly_engine::pull::PullTask;
+use sheafly_engine::push::{self, PushOptions, PushPlan};
 use sheafly_engine::source::{self, Source};
 use tracker::PullPreview;
 use sheafly_engine::{Command, Document, EngineError, Lang, Snapshot};
@@ -78,6 +80,9 @@ struct AppState {
     forecast_cancel: Mutex<Arc<AtomicBool>>,
     /// Stops the pull from a tracker still fetching when it is cancelled or a newer one starts.
     tracker_cancel: Mutex<Arc<AtomicBool>>,
+    /// The push `tracker_push_preview` last made: `tracker_push` writes exactly that plan,
+    /// and only while the project and the settings are still the ones it was made for.
+    push_base: Mutex<Option<PushBase>>,
     /// The snapshot sent last, the base of the patch an edit, undo or redo answers with.
     delta: delta::Delta,
 }
@@ -103,6 +108,7 @@ impl AppState {
             plan_base: Mutex::new(None),
             forecast_cancel: Mutex::new(Arc::new(AtomicBool::new(false))),
             tracker_cancel: Mutex::new(Arc::new(AtomicBool::new(false))),
+            push_base: Mutex::new(None),
             delta: delta::Delta::default(),
         }
     }
@@ -602,20 +608,10 @@ fn tracker_pull(app: AppHandle, state: State<'_, AppState>, source: Source) -> R
     let lang = lang(&state);
     let say = |error: tracker::TrackerError| error.message(lang).to_string();
     let source = source::validate(&source).map_err(engine_message(&state))?;
-    let cancel = Arc::new(AtomicBool::new(false));
-    {
-        let mut running = state.tracker_cancel.lock().unwrap_or_else(|err| err.into_inner());
-        running.store(true, Ordering::Relaxed);
-        *running = cancel.clone();
-    }
+    let cancel = new_tracker_cancel(&state);
     let api = tracker::HttpApi::for_site(&source.site).map_err(say)?;
-    let fetched = backlog::fetch(&api, &source, &cancel, &mut |progress| {
-        let _ = app.emit("tracker-progress", progress);
-    });
-    let issues = match fetched {
-        Ok(issues) => issues,
-        Err(tracker::TrackerError::Cancelled) => return Ok(None),
-        Err(error) => return Err(say(error)),
+    let Some(issues) = fetch_issues(&app, &api, &source, &cancel).map_err(say)? else {
+        return Ok(None);
     };
     let project = lock(&state).project.clone();
     let converted = backlog::convert(&issues, &source, &project.fields);
@@ -626,6 +622,120 @@ fn tracker_pull(app: AppHandle, state: State<'_, AppState>, source: Source) -> R
         pulled_at,
         warnings: converted.warnings,
         changes,
+    }))
+}
+
+/// A fresh cancel flag for the tracker call about to start; the one before is set, so a
+/// call still running stops.
+fn new_tracker_cancel(state: &AppState) -> Arc<AtomicBool> {
+    let cancel = Arc::new(AtomicBool::new(false));
+    let mut running = state.tracker_cancel.lock().unwrap_or_else(|err| err.into_inner());
+    running.store(true, Ordering::Relaxed);
+    *running = cancel.clone();
+    cancel
+}
+
+/// The source's issues, with `tracker-progress` events; `None` when cancelled.
+fn fetch_issues(
+    app: &AppHandle,
+    api: &dyn tracker::Api,
+    source: &Source,
+    cancel: &AtomicBool,
+) -> Result<Option<Vec<serde_json::Value>>, tracker::TrackerError> {
+    match backlog::fetch(api, source, cancel, &mut |progress| {
+        let _ = app.emit("tracker-progress", progress);
+    }) {
+        Ok(issues) => Ok(Some(issues)),
+        Err(tracker::TrackerError::Cancelled) => Ok(None),
+        Err(error) => Err(error),
+    }
+}
+
+/// What a push would write, and the people it cannot find at the source.
+#[derive(serde::Serialize)]
+struct PushPreview {
+    plan: PushPlan,
+    /// Emails of the people to assign that no one at the source has.
+    unknown_assignees: Vec<String>,
+}
+
+/// What `tracker_push` needs to write the plan and to know it is still the right one.
+struct PushBase {
+    project: sheafly_engine::Project,
+    source: Source,
+    options: PushOptions,
+    plan: PushPlan,
+    users: std::collections::HashMap<String, i64>,
+}
+
+/// Fetch the source's issues and list what pushing the computed dates (and assignees)
+/// would write. Nothing is written. `None` when cancelled.
+#[tauri::command(async)]
+fn tracker_push_preview(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    source: Source,
+    options: PushOptions,
+) -> Result<Option<PushPreview>, String> {
+    let lang = lang(&state);
+    let say = |error: tracker::TrackerError| error.message(lang).to_string();
+    let source = source::validate(&source).map_err(engine_message(&state))?;
+    let cancel = new_tracker_cancel(&state);
+    let api = tracker::HttpApi::for_site(&source.site).map_err(say)?;
+    let Some(issues) = fetch_issues(&app, &api, &source, &cancel).map_err(say)? else {
+        return Ok(None);
+    };
+    let rows = backlog::convert(&issues, &source, &[]).rows;
+    let project = lock(&state).project.clone();
+    let plan = push::plan(&project, &rows, options);
+    let wants_people = plan.changes.iter().any(|change| change.assignee.is_some());
+    let users = if wants_people {
+        backlog_push::users(&api, &source.project_key).map_err(say)?
+    } else {
+        Default::default()
+    };
+    let mut unknown_assignees: Vec<String> = plan
+        .changes
+        .iter()
+        .filter_map(|change| change.assignee.as_ref())
+        .map(|assignee| assignee.to.clone())
+        .filter(|email| !users.contains_key(&email.trim().to_lowercase()))
+        .collect();
+    unknown_assignees.sort();
+    unknown_assignees.dedup();
+    *state.push_base.lock().unwrap_or_else(|err| err.into_inner()) = Some(PushBase {
+        project,
+        source,
+        options,
+        plan: plan.clone(),
+        users,
+    });
+    Ok(Some(PushPreview { plan, unknown_assignees }))
+}
+
+/// Write the plan last previewed, one issue at a time, with `tracker-push-progress`
+/// events. Refused when the project or the settings changed since the preview, and a
+/// preview is good for one push. The report says what went through; the frontend then
+/// sends `record_push` with its `entries`.
+#[tauri::command(async)]
+fn tracker_push(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    source: Source,
+    options: PushOptions,
+) -> Result<backlog_push::PushReport, String> {
+    let lang = lang(&state);
+    let say = |error: tracker::TrackerError| error.message(lang).to_string();
+    let source = source::validate(&source).map_err(engine_message(&state))?;
+    let base = state.push_base.lock().unwrap_or_else(|err| err.into_inner()).take();
+    let current = lock(&state).project.clone();
+    let base = base
+        .filter(|base| base.project == current && base.source == source && base.options == options)
+        .ok_or_else(|| say(tracker::TrackerError::Stale))?;
+    let cancel = new_tracker_cancel(&state);
+    let api = tracker::HttpApi::for_site(&source.site).map_err(say)?;
+    Ok(backlog_push::push_issues(&api, &base.plan.changes, &base.users, lang, &cancel, &mut |progress| {
+        let _ = app.emit("tracker-push-progress", progress);
     }))
 }
 
@@ -1455,6 +1565,8 @@ pub fn run() {
             tracker_pull,
             tracker_check,
             tracker_cancel,
+            tracker_push_preview,
+            tracker_push,
             preview_plan,
             load_map,
             forecast,

@@ -404,6 +404,10 @@ mod tests {
     }
 
     impl Api for Fake {
+        fn patch(&self, _: &str, _: &[(String, String)]) -> Result<Value, TrackerError> {
+            Err(TrackerError::NotFound)
+        }
+
         fn get(&self, path: &str, query: &[(String, String)]) -> Result<Value, TrackerError> {
             self.seen.borrow_mut().push((path.to_string(), query.to_vec()));
             let arg = |name: &str| query.iter().find(|(n, _)| n == name).map(|(_, v)| v.clone());
@@ -560,6 +564,10 @@ mod tests {
     fn too_many_issues_are_refused_up_front() {
         struct Huge;
         impl Api for Huge {
+            fn patch(&self, _: &str, _: &[(String, String)]) -> Result<Value, TrackerError> {
+                Err(TrackerError::NotFound)
+            }
+
             fn get(&self, path: &str, _: &[(String, String)]) -> Result<Value, TrackerError> {
                 match path {
                     "/api/v2/issues/count" => Ok(serde_json::json!({ "count": 20_001 })),
@@ -575,6 +583,10 @@ mod tests {
     fn an_answer_that_is_not_a_list_is_a_bad_response() {
         struct Odd;
         impl Api for Odd {
+            fn patch(&self, _: &str, _: &[(String, String)]) -> Result<Value, TrackerError> {
+                Err(TrackerError::NotFound)
+            }
+
             fn get(&self, path: &str, _: &[(String, String)]) -> Result<Value, TrackerError> {
                 match path {
                     "/api/v2/issues/count" => Ok(serde_json::json!({ "count": 3 })),

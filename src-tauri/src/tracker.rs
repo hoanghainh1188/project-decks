@@ -52,6 +52,12 @@ pub enum TrackerError {
     Cancelled,
     /// The credential store failed.
     KeyStore,
+    /// The source refused a change (a value it does not accept, or a rule of its own).
+    Refused,
+    /// No one at the source has the email of the person to assign.
+    NoUser,
+    /// The project or the settings changed since the preview the push was made from.
+    Stale,
 }
 
 impl TrackerError {
@@ -106,6 +112,18 @@ impl TrackerError {
                 "Kho khóa của hệ điều hành báo lỗi",
                 "The operating system's credential store reported an error",
             ),
+            Self::Refused => (
+                "Nguồn từ chối thay đổi này",
+                "The source refused this change",
+            ),
+            Self::NoUser => (
+                "Không có người nào ở nguồn dùng email này",
+                "No one at the source has this email",
+            ),
+            Self::Stale => (
+                "Dự án hoặc thiết lập đã đổi từ lúc xem trước; hãy xem trước lại",
+                "The project or settings changed since the preview; preview again",
+            ),
         };
         match lang {
             Lang::Vi => vi,
@@ -118,6 +136,8 @@ impl TrackerError {
 /// the JSON body.
 pub trait Api {
     fn get(&self, path: &str, query: &[(String, String)]) -> Result<Value, TrackerError>;
+    /// A PATCH of `path` with a form body, answered with the JSON body.
+    fn patch(&self, path: &str, form: &[(String, String)]) -> Result<Value, TrackerError>;
 }
 
 /// Backlog spaces live under these domains. Only they are called, so a project file naming
@@ -192,6 +212,31 @@ impl HttpApi {
     }
 }
 
+/// What a status the source answered with means.
+fn status_error(code: u16) -> TrackerError {
+    match code {
+        401 | 403 => TrackerError::Rejected,
+        404 => TrackerError::NotFound,
+        400 | 409 | 422 => TrackerError::Refused,
+        429 => TrackerError::RateLimited,
+        500..=599 => TrackerError::Server,
+        _ => TrackerError::BadResponse,
+    }
+}
+
+fn read_json(result: Result<ureq::http::Response<ureq::Body>, ureq::Error>) -> Result<Value, TrackerError> {
+    match result {
+        Ok(mut response) => response
+            .body_mut()
+            .with_config()
+            .limit(MAX_RESPONSE_BYTES)
+            .read_json::<Value>()
+            .map_err(|_| TrackerError::BadResponse),
+        Err(ureq::Error::StatusCode(code)) => Err(status_error(code)),
+        Err(_) => Err(TrackerError::Offline),
+    }
+}
+
 impl Api for HttpApi {
     fn get(&self, path: &str, query: &[(String, String)]) -> Result<Value, TrackerError> {
         let mut request = self
@@ -202,22 +247,16 @@ impl Api for HttpApi {
         for (name, value) in query {
             request = request.query(name, value);
         }
-        match request.call() {
-            Ok(mut response) => response
-                .body_mut()
-                .with_config()
-                .limit(MAX_RESPONSE_BYTES)
-                .read_json::<Value>()
-                .map_err(|_| TrackerError::BadResponse),
-            Err(ureq::Error::StatusCode(code)) => Err(match code {
-                401 | 403 => TrackerError::Rejected,
-                404 => TrackerError::NotFound,
-                429 => TrackerError::RateLimited,
-                500..=599 => TrackerError::Server,
-                _ => TrackerError::BadResponse,
-            }),
-            Err(_) => Err(TrackerError::Offline),
-        }
+        read_json(request.call())
+    }
+
+    fn patch(&self, path: &str, form: &[(String, String)]) -> Result<Value, TrackerError> {
+        let request = self
+            .agent
+            .patch(format!("{}{path}", self.base))
+            .header("Backlog-API-Key", &self.key)
+            .header("Accept", "application/json");
+        read_json(request.send_form(form.iter().map(|(name, value)| (name.as_str(), value.as_str()))))
     }
 }
 
@@ -313,11 +352,22 @@ mod tests {
     }
 
     #[test]
+    fn statuses_mean_what_the_user_can_act_on() {
+        assert_eq!(status_error(401), TrackerError::Rejected);
+        assert_eq!(status_error(403), TrackerError::Rejected);
+        assert_eq!(status_error(404), TrackerError::NotFound);
+        assert_eq!(status_error(422), TrackerError::Refused);
+        assert_eq!(status_error(429), TrackerError::RateLimited);
+        assert_eq!(status_error(503), TrackerError::Server);
+        assert_eq!(status_error(302), TrackerError::BadResponse);
+    }
+
+    #[test]
     fn every_error_has_both_languages() {
         use TrackerError::*;
         for error in [
             NoKey, Rejected, NotFound, RateLimited, Offline, Server, BadResponse, BadSite,
-            BadProject, BadFilter, TooManyIssues, Cancelled, KeyStore,
+            BadProject, BadFilter, TooManyIssues, Cancelled, KeyStore, Refused, NoUser, Stale,
         ] {
             let (vi, en) = (error.message(Lang::Vi), error.message(Lang::En));
             assert!(!vi.is_empty() && !en.is_empty() && vi != en, "{error:?}");
