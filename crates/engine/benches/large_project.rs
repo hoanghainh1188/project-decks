@@ -32,6 +32,7 @@ use chrono::NaiveDate;
 use sheafly_engine::availability::AvailabilityPeriod;
 use sheafly_engine::command::Command;
 use sheafly_engine::fields::{FieldDef, FieldKind, FieldValue};
+use sheafly_engine::forecast::{forecast, forecast_with_threads};
 use sheafly_engine::import::{check_import, ImportAssignee, ImportResource, ImportTask};
 use sheafly_engine::level::level_project;
 use sheafly_engine::level_order::{Criterion, SortKey};
@@ -412,6 +413,13 @@ fn main() {
         suggestions(people, tasks);
         return;
     }
+    if args.iter().any(|arg| arg == "forecast") {
+        let people = numbers.first().copied().unwrap_or(500).max(1) as u32;
+        let tasks = numbers.get(1).copied().unwrap_or(5000) as u32;
+        let runs = numbers.get(2).copied().unwrap_or(1000) as u32;
+        finish_forecast(people, tasks, runs);
+        return;
+    }
     if args.iter().any(|arg| arg == "capacity") {
         let people = numbers.first().copied().unwrap_or(100).max(1) as u32;
         let tasks = numbers.get(1).copied().unwrap_or(1000) as u32;
@@ -479,4 +487,44 @@ fn main() {
         slowest.as_secs_f64() * 1000.0
     );
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// The finish forecast on the linked capacity project, every task with an effort range
+/// from half to twice its effort, grouped by a field with medium correlation.
+fn finish_forecast(people: u32, tasks: u32, runs: u32) {
+    let mut project = capacity(people, tasks, false, false, false, true);
+    for task in &mut project.tasks {
+        task.work_low = Some(task.work / 2);
+        task.work_high = Some(task.work * 2);
+    }
+    let cancel = std::sync::atomic::AtomicBool::new(false);
+    let threads = std::thread::available_parallelism().map_or(1, |count| count.get());
+    let started = Instant::now();
+    let result = forecast(&project, runs, &cancel).expect("forecast");
+    println!(
+        "{:<28} {:>10.1} ms  ({runs} vòng, {threads} luồng)",
+        "dự báo",
+        started.elapsed().as_secs_f64() * 1000.0
+    );
+    let started = Instant::now();
+    let _ = forecast_with_threads(&project, runs.min(200), 1, &cancel).expect("forecast");
+    println!(
+        "{:<28} {:>10.1} ms  ({} vòng, 1 luồng)",
+        "dự báo",
+        started.elapsed().as_secs_f64() * 1000.0,
+        runs.min(200)
+    );
+    let hours = |ms: i64| (ms - result.leveled_finish) as f64 / 3_600_000.0;
+    println!(
+        "{:<28} +{:.0} h khi cân bằng",
+        "ngày xong theo kế hoạch",
+        (result.leveled_finish - result.planned_finish) as f64 / 3_600_000.0
+    );
+    println!(
+        "{:<28} P50 +{:.0} h, P80 +{:.0} h, P90 +{:.0} h so với đã cân bằng",
+        "ngày xong dự án",
+        hours(result.finish.p50),
+        hours(result.finish.p80),
+        hours(result.finish.p90)
+    );
 }

@@ -32,6 +32,8 @@ pub enum EngineError {
     TempFile,
     /// The autosave slot is empty.
     NoAutosave,
+    /// A long read (the finish forecast) was stopped because a newer one replaced it.
+    Cancelled,
     /// An edit the engine refuses, with the reason.
     Invalid(Invalid),
 }
@@ -166,6 +168,8 @@ impl EngineError {
             }
             (Self::NoAutosave, Lang::Vi) => "Không đọc được tệp: không có bản tự lưu".into(),
             (Self::NoAutosave, Lang::En) => "Could not read the file: there is no autosave".into(),
+            (Self::Cancelled, Lang::Vi) => "Đã dừng tính vì dự án vừa thay đổi".into(),
+            (Self::Cancelled, Lang::En) => "Stopped because the project changed".into(),
             (Self::Invalid(reason), _) => reason.message(lang),
         }
     }
