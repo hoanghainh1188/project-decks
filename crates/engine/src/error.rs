@@ -137,6 +137,8 @@ pub enum Invalid {
     PushDate,
     NothingToRecord,
     PullHasConflicts,
+    SyncPolicy,
+    SyncSetting,
 }
 
 impl EngineError {
@@ -561,6 +563,14 @@ impl Invalid {
                 "Một số trường đã đổi ở cả hai phía; hãy chọn giữ bên nào",
                 "Some fields changed on both sides; choose which to keep",
             ),
+            Self::SyncPolicy => fixed(
+                "Chính sách đồng bộ không hợp lệ (khóa trường sai, lặp, quá dài hoặc quá nhiều)",
+                "A sync policy is not valid (a bad, repeated or too long field, or too many)",
+            ),
+            Self::SyncSetting => fixed(
+                "Phần trăm đang làm phải từ 1 đến 99 và giờ phải từ 0 đến 23",
+                "The in-progress percent must be 1 to 99 and the hours 0 to 23",
+            ),
         }
     }
 }
@@ -678,6 +688,8 @@ mod tests {
             PushDate,
             NothingToRecord,
             PullHasConflicts,
+            SyncPolicy,
+            SyncSetting,
         ];
         for reason in all {
             let (vi, en) = (reason.message(Lang::Vi), reason.message(Lang::En));

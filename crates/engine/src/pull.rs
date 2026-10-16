@@ -40,7 +40,7 @@ use crate::fields::{self, FieldValue};
 use crate::lang::Lang;
 use crate::model::{ConstraintType, DepKind, Dependency, Project, Task, TaskType};
 use crate::schedule::{normalize_outline, schedule};
-use crate::source::{ExternalLink, StatusClass};
+use crate::source::{ExternalLink, OnConflict, StatusClass, SyncSettings};
 use crate::sync::{self, Resolution, Side, SyncField, Verdict};
 use crate::timeutil::{civil, date_key};
 use crate::work;
@@ -278,6 +278,9 @@ struct State {
     result: PullDiff,
     /// Three-way: the user's choices; None is the legacy pull where the source wins.
     resolutions: Option<Vec<Resolution>>,
+    /// The source's sync settings (the defaults without a source); only a three-way pull
+    /// reads them, so the original pull replays as it was.
+    sync: SyncSettings,
     /// Bases to write once every task has its final state.
     base_updates: Vec<(u32, Vec<BaseUpdate>)>,
 }
@@ -328,6 +331,7 @@ fn run(
         statuses: Vec::new(),
         result: PullDiff::default(),
         resolutions: resolutions.map(<[Resolution]>::to_vec),
+        sync: project.source.as_ref().map(|source| source.sync.clone()).unwrap_or_default(),
         base_updates: Vec::new(),
     };
     let mut slots: Vec<Option<usize>> = vec![None; rows.len()];
@@ -440,12 +444,30 @@ fn day_matches(instant: Option<i64>, pushed: Option<&str>) -> bool {
     }
 }
 
-fn percent_for(status: StatusClass, current: f64) -> f64 {
+fn percent_for(status: StatusClass, current: f64, in_progress: f64) -> f64 {
     match status {
         StatusClass::NotStarted => 0.0,
         StatusClass::Done => 100.0,
         StatusClass::InProgress if current > 0.0 && current < 100.0 => current,
-        StatusClass::InProgress => IN_PROGRESS_PERCENT,
+        StatusClass::InProgress => in_progress,
+    }
+}
+
+impl State {
+    /// The percent an in-progress issue gets: the source's setting in a three-way pull, the
+    /// original constant in the original pull.
+    fn in_progress(&self) -> f64 {
+        if self.resolutions.is_some() {
+            f64::from(self.sync.in_progress_percent)
+        } else {
+            IN_PROGRESS_PERCENT
+        }
+    }
+
+    /// Whether the field is read from the source: always in the original pull, by the
+    /// source's direction in a three-way one.
+    fn pulls(&self, field: SyncField) -> bool {
+        self.resolutions.is_none() || self.sync.direction(&field.key()).pulls()
     }
 }
 
@@ -502,8 +524,15 @@ fn add_task(
     task.outline_level = level;
     task.start = project.start;
     task.finish = project.start;
+    let (take_work, take_start, take_due, take_status, take_assignee) = (
+        state.pulls(SyncField::Work),
+        state.pulls(SyncField::Start),
+        state.pulls(SyncField::Due),
+        state.pulls(SyncField::Status),
+        state.pulls(SyncField::Assignee),
+    );
     if !group {
-        if let Some(work) = input.work {
+        if let Some(work) = input.work.filter(|_| take_work) {
             task.task_type = TaskType::FixedWork;
             task.effort_driven = true;
             task.work = work;
@@ -512,14 +541,16 @@ fn add_task(
             task.duration = work;
             task.remaining_duration = work;
         }
-        if let Some(date) = input.start {
+        if let Some(date) = input.start.filter(|_| take_start) {
             task.constraint_type = ConstraintType::Snet;
             task.constraint_date = Some(date);
         }
     }
-    task.deadline = input.due;
+    if take_due {
+        task.deadline = input.due;
+    }
     for (id, value) in &checked.values {
-        if let Some(value) = value {
+        if let Some(value) = value.as_ref().filter(|_| state.pulls(SyncField::Field(*id))) {
             task.values.insert(*id, value.clone());
         }
     }
@@ -536,16 +567,17 @@ fn add_task(
         // A new task starts in agreement with the source on everything the row says.
         let updates = provided_fields(input, checked, group)
             .into_iter()
+            .filter(|field| state.pulls(*field))
             .map(|field| BaseUpdate { field, source: source_value(input, checked, field).flatten(), refresh_local: true })
             .collect();
         state.base_updates.push((uid, updates));
     }
     if !group {
-        if let Some(person) = checked.assignee {
+        if let Some(person) = checked.assignee.filter(|_| take_assignee) {
             state.assignments.push((uid, person));
         }
-        if let Some(status) = input.status {
-            let percent = percent_for(status, 0.0);
+        if let Some(status) = input.status.filter(|_| take_status) {
+            let percent = percent_for(status, 0.0, state.in_progress());
             if percent > 0.0 {
                 state.statuses.push((uid, percent));
             }
@@ -620,7 +652,7 @@ fn update_task(
             _ => {}
         }
         if let Some(status) = input.status {
-            let percent = percent_for(status, task.percent_complete);
+            let percent = percent_for(status, task.percent_complete, state.in_progress());
             if (percent - task.percent_complete).abs() > 1e-9 {
                 state.statuses.push((uid, percent));
                 changed.push(PullField::Status);
@@ -741,7 +773,7 @@ fn apply_field(
         SyncField::Due => apply_one(project, &Command::SetDeadline { uid, date: input.due })?,
         SyncField::Status => {
             if let Some(status) = input.status {
-                state.statuses.push((uid, percent_for(status, task.percent_complete)));
+                state.statuses.push((uid, percent_for(status, task.percent_complete, state.in_progress())));
             }
         }
         SyncField::Assignee => {
@@ -785,6 +817,9 @@ fn update_task_sync(
     let mut changed: Vec<PullField> = Vec::new();
     let mut updates = Vec::new();
     for field in provided_fields(input, checked, group) {
+        if !state.pulls(field) {
+            continue;
+        }
         let Some(source) = source_value(input, checked, field) else { continue };
         let local = sync::local_value(project, &task, field);
         let pushed = match field {
@@ -801,12 +836,18 @@ fn update_task_sync(
             Verdict::Take => (true, true),
             Verdict::Conflict => {
                 let key = field.key();
+                // The user's own choice first; else what the source's settings say to do.
                 let choice = state
                     .resolutions
                     .iter()
                     .flatten()
                     .find(|resolution| resolution.key == checked.key && resolution.field == key)
-                    .map(|resolution| resolution.keep);
+                    .map(|resolution| resolution.keep)
+                    .or(match state.sync.on_conflict(&key) {
+                        OnConflict::Ask => None,
+                        OnConflict::Source => Some(Side::Source),
+                        OnConflict::Sheafly => Some(Side::Sheafly),
+                    });
                 match choice {
                     Some(Side::Source) => (true, true),
                     Some(Side::Sheafly) => {

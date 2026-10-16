@@ -1,4 +1,4 @@
-import type { PullProblem, Source, StatusClass, StatusMapping } from "../../types";
+import { DEFAULT_SYNC_SETTINGS, type PullProblem, type Source, type StatusClass, type StatusMapping } from "../../types";
 
 /** What the form holds; the text fields are as typed. */
 export interface SourceForm {
@@ -30,6 +30,8 @@ export function sourceOf(form: SourceForm, current: Source | null): Source {
     status_map: form.statuses
       .map((item) => ({ status: item.status.trim(), class: item.class }))
       .filter((item) => item.status !== ""),
+    // Set in the sync settings, not in this form: keep what the project has.
+    sync: current?.sync ?? DEFAULT_SYNC_SETTINGS,
   };
 }
 
