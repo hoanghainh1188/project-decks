@@ -105,6 +105,7 @@ fn small_fields(project: &Project) -> Project {
         next_skill_id: project.next_skill_id,
         assignment_rules: project.assignment_rules.clone(),
         forecast: project.forecast.clone(),
+        source: project.source.clone(),
     }
 }
 

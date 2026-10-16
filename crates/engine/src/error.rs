@@ -116,6 +116,24 @@ pub enum Invalid {
     ImportLinkRow,
     ImportLinkLoop,
     EmptyPlan,
+    EmailInvalid,
+    EmailTaken,
+    SourceSite,
+    SourceProjectKey,
+    SourceFilter,
+    SourceHoursPerPoint,
+    SourceStatus,
+    SourceStatusRepeated,
+    NothingToPull,
+    PullHasErrors,
+    TooManyPullRows,
+    PullKey,
+    PullKeyRepeated,
+    PullName,
+    PullNegative,
+    PullUnknownAssignee,
+    PullParent,
+    PullLink,
 }
 
 impl EngineError {
@@ -456,6 +474,78 @@ impl Invalid {
                 "Các dòng chờ nhau thành vòng",
                 "These rows wait for each other in a loop",
             ),
+            Self::EmailInvalid => fixed(
+                "Địa chỉ email không hợp lệ",
+                "The email address is not valid",
+            ),
+            Self::EmailTaken => fixed(
+                "Email này đã thuộc về người khác trong dự án",
+                "Another person in the project already has this email",
+            ),
+            Self::SourceSite => fixed(
+                "Tên site không hợp lệ (chỉ tên máy chủ, ví dụ team.backlog.com)",
+                "The site name is not valid (a host name only, such as team.backlog.com)",
+            ),
+            Self::SourceProjectKey => fixed(
+                "Khóa dự án ở nguồn trống hoặc quá dài",
+                "The project key at the source is empty or too long",
+            ),
+            Self::SourceFilter => fixed(
+                "Bộ lọc tối đa 500 ký tự",
+                "The filter can have at most 500 characters",
+            ),
+            Self::SourceHoursPerPoint => fixed(
+                "Số giờ mỗi điểm phải lớn hơn 0 và không quá 1.000",
+                "Hours per point must be above 0 and at most 1,000",
+            ),
+            Self::SourceStatus => fixed(
+                "Tên trạng thái trống hoặc quá dài, hoặc có quá nhiều trạng thái",
+                "A status name is empty or too long, or there are too many statuses",
+            ),
+            Self::SourceStatusRepeated => fixed(
+                "Trạng thái này đã được ánh xạ",
+                "This status is already mapped",
+            ),
+            Self::NothingToPull => fixed(
+                "Không có gì thay đổi ở nguồn",
+                "Nothing has changed at the source",
+            ),
+            Self::PullHasErrors => fixed(
+                "Một số công việc kéo về còn lỗi",
+                "Some of the pulled issues have problems",
+            ),
+            Self::TooManyPullRows => fixed(
+                "Một lần kéo có tối đa 20.000 công việc",
+                "A pull can have at most 20,000 issues",
+            ),
+            Self::PullKey => fixed(
+                "Khóa công việc ở nguồn trống",
+                "The issue key at the source is empty",
+            ),
+            Self::PullKeyRepeated => fixed(
+                "Khóa này đã có ở dòng trên",
+                "This key is already on a row above",
+            ),
+            Self::PullName => fixed(
+                "Tên công việc trống",
+                "The issue has no title",
+            ),
+            Self::PullNegative => fixed(
+                "Effort không được âm",
+                "The estimate cannot be negative",
+            ),
+            Self::PullUnknownAssignee => fixed(
+                "Dự án không có người nào dùng email này",
+                "No one in the project has this email",
+            ),
+            Self::PullParent => fixed(
+                "Công việc cha không có trong lần kéo, hoặc nằm sau dòng này",
+                "The parent issue is not in the pull, or comes after this row",
+            ),
+            Self::PullLink => fixed(
+                "Chờ một công việc không có trong lần kéo, hoặc chính nó",
+                "Waits for an issue that is not in the pull, or for itself",
+            ),
         }
     }
 }
@@ -552,6 +642,24 @@ mod tests {
             ImportLinkRow,
             ImportLinkLoop,
             EmptyPlan,
+            EmailInvalid,
+            EmailTaken,
+            SourceSite,
+            SourceProjectKey,
+            SourceFilter,
+            SourceHoursPerPoint,
+            SourceStatus,
+            SourceStatusRepeated,
+            NothingToPull,
+            PullHasErrors,
+            TooManyPullRows,
+            PullKey,
+            PullKeyRepeated,
+            PullName,
+            PullNegative,
+            PullUnknownAssignee,
+            PullParent,
+            PullLink,
         ];
         for reason in all {
             let (vi, en) = (reason.message(Lang::Vi), reason.message(Lang::En));

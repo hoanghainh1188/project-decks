@@ -101,6 +101,8 @@ export interface Task {
   /** The least and most effort for the finish forecast, in working minutes; both or neither. */
   work_low?: number | null;
   work_high?: number | null;
+  /** The issue in an external tracker this task was pulled from. */
+  external?: ExternalLink | null;
   start: number;
   finish: number;
   early_start: number;
@@ -221,6 +223,8 @@ export interface Resource {
   availability: AvailabilityPeriod[];
   /** Ids of the project's skills this resource has, ascending. */
   skills: number[];
+  /** Email address; absent when unknown. Unique in the project, letter case aside. */
+  email?: string;
 }
 
 /** Mirror of `skills::SkillDef`. */
@@ -497,6 +501,53 @@ export interface Project {
   assignment_rules: AssignmentRule[];
   /** How tasks' effort varies together in the finish forecast. */
   forecast: ForecastSettings;
+  /** The external task tracker the project is pulled from, if any. */
+  source: Source | null;
+}
+
+/** Mirror of `source::TrackerKind`. */
+export type TrackerKind = "backlog";
+
+/** Mirror of `source::StatusClass`. */
+export type StatusClass = "not_started" | "in_progress" | "done";
+
+/** Mirror of `source::StatusMapping`. */
+export interface StatusMapping {
+  status: string;
+  class: StatusClass;
+}
+
+/** Mirror of `source::Source`. */
+export interface Source {
+  kind: TrackerKind;
+  site: string;
+  project_key: string;
+  filter: string;
+  /** Working hours one story point stands for. */
+  hours_per_point: number;
+  status_map: StatusMapping[];
+}
+
+/** Mirror of `source::ExternalLink`. */
+export interface ExternalLink {
+  key: string;
+  synced_at: number;
+  gone?: boolean;
+}
+
+/** Mirror of `pull::PullTask`, one issue of `apply_pull` as the adapter read it. */
+export interface PullTask {
+  key: string;
+  parent_key?: string | null;
+  name: string;
+  /** Effort in working minutes. */
+  work?: number | null;
+  start?: number | null;
+  due?: number | null;
+  status?: StatusClass | null;
+  assignee_email?: string | null;
+  values?: [string, FieldValue][];
+  after?: string[];
 }
 
 /** Mirror of `model::Strength`: a share of 0, 0.3, 0.5 or 0.8 in common. */
@@ -628,6 +679,9 @@ export type Command =
   | { type: "set_resource_skills"; uid: number; skills: number[] }
   | { type: "set_assignment_rules"; rules: AssignmentRule[] }
   | { type: "assign_tasks"; assignments: TaskAssignment[] }
+  | { type: "set_resource_email"; uid: number; email: string }
+  | { type: "set_source"; source: Source | null }
+  | { type: "apply_pull"; rows: PullTask[]; pulled_at: number }
   | { type: "import_rows"; after_uid: number | null; resources: ImportResource[]; tasks: ImportTask[] }
   | { type: "apply_plan"; assignments: TaskAssignment[]; delays: LevelingDelay[]; splits: LevelingSplits[] };
 

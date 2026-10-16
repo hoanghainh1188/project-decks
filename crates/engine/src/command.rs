@@ -8,6 +8,7 @@ use crate::error::{EngineError, Invalid};
 use crate::fields::{self, FieldKind, FieldValue, OptionRename};
 use crate::import::{self, ImportResource, ImportTask};
 use crate::plan;
+use crate::pull::{self, PullTask};
 use crate::level_order::{self, SortKey};
 use crate::level::level_project;
 use crate::model::{
@@ -17,6 +18,7 @@ use crate::model::{
 use crate::recurrence::{self, Recurrence, RecurrenceSpec};
 use crate::schedule::normalize_outline;
 use crate::skills::{self, AssignmentRule, TaskAssignment};
+use crate::source::{self, Source};
 use crate::split::{self, Split};
 use crate::timeutil::{parse_date_key, MINUTES_PER_DAY, MINUTES_PER_HOUR};
 use crate::tracking;
@@ -392,6 +394,23 @@ pub enum Command {
         resources: Vec<ImportResource>,
         #[serde(default)]
         tasks: Vec<ImportTask>,
+    },
+    /// Set (or, empty, clear) a resource's email address.
+    SetResourceEmail {
+        uid: u32,
+        email: String,
+    },
+    /// Name the external tracker the project is pulled from, or clear it (`source.rs`).
+    SetSource {
+        source: Option<Source>,
+    },
+    /// Bring in what a pull from the tracker found, in one undo step (`pull.rs`): new
+    /// issues become tasks, linked ones are updated, linked ones the source no longer has
+    /// are marked. `pulled_at` is when the pull ran. A pull with a problem or with
+    /// nothing to change fails, so it adds no undo step.
+    ApplyPull {
+        rows: Vec<PullTask>,
+        pulled_at: i64,
     },
     /// A plan `plan::preview_plan` showed: assign, then the leveling it chose, in one undo
     /// step. Replay applies the data and never reruns the heuristic.
@@ -1127,6 +1146,9 @@ fn apply_inner(project: &mut Project, command: &Command) -> Result<(), EngineErr
             delays,
             splits,
         } => plan::apply_plan(project, assignments, delays, splits)?,
+        Command::SetResourceEmail { uid, email } => source::set_resource_email(project, *uid, email)?,
+        Command::SetSource { source } => source::set_source(project, source)?,
+        Command::ApplyPull { rows, pulled_at } => pull::apply_pull(project, rows, *pulled_at)?,
     }
     Ok(())
 }
