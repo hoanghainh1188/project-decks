@@ -11,13 +11,13 @@
 //! come back as `PushedEntry`s for the engine's `RecordPush`.
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::AtomicBool;
 
-use sheafly_engine::push::{PushChange, PushedEntry};
+use sheafly_engine::push::PushChange;
 use sheafly_engine::Lang;
 
 use crate::backlog_fields::{parse_ref, FieldRef};
-use crate::connector::{PushFailure, PushProgress, PushReport};
+use crate::connector::{run_push, PushProgress, PushReport};
 use crate::tracker::{Api, TrackerError};
 
 /// An issue key is safe in a path.
@@ -37,14 +37,6 @@ pub fn users(api: &dyn Api, project_key: &str) -> Result<HashMap<String, String>
             (!email.is_empty()).then_some((email, id))
         })
         .collect())
-}
-
-/// A failure that would be the same for the next issue.
-fn stops_the_push(error: TrackerError) -> bool {
-    matches!(
-        error,
-        TrackerError::RateLimited | TrackerError::Rejected | TrackerError::Offline | TrackerError::Server | TrackerError::NoKey
-    )
 }
 
 /// The name of the form field a day goes to: the tracker's own, or `customField_<id>`.
@@ -92,63 +84,25 @@ pub fn push_issues(
     cancel: &AtomicBool,
     progress: &mut dyn FnMut(PushProgress),
 ) -> PushReport {
-    let mut report = PushReport::default();
-    let total = changes.len();
-    for (index, change) in changes.iter().enumerate() {
-        if cancel.load(Ordering::Relaxed) {
-            report.stopped = Some(TrackerError::Cancelled.message(lang).to_string());
+    run_push(changes, lang, cancel, progress, |change| {
+        if !key_safe(&change.key) {
+            return Err(TrackerError::Refused);
         }
-        if report.stopped.is_some() {
-            report.not_sent.push(change.key.clone());
-            continue;
-        }
-        let written = if !key_safe(&change.key) {
-            Err(TrackerError::Refused)
-        } else {
-            form_of(change, users, ids).and_then(|form| api.patch(&format!("/api/v2/issues/{}", change.key), &form))
-        };
-        match written {
-            Ok(_) => {
-                report.done.push(change.key.clone());
-                // A day sent to a field of its own is recorded under that field's key.
-                let day = |change: &Option<sheafly_engine::push::DayChange>| change.as_ref().map(|day| day.to.clone());
-                let (start, due) = (day(&change.start), day(&change.due));
-                let entry = PushedEntry {
-                    key: change.key.clone(),
-                    start: start.clone().filter(|_| change.start_field.is_none()),
-                    due: due.clone().filter(|_| change.due_field.is_none()),
-                    assignee: change.assignee.as_ref().map(|assignee| assignee.to.clone()),
-                    planned_start: start.filter(|_| change.start_field.is_some()),
-                    planned_finish: due.filter(|_| change.due_field.is_some()),
-                };
-                if entry.start.is_some()
-                    || entry.due.is_some()
-                    || entry.assignee.is_some()
-                    || entry.planned_start.is_some()
-                    || entry.planned_finish.is_some()
-                {
-                    report.entries.push(entry);
-                }
-            }
-            Err(error) => {
-                let message = error.message(lang).to_string();
-                if stops_the_push(error) {
-                    report.stopped = Some(message.clone());
-                }
-                report.failed.push(PushFailure { key: change.key.clone(), message });
-            }
-        }
-        progress(PushProgress { done: index + 1, total });
-    }
-    report
+        let form = form_of(change, users, ids)?;
+        api.patch(&format!("/api/v2/issues/{}", change.key), &form).map(|_| ())
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use std::cell::RefCell;
 
+    use std::sync::atomic::Ordering;
+
     use serde_json::Value;
-    use sheafly_engine::push::{AssigneeChange, DayChange};
+    use sheafly_engine::push::{AssigneeChange, DayChange, PushedEntry};
+
+    use crate::connector::PushFailure;
 
     use super::*;
 
@@ -228,7 +182,7 @@ mod tests {
     fn dates_and_the_assignee_go_as_form_fields_and_nothing_else() {
         let fake = Fake::new(&[]);
         let mut with_person = change("PROJ-2", None, Some("2026-01-06"));
-        with_person.assignee = Some(AssigneeChange { from: None, to: "AN@example.com".into(), resource_uid: 3 });
+        with_person.assignee = Some(AssigneeChange { from: None, to: "AN@example.com".into(), resource_uid: 3, to_name: "An".into() });
         let (report, heard) = run(&fake, &[change("PROJ-1", Some("2026-01-05"), Some("2026-01-06")), with_person], &AtomicBool::new(false));
         assert_eq!(
             form(&fake, "PROJ-1"),
@@ -293,7 +247,7 @@ mod tests {
     fn an_assignee_assigned_only_is_recorded_with_no_days() {
         let fake = Fake::new(&[]);
         let mut only = change("PROJ-1", None, None);
-        only.assignee = Some(AssigneeChange { from: None, to: "an@example.com".into(), resource_uid: 3 });
+        only.assignee = Some(AssigneeChange { from: None, to: "an@example.com".into(), resource_uid: 3, to_name: "An".into() });
         let (report, _) = run(&fake, &[only], &AtomicBool::new(false));
         assert_eq!(report.done, ["PROJ-1"]);
         assert_eq!(
@@ -306,7 +260,7 @@ mod tests {
     fn a_person_the_source_does_not_know_fails_that_issue_without_a_request() {
         let fake = Fake::new(&[]);
         let mut stranger = change("PROJ-1", Some("2026-01-05"), None);
-        stranger.assignee = Some(AssigneeChange { from: None, to: "la@example.com".into(), resource_uid: 3 });
+        stranger.assignee = Some(AssigneeChange { from: None, to: "la@example.com".into(), resource_uid: 3, to_name: "An".into() });
         let (report, _) = run(&fake, &[stranger, change("PROJ-2", Some("2026-01-06"), None)], &AtomicBool::new(false));
         assert!(fake.sent.borrow().iter().all(|(path, _)| !path.ends_with("PROJ-1")));
         assert_eq!(report.failed, vec![PushFailure { key: "PROJ-1".into(), message: TrackerError::NoUser.message(Lang::En).into() }]);

@@ -55,6 +55,17 @@ fn of_kind<'a>(defs: &'a [JiraField], name: &str, kinds: &[&str]) -> Result<&'a 
 
 const DATE_KINDS: &[&str] = &["date", "datetime"];
 
+/// The date field called `name` that a push may write: a plain date (a datetime would need a
+/// time of day the push does not have).
+pub fn writable_date<'a>(defs: &'a [JiraField], name: &str) -> Result<&'a JiraField, TrackerError> {
+    of_kind(defs, name, &["date"])
+}
+
+/// Whether the field with this id takes a plain date: Jira's own `duedate` always does.
+pub fn id_takes_date(defs: &[JiraField], id: &str) -> bool {
+    id == "duedate" || defs.iter().any(|def| def.id == id && def.kind == "date")
+}
+
 /// Where effort is read from.
 #[derive(Clone, Debug, PartialEq)]
 pub enum WorkSource {

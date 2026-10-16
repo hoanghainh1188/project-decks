@@ -12,12 +12,12 @@
 //! of a push.
 
 use std::collections::HashMap;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use serde::Serialize;
 use sheafly_engine::fields::FieldDef;
 use sheafly_engine::pull::PullTask;
-use sheafly_engine::push::{PushPlan, PushedEntry};
+use sheafly_engine::push::{DayChange, PushChange, PushPlan, PushedEntry};
 use sheafly_engine::source::{Source, TrackerKind};
 use sheafly_engine::Lang;
 
@@ -165,6 +165,71 @@ pub fn link_parents(rows: &mut Vec<PullTask>, parents: &[Option<usize>]) {
     order.sort_by_key(|&row| depths[row].unwrap_or(0));
     let mut taken: Vec<Option<PullTask>> = std::mem::take(rows).into_iter().map(Some).collect();
     *rows = order.into_iter().filter_map(|row| taken[row].take()).collect();
+}
+
+/// A failure that would be the same for the next issue.
+fn stops_the_push(error: TrackerError) -> bool {
+    matches!(
+        error,
+        TrackerError::RateLimited | TrackerError::Rejected | TrackerError::Offline | TrackerError::Server | TrackerError::NoKey
+    )
+}
+
+/// The loop every push shares: write the changes one at a time through `write_one`, report
+/// progress, keep going past an issue the source refused, stop at a failure that would repeat
+/// (and list what was not reached), stop when cancelled, and say what went through, as the
+/// days and assignee for the engine's `RecordPush`.
+pub fn run_push(
+    changes: &[PushChange],
+    lang: Lang,
+    cancel: &AtomicBool,
+    progress: &mut dyn FnMut(PushProgress),
+    mut write_one: impl FnMut(&PushChange) -> Result<(), TrackerError>,
+) -> PushReport {
+    let mut report = PushReport::default();
+    let total = changes.len();
+    for (index, change) in changes.iter().enumerate() {
+        if cancel.load(Ordering::Relaxed) {
+            report.stopped = Some(TrackerError::Cancelled.message(lang).to_string());
+        }
+        if report.stopped.is_some() {
+            report.not_sent.push(change.key.clone());
+            continue;
+        }
+        match write_one(change) {
+            Ok(()) => {
+                report.done.push(change.key.clone());
+                // A day sent to a field of its own is recorded under that field's key.
+                let day = |change: &Option<DayChange>| change.as_ref().map(|day| day.to.clone());
+                let (start, due) = (day(&change.start), day(&change.due));
+                let entry = PushedEntry {
+                    key: change.key.clone(),
+                    start: start.clone().filter(|_| change.start_field.is_none()),
+                    due: due.clone().filter(|_| change.due_field.is_none()),
+                    assignee: change.assignee.as_ref().map(|assignee| assignee.to.clone()),
+                    planned_start: start.filter(|_| change.start_field.is_some()),
+                    planned_finish: due.filter(|_| change.due_field.is_some()),
+                };
+                if entry.start.is_some()
+                    || entry.due.is_some()
+                    || entry.assignee.is_some()
+                    || entry.planned_start.is_some()
+                    || entry.planned_finish.is_some()
+                {
+                    report.entries.push(entry);
+                }
+            }
+            Err(error) => {
+                let message = error.message(lang).to_string();
+                if stops_the_push(error) {
+                    report.stopped = Some(message.clone());
+                }
+                report.failed.push(PushFailure { key: change.key.clone(), message });
+            }
+        }
+        progress(PushProgress { done: index + 1, total });
+    }
+    report
 }
 
 static BACKLOG: BacklogConnector = BacklogConnector;

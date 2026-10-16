@@ -678,6 +678,8 @@ export interface AssigneeChange {
   from: string | null;
   to: string;
   resource_uid: number;
+  /** The person's name, for a tracker that finds people by name. */
+  to_name: string;
 }
 
 /** Mirror of `push::PushChange`: what a push writes for one issue. */
