@@ -5,8 +5,10 @@
 //!
 //! - `issueKey` is the key, `summary` the name;
 //! - `estimatedHours` is the effort (zero or missing: no estimate);
-//! - `startDate` and `dueDate` are dates; the start becomes 08:00 and the due date 17:00 of
-//!   that day (the default working day; the engine moves a start past non-working time);
+//! - `startDate` and `dueDate` are dates; the start becomes `start_hour` (08:00) and the due
+//!   date `due_hour` (17:00) of that day (the engine moves a start past non-working time);
+//!   the source's sync settings may read them, or the effort (as story points), from a custom
+//!   field instead (`backlog_fields.rs`);
 //! - `parentIssueId` is the parent when that issue is in the pull (a parent outside the
 //!   filter is ignored), and parents come before their children;
 //! - `status` becomes a status class through the source's status map by name, else the
@@ -23,8 +25,7 @@
 //!   `customFields` list, so the items are read tolerantly (`name`, and a `value` that is
 //!   text, a number, an object with a `name`, or a list of those).
 //!
-//! Backlog has no story points and no "blocks" links, so the source's points factor and
-//! `after` are not used here.
+//! Backlog has no "blocks" links, so `after` is not used here.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -37,6 +38,7 @@ use sheafly_engine::pull::{PullTask, MAX_PULL_ROWS};
 use sheafly_engine::source::{Source, StatusClass};
 use sheafly_engine::timeutil::timestamp;
 
+use crate::backlog_fields::{DateSource, ReadPlan, WorkSource};
 use crate::tracker::{Api, TrackerError};
 
 /// Issues one request returns at most.
@@ -189,6 +191,55 @@ pub fn fetch(
     Ok(issues)
 }
 
+/// The value of the custom field called `name` (letter case aside) on an issue.
+fn custom_value<'a>(issue: &'a Value, name: &str) -> Option<&'a Value> {
+    let lower = name.trim().to_lowercase();
+    issue
+        .get("customFields")
+        .and_then(Value::as_array)?
+        .iter()
+        .find(|entry| entry.get("name").and_then(Value::as_str).is_some_and(|n| n.trim().to_lowercase() == lower))
+        .and_then(|entry| entry.get("value"))
+}
+
+/// A day an issue holds, from the attribute or the date custom field the plan names, as
+/// `hour:00` of that day.
+fn date_of(issue: &Value, source: &DateSource, hour: u32) -> Option<i64> {
+    match source {
+        DateSource::Native(attribute) => instant_of(issue.get(*attribute), hour),
+        DateSource::Custom(name) => instant_of(custom_value(issue, name), hour),
+    }
+}
+
+/// A number in a value: a number, or text that reads as one.
+fn number_of(value: &Value) -> Option<f64> {
+    match value {
+        Value::Number(number) => number.as_f64(),
+        Value::String(text) => text.trim().replace(',', ".").parse().ok(),
+        _ => None,
+    }
+    .filter(|number| number.is_finite())
+}
+
+/// The effort of an issue in minutes: its estimated hours, or story points of a number
+/// custom field times the hours one point stands for. A point value that is no number is
+/// reported and leaves the effort unset.
+fn work_of(issue: &Value, reads: &ReadPlan, key: &str, warnings: &mut Vec<PullWarning>) -> Option<i64> {
+    match &reads.work {
+        WorkSource::Hours => minutes_of(issue.get("estimatedHours")),
+        WorkSource::Points { field, hours_per_point } => {
+            let value = custom_value(issue, field).filter(|value| !value_text(value).is_empty())?;
+            match number_of(value) {
+                Some(points) => minutes_of(Some(&Value::from(points * hours_per_point))),
+                None => {
+                    warnings.push(PullWarning { key: key.to_string(), kind: WarningKind::FieldValue });
+                    None
+                }
+            }
+        }
+    }
+}
+
 /// The date part of a Backlog timestamp (`2026-01-05T00:00:00Z`) as `hour:00` that day.
 fn instant_of(text: Option<&Value>, hour: u32) -> Option<i64> {
     let text = text?.as_str()?;
@@ -222,9 +273,9 @@ fn status_class(status: Option<&Value>, source: &Source) -> Option<StatusClass> 
 }
 
 /// The issues as rows, parents before their children, otherwise in the order given.
-pub fn convert(issues: &[Value], source: &Source, fields: &[FieldDef]) -> Converted {
+pub fn convert(issues: &[Value], source: &Source, fields: &[FieldDef], reads: &ReadPlan) -> Converted {
     let mut out = Converted::default();
-    let at_source = fields_at_source(issues, fields);
+    let at_source = fields_at_source(issues, fields, reads);
     let mut seen_keys = HashSet::new();
     // The id of each issue we keep, to find parents.
     let mut ids: HashMap<i64, usize> = HashMap::new();
@@ -249,18 +300,21 @@ pub fn convert(issues: &[Value], source: &Source, fields: &[FieldDef]) -> Conver
             ids.insert(id, out.rows.len());
         }
         parent_ids.push(issue.get("parentIssueId").and_then(Value::as_i64));
-        let values = custom_values(issue, &at_source, key, &mut out.warnings);
+        let values = custom_values(issue, &at_source, reads, key, &mut out.warnings);
+        let work = work_of(issue, reads, key, &mut out.warnings);
         out.rows.push(PullTask {
             key: key.to_string(),
             parent_key: None,
             name: name.to_string(),
-            work: minutes_of(issue.get("estimatedHours")),
-            start: instant_of(issue.get("startDate"), 8),
-            due: instant_of(issue.get("dueDate"), 17),
+            work,
+            start: date_of(issue, &reads.start, reads.start_hour),
+            due: date_of(issue, &reads.due, reads.due_hour),
             status: status_class(issue.get("status"), source),
             assignee_email: email.map(str::to_string),
             values,
             after: Vec::new(),
+            planned_start: reads.planned_start.as_deref().and_then(|name| instant_of(custom_value(issue, name), reads.start_hour)),
+            planned_finish: reads.planned_finish.as_deref().and_then(|name| instant_of(custom_value(issue, name), reads.due_hour)),
         });
     }
     let parents: Vec<Option<usize>> = parent_ids
@@ -283,14 +337,14 @@ pub fn convert(issues: &[Value], source: &Source, fields: &[FieldDef]) -> Conver
 }
 
 /// The custom fields of the project that some issue has at the source, by lower-cased name.
-fn fields_at_source<'a>(issues: &[Value], fields: &'a [FieldDef]) -> Vec<&'a FieldDef> {
+fn fields_at_source<'a>(issues: &[Value], fields: &'a [FieldDef], reads: &ReadPlan) -> Vec<&'a FieldDef> {
     let names: HashSet<String> = issues
         .iter()
         .flat_map(|issue| issue.get("customFields").and_then(Value::as_array).into_iter().flatten())
         .filter_map(|field| field.get("name").and_then(Value::as_str))
         .map(|name| name.trim().to_lowercase())
         .collect();
-    fields.iter().filter(|field| names.contains(&field.name.trim().to_lowercase())).collect()
+    fields.iter().filter(|field| names.contains(&reads.name_for(field).trim().to_lowercase())).collect()
 }
 
 /// The text of a custom field value: text, a number, the name of a list item, or several
@@ -311,13 +365,14 @@ fn value_text(value: &Value) -> String {
 fn custom_values(
     issue: &Value,
     at_source: &[&FieldDef],
+    reads: &ReadPlan,
     key: &str,
     warnings: &mut Vec<PullWarning>,
 ) -> Vec<(String, FieldValue)> {
     let entries = issue.get("customFields").and_then(Value::as_array);
     let mut values = Vec::new();
     for field in at_source {
-        let lower = field.name.trim().to_lowercase();
+        let lower = reads.name_for(field).trim().to_lowercase();
         let text = entries
             .into_iter()
             .flatten()
@@ -433,7 +488,7 @@ mod tests {
 
     #[test]
     fn the_sample_becomes_rows() {
-        let converted = convert(&issues(), &source(), &[]);
+        let converted = convert(&issues(), &source(), &[], &ReadPlan::standard(&source()));
         let keys: Vec<&str> = converted.rows.iter().map(|row| row.key.as_str()).collect();
         // The parent comes first even though the sample lists the child before it.
         assert_eq!(keys, ["PROJ-1", "PROJ-3", "PROJ-5", "PROJ-2"]);
@@ -468,7 +523,7 @@ mod tests {
 
     #[test]
     fn warnings_name_the_issues_that_could_not_be_matched_or_read() {
-        let converted = convert(&issues(), &source(), &[]);
+        let converted = convert(&issues(), &source(), &[], &ReadPlan::standard(&source()));
         assert_eq!(
             converted.warnings,
             vec![
@@ -483,7 +538,7 @@ mod tests {
         let a = serde_json::json!({ "id": 1, "issueKey": "L-1", "summary": "Một", "parentIssueId": 2 });
         let b = serde_json::json!({ "id": 2, "issueKey": "L-2", "summary": "Hai", "parentIssueId": 1 });
         let own = serde_json::json!({ "id": 3, "issueKey": "L-3", "summary": "Ba", "parentIssueId": 3 });
-        let converted = convert(&[a, b, own], &source(), &[]);
+        let converted = convert(&[a, b, own], &source(), &[], &ReadPlan::standard(&source()));
         assert!(converted.rows.iter().all(|row| row.parent_key.is_none()));
         assert_eq!(converted.rows.len(), 3);
     }
@@ -616,7 +671,7 @@ mod tests {
 
     #[test]
     fn custom_fields_fill_the_project_fields_of_the_same_name() {
-        let converted = convert(&issues(), &source(), &project_fields());
+        let converted = convert(&issues(), &source(), &project_fields(), &ReadPlan::standard(&source()));
         let by = |key: &str| converted.rows.iter().find(|row| row.key == key).unwrap();
         let first = by("PROJ-1");
         assert_eq!(
@@ -633,7 +688,7 @@ mod tests {
 
     #[test]
     fn an_empty_value_clears_and_a_bad_number_is_left_alone_and_reported() {
-        let converted = convert(&issues(), &source(), &project_fields());
+        let converted = convert(&issues(), &source(), &project_fields(), &ReadPlan::standard(&source()));
         let second = converted.rows.iter().find(|row| row.key == "PROJ-2").unwrap();
         // Name matching ignores letter case; null clears; "abc" is no number: left out.
         assert!(second.values.contains(&("Mảng".to_string(), FieldValue::Text(String::new()))));
@@ -647,7 +702,7 @@ mod tests {
     #[test]
     fn no_project_field_at_the_source_means_no_values() {
         let only_ours = vec![field(4, "Ghi chú riêng", FieldKind::Text)];
-        let converted = convert(&issues(), &source(), &only_ours);
+        let converted = convert(&issues(), &source(), &only_ours, &ReadPlan::standard(&source()));
         assert!(converted.rows.iter().all(|row| row.values.is_empty()));
     }
 
@@ -660,6 +715,88 @@ mod tests {
         assert_eq!(value_text(&serde_json::json!([{ "name": "a" }, "b", null, { "id": 3 }])), "a, b");
         assert_eq!(value_text(&serde_json::json!(true)), "");
         assert_eq!(value_text(&Value::Null), "");
+    }
+
+    fn configured(fields: Vec<sheafly_engine::source::FieldPolicy>) -> (Source, ReadPlan) {
+        use crate::backlog_fields::{read_plan, CustomFieldDef, TYPE_DATE, TYPE_NUMBER};
+        let defs = vec![
+            CustomFieldDef { id: 21, name: "Bắt đầu thật".into(), type_id: TYPE_DATE },
+            CustomFieldDef { id: 22, name: "Điểm".into(), type_id: TYPE_NUMBER },
+            CustomFieldDef { id: 23, name: "Kế hoạch".into(), type_id: TYPE_DATE },
+        ];
+        let source = Source {
+            hours_per_point: 3.0,
+            sync: sheafly_engine::source::SyncSettings { fields, start_hour: 9, due_hour: 18, ..Default::default() },
+            ..source()
+        };
+        let plan = read_plan(&source, &[], &defs).unwrap();
+        (source, plan)
+    }
+
+    fn policy(field: &str, source_field: Option<&str>, push_field: Option<&str>) -> sheafly_engine::source::FieldPolicy {
+        sheafly_engine::source::FieldPolicy {
+            field: field.into(),
+            direction: Default::default(),
+            on_conflict: Default::default(),
+            source_field: source_field.map(str::to_string),
+            push_field: push_field.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn dates_come_at_the_hours_the_settings_name() {
+        let (source, reads) = configured(vec![]);
+        let converted = convert(&issues(), &source, &[], &reads);
+        let first = converted.rows.iter().find(|row| row.key == "PROJ-1").unwrap();
+        assert_eq!(first.start, Some(timestamp(2026, 1, 5, 9, 0)));
+        assert_eq!(first.due, Some(timestamp(2026, 1, 16, 18, 0)));
+    }
+
+    #[test]
+    fn a_day_and_an_effort_can_be_read_from_custom_fields() {
+        let (source, reads) = configured(vec![
+            policy("start", Some("custom:bắt đầu thật"), None),
+            policy("work", Some("custom:Điểm"), None),
+        ]);
+        let mut issue = issues().remove(1);
+        issue["customFields"] = serde_json::json!([
+            { "id": 21, "name": "Bắt đầu thật", "value": "2026-02-02T00:00:00Z" },
+            { "id": 22, "name": "Điểm", "value": "5" }
+        ]);
+        let row = &convert(&[issue.clone()], &source, &[], &reads).rows[0];
+        // The attribute startDate and estimatedHours of the issue are not what is read now.
+        assert_eq!(row.start, Some(timestamp(2026, 2, 2, 9, 0)));
+        assert_eq!(row.work, Some(15 * 60), "5 points of 3 hours");
+        assert_eq!(row.due, Some(timestamp(2026, 1, 16, 18, 0)), "the due date still comes from dueDate");
+
+        // Points that are no number leave the effort unset and are reported.
+        issue["customFields"][1]["value"] = serde_json::json!("nhiều");
+        let converted = convert(&[issue], &source, &[], &reads);
+        assert_eq!(converted.rows[0].work, None);
+        assert_eq!(converted.warnings, vec![PullWarning { key: "PROJ-1".into(), kind: WarningKind::FieldValue }]);
+    }
+
+    #[test]
+    fn the_days_a_push_writes_to_are_read_to_compare_with() {
+        let (source, reads) = configured(vec![policy("planned_start", None, Some("custom:Kế hoạch"))]);
+        let mut issue = issues().remove(1);
+        issue["customFields"] = serde_json::json!([{ "id": 23, "name": "kế hoạch", "value": "2026-03-03T00:00:00Z" }]);
+        let row = &convert(&[issue], &source, &[], &reads).rows[0];
+        assert_eq!(row.planned_start, Some(timestamp(2026, 3, 3, 9, 0)));
+        assert_eq!(row.planned_finish, None);
+    }
+
+    #[test]
+    fn a_project_field_can_be_read_from_a_differently_named_custom_field() {
+        use crate::backlog_fields::{read_plan, CustomFieldDef};
+        let defs = vec![CustomFieldDef { id: 30, name: "Nhóm".into(), type_id: 1 }];
+        let fields = vec![field(7, "Mảng", FieldKind::Text)];
+        let source = Source { sync: sheafly_engine::source::SyncSettings { fields: vec![policy("field:7", Some("custom:Nhóm"), None)], ..Default::default() }, ..source() };
+        let reads = read_plan(&source, &fields, &defs).unwrap();
+        let mut issue = issues().remove(1);
+        issue["customFields"] = serde_json::json!([{ "id": 30, "name": "Nhóm", "value": "Backend" }]);
+        let row = &convert(&[issue], &source, &fields, &reads).rows[0];
+        assert_eq!(row.values, vec![("Mảng".to_string(), FieldValue::Text("Backend".into()))]);
     }
 
     #[test]

@@ -62,6 +62,11 @@ pub struct PushChange {
     pub start: Option<DayChange>,
     pub due: Option<DayChange>,
     pub assignee: Option<AssigneeChange>,
+    /// The field at the source to write the start day to, when the source's settings name
+    /// one (`planned_start`); none means the tracker's usual start date.
+    pub start_field: Option<String>,
+    /// The same for the finish day (`planned_finish`).
+    pub due_field: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -130,9 +135,17 @@ pub fn plan(project: &Project, rows: &[PullTask], options: PushOptions) -> PushP
     let mut plan = PushPlan::default();
     // A field the source's settings do not push is not pushed whatever the options say.
     let sync = project.source.as_ref().map(|source| source.sync.clone()).unwrap_or_default();
+    // Where the computed start and finish go: a field of their own (`planned_start`,
+    // `planned_finish`) when the settings name one, else the tracker's start and due dates.
+    let target = |plain: SyncField, planned: &str| match sync.push_field(planned) {
+        Some(field) => (planned.to_string(), Some(field.to_string()), sync.direction(planned).pushes()),
+        None => (plain.key(), None, sync.direction(&plain.key()).pushes()),
+    };
+    let (start_key, start_field, start_ok) = target(SyncField::Start, "planned_start");
+    let (due_key, due_field, due_ok) = target(SyncField::Due, "planned_finish");
     let options = PushOptions {
-        start: options.start && sync.direction(&SyncField::Start.key()).pushes(),
-        due: options.due && sync.direction(&SyncField::Due.key()).pushes(),
+        start: options.start && start_ok,
+        due: options.due && due_ok,
         assignee: options.assignee && sync.direction(&SyncField::Assignee.key()).pushes(),
         ..options
     };
@@ -144,22 +157,29 @@ pub fn plan(project: &Project, rows: &[PullTask], options: PushOptions) -> PushP
         };
         let skip = |reason| PushSkip { uid: task.uid, key: link.key.clone(), name: task.name.clone(), reason, field: None };
         // A field the source changed since the last sync is left for a pull to settle.
-        let changed_at_source = |field: SyncField, now: Option<String>| {
-            link.base.as_ref().is_some_and(|base| base.source.get(&field.key()) != now.as_ref())
+        let changed_at_source = |key: &str, now: Option<String>| {
+            link.base.as_ref().is_some_and(|base| {
+                // A planned field nobody has recorded yet has no history to compare with:
+                // `overwrite` is the user's say on a value already there.
+                let known = !key.starts_with("planned_") || base.source.contains_key(key);
+                known && base.source.get(key) != now.as_ref()
+            })
         };
-        let guard = |field: SyncField, now: Option<String>, plan: &mut PushPlan| {
-            let moved = changed_at_source(field, now);
+        let guard = |key: &str, now: Option<String>, plan: &mut PushPlan| {
+            let moved = changed_at_source(key, now);
             if moved {
-                plan.skipped.push(PushSkip { field: Some(field.key()), ..skip(PushSkipReason::SourceChanged) });
+                plan.skipped.push(PushSkip { field: Some(key.to_string()), ..skip(PushSkipReason::SourceChanged) });
             }
             moved
         };
-        let mut start = if options.start { day_change(row.start, task.start, options.overwrite) } else { None };
-        if start.is_some() && guard(SyncField::Start, row.start.map(sync::day_text), &mut plan) {
+        let start_now = if start_field.is_some() { row.planned_start } else { row.start };
+        let due_now = if due_field.is_some() { row.planned_finish } else { row.due };
+        let mut start = if options.start { day_change(start_now, task.start, options.overwrite) } else { None };
+        if start.is_some() && guard(&start_key, start_now.map(sync::day_text), &mut plan) {
             start = None;
         }
-        let mut due = if options.due { day_change(row.due, task.finish, options.overwrite) } else { None };
-        if due.is_some() && guard(SyncField::Due, row.due.map(sync::day_text), &mut plan) {
+        let mut due = if options.due { day_change(due_now, task.finish, options.overwrite) } else { None };
+        if due.is_some() && guard(&due_key, due_now.map(sync::day_text), &mut plan) {
             due = None;
         }
         let mut assignee = None;
@@ -180,7 +200,7 @@ pub fn plan(project: &Project, rows: &[PullTask], options: PushOptions) -> PushP
                             let from = row.assignee_email.as_deref().map(str::trim).filter(|e| !e.is_empty());
                             let same = from.is_some_and(|from| from.eq_ignore_ascii_case(email));
                             let now = from.map(str::to_lowercase);
-                            if !same && (options.overwrite || from.is_none()) && !guard(SyncField::Assignee, now, &mut plan) {
+                            if !same && (options.overwrite || from.is_none()) && !guard(&SyncField::Assignee.key(), now, &mut plan) {
                                 assignee = Some(AssigneeChange {
                                     from: from.map(str::to_string),
                                     to: email.to_string(),
@@ -198,6 +218,8 @@ pub fn plan(project: &Project, rows: &[PullTask], options: PushOptions) -> PushP
                 uid: task.uid,
                 key: link.key.clone(),
                 name: task.name.clone(),
+                start_field: start_field.clone().filter(|_| start.is_some()),
+                due_field: due_field.clone().filter(|_| due.is_some()),
                 start,
                 due,
                 assignee,
@@ -218,12 +240,20 @@ pub struct PushedEntry {
     /// The email of the person written as the assignee.
     #[serde(default)]
     pub assignee: Option<String>,
+    /// The days written to a field of their own (`planned_start`, `planned_finish`).
+    #[serde(default)]
+    pub planned_start: Option<String>,
+    #[serde(default)]
+    pub planned_finish: Option<String>,
 }
 
 /// `RecordPush`: remember the days written, on the linked tasks, so a pull knows them.
 pub(crate) fn record_push(project: &mut Project, entries: &[PushedEntry]) -> Result<(), EngineError> {
     let valid = |day: &Option<String>| day.as_deref().is_none_or(|day| parse_date_key(day).is_some());
-    if entries.iter().any(|entry| !valid(&entry.start) || !valid(&entry.due)) {
+    if entries
+        .iter()
+        .any(|entry| !valid(&entry.start) || !valid(&entry.due) || !valid(&entry.planned_start) || !valid(&entry.planned_finish))
+    {
         return Err(Invalid::PushDate.into());
     }
     let mut recorded = false;
@@ -253,7 +283,22 @@ pub(crate) fn record_push(project: &mut Project, entries: &[PushedEntry]) -> Res
                     sync::set(&mut base.source, &SyncField::Assignee.key(), Some(email.trim().to_lowercase()));
                 }
             }
-            recorded |= entry.start.is_some() || entry.due.is_some() || entry.assignee.is_some();
+            // The days written to a field of their own are tracked under their own keys, so
+            // the next push can tell the source changed them (only on a link that has a base:
+            // a base made here alone would stand for history nobody recorded).
+            if let Some(base) = link.base.as_mut() {
+                if let Some(day) = &entry.planned_start {
+                    sync::set(&mut base.source, "planned_start", Some(day.clone()));
+                }
+                if let Some(day) = &entry.planned_finish {
+                    sync::set(&mut base.source, "planned_finish", Some(day.clone()));
+                }
+            }
+            recorded |= entry.start.is_some()
+                || entry.due.is_some()
+                || entry.assignee.is_some()
+                || entry.planned_start.is_some()
+                || entry.planned_finish.is_some();
         }
     }
     if recorded {

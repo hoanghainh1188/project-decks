@@ -2,7 +2,9 @@
 //!
 //! The plan (from the engine's `push::plan`) says what to write; this module only writes
 //! it. Dates go as `yyyy-MM-dd` form fields, the assignee as the `assigneeId` of the person
-//! whose email the plan names (looked up in the project's users). Nothing is ever cleared.
+//! whose email the plan names (looked up in the project's users). A day the plan sends to a
+//! date custom field of its own (`PushChange::start_field`/`due_field`) goes to
+//! `customField_<id>` as `yyyy-MM-dd`. Nothing is ever cleared.
 //! A failure of one issue (the source refused it, no such person) does not stop the rest; a
 //! failure that would repeat for every issue (a rejected key, a rate limit, no network)
 //! does, and the issues not reached are reported as not sent. The days that went through
@@ -15,6 +17,7 @@ use serde::Serialize;
 use sheafly_engine::push::{PushChange, PushedEntry};
 use sheafly_engine::Lang;
 
+use crate::backlog_fields::{parse_ref, FieldRef};
 use crate::tracker::{Api, TrackerError};
 
 #[derive(Clone, Copy, Debug, Serialize)]
@@ -69,14 +72,32 @@ fn stops_the_push(error: TrackerError) -> bool {
     )
 }
 
-/// The form fields of one change; the person's id comes from `users`.
-fn form_of(change: &PushChange, users: &HashMap<String, i64>) -> Result<Vec<(String, String)>, TrackerError> {
+/// The name of the form field a day goes to: the tracker's own, or `customField_<id>`.
+fn day_field(native: &str, custom: &Option<String>, ids: &HashMap<String, i64>) -> Result<String, TrackerError> {
+    match custom {
+        None => Ok(native.to_string()),
+        Some(reference) => match parse_ref(reference)? {
+            FieldRef::Custom(name) => ids
+                .get(&name.to_lowercase())
+                .map(|id| format!("customField_{id}"))
+                .ok_or(TrackerError::BadField),
+            FieldRef::Native(_) => Err(TrackerError::BadField),
+        },
+    }
+}
+
+/// The form fields of one change; the person's id comes from `users`, a custom field's from `ids`.
+fn form_of(
+    change: &PushChange,
+    users: &HashMap<String, i64>,
+    ids: &HashMap<String, i64>,
+) -> Result<Vec<(String, String)>, TrackerError> {
     let mut form = Vec::new();
     if let Some(start) = &change.start {
-        form.push(("startDate".to_string(), start.to.clone()));
+        form.push((day_field("startDate", &change.start_field, ids)?, start.to.clone()));
     }
     if let Some(due) = &change.due {
-        form.push(("dueDate".to_string(), due.to.clone()));
+        form.push((day_field("dueDate", &change.due_field, ids)?, due.to.clone()));
     }
     if let Some(assignee) = &change.assignee {
         let id = users.get(&assignee.to.trim().to_lowercase()).ok_or(TrackerError::NoUser)?;
@@ -91,6 +112,7 @@ pub fn push_issues(
     api: &dyn Api,
     changes: &[PushChange],
     users: &HashMap<String, i64>,
+    ids: &HashMap<String, i64>,
     lang: Lang,
     cancel: &AtomicBool,
     progress: &mut dyn FnMut(PushProgress),
@@ -108,16 +130,29 @@ pub fn push_issues(
         let written = if !key_safe(&change.key) {
             Err(TrackerError::Refused)
         } else {
-            form_of(change, users).and_then(|form| api.patch(&format!("/api/v2/issues/{}", change.key), &form))
+            form_of(change, users, ids).and_then(|form| api.patch(&format!("/api/v2/issues/{}", change.key), &form))
         };
         match written {
             Ok(_) => {
                 report.done.push(change.key.clone());
-                let start = change.start.as_ref().map(|day| day.to.clone());
-                let due = change.due.as_ref().map(|day| day.to.clone());
-                let assignee = change.assignee.as_ref().map(|assignee| assignee.to.clone());
-                if start.is_some() || due.is_some() || assignee.is_some() {
-                    report.entries.push(PushedEntry { key: change.key.clone(), start, due, assignee });
+                // A day sent to a field of its own is recorded under that field's key.
+                let day = |change: &Option<sheafly_engine::push::DayChange>| change.as_ref().map(|day| day.to.clone());
+                let (start, due) = (day(&change.start), day(&change.due));
+                let entry = PushedEntry {
+                    key: change.key.clone(),
+                    start: start.clone().filter(|_| change.start_field.is_none()),
+                    due: due.clone().filter(|_| change.due_field.is_none()),
+                    assignee: change.assignee.as_ref().map(|assignee| assignee.to.clone()),
+                    planned_start: start.filter(|_| change.start_field.is_some()),
+                    planned_finish: due.filter(|_| change.due_field.is_some()),
+                };
+                if entry.start.is_some()
+                    || entry.due.is_some()
+                    || entry.assignee.is_some()
+                    || entry.planned_start.is_some()
+                    || entry.planned_finish.is_some()
+                {
+                    report.entries.push(entry);
                 }
             }
             Err(error) => {
@@ -192,13 +227,15 @@ mod tests {
             start: start.map(|to| day(None, to)),
             due: due.map(|to| day(None, to)),
             assignee: None,
+            start_field: None,
+            due_field: None,
         }
     }
 
     fn run(fake: &Fake, changes: &[PushChange], cancel: &AtomicBool) -> (PushReport, Vec<usize>) {
         let users = users(fake, "PROJ").unwrap();
         let mut heard = Vec::new();
-        let report = push_issues(fake, changes, &users, Lang::En, cancel, &mut |p| heard.push(p.done));
+        let report = push_issues(fake, changes, &users, &HashMap::new(), Lang::En, cancel, &mut |p| heard.push(p.done));
         (report, heard)
     }
 
@@ -230,14 +267,51 @@ mod tests {
         assert_eq!(
             report.entries,
             vec![
-                PushedEntry { key: "PROJ-1".into(), start: Some("2026-01-05".into()), due: Some("2026-01-06".into()), assignee: None },
-                PushedEntry { key: "PROJ-2".into(), start: None, due: Some("2026-01-06".into()), assignee: Some("AN@example.com".into()) },
+                PushedEntry { key: "PROJ-1".into(), start: Some("2026-01-05".into()), due: Some("2026-01-06".into()), assignee: None, planned_start: None, planned_finish: None },
+                PushedEntry { key: "PROJ-2".into(), start: None, due: Some("2026-01-06".into()), assignee: Some("AN@example.com".into()), planned_start: None, planned_finish: None },
             ]
         );
         assert_eq!(heard, [1, 2]);
         assert!(report.failed.is_empty() && report.not_sent.is_empty() && report.stopped.is_none());
         // The paths are the issues' own, and no field is ever sent empty.
         assert!(fake.sent.borrow().iter().all(|(path, form)| path.starts_with("/api/v2/issues/PROJ-") && form.iter().all(|(_, v)| !v.is_empty())));
+    }
+
+    #[test]
+    fn a_day_sent_to_a_date_custom_field_goes_there_and_is_recorded_under_its_own_key() {
+        let fake = Fake::new(&[]);
+        let ids = HashMap::from([("bắt đầu dự kiến".to_string(), 11)]);
+        let mut sent = change("PROJ-1", Some("2026-01-05"), Some("2026-01-06"));
+        sent.start_field = Some("custom:Bắt đầu dự kiến".into());
+        let users = users(&fake, "PROJ").unwrap();
+        let report = push_issues(&fake, &[sent], &users, &ids, Lang::En, &AtomicBool::new(false), &mut |_| {});
+        assert_eq!(
+            form(&fake, "PROJ-1"),
+            vec![("customField_11".into(), "2026-01-05".into()), ("dueDate".into(), "2026-01-06".into())]
+        );
+        assert_eq!(
+            report.entries,
+            vec![PushedEntry {
+                key: "PROJ-1".into(),
+                start: None,
+                due: Some("2026-01-06".into()),
+                assignee: None,
+                planned_start: Some("2026-01-05".into()),
+                planned_finish: None,
+            }]
+        );
+    }
+
+    #[test]
+    fn a_custom_field_that_is_not_known_fails_the_issue_without_a_request() {
+        let fake = Fake::new(&[]);
+        let mut sent = change("PROJ-1", Some("2026-01-05"), None);
+        sent.start_field = Some("custom:Không có".into());
+        let users = users(&fake, "PROJ").unwrap();
+        let report = push_issues(&fake, &[sent], &users, &HashMap::new(), Lang::En, &AtomicBool::new(false), &mut |_| {});
+        assert!(fake.sent.borrow().is_empty());
+        assert_eq!(report.failed.len(), 1);
+        assert!(report.failed[0].message.contains("not at the source"));
     }
 
     #[test]
@@ -249,7 +323,7 @@ mod tests {
         assert_eq!(report.done, ["PROJ-1"]);
         assert_eq!(
             report.entries,
-            vec![PushedEntry { key: "PROJ-1".into(), start: None, due: None, assignee: Some("an@example.com".into()) }]
+            vec![PushedEntry { key: "PROJ-1".into(), start: None, due: None, assignee: Some("an@example.com".into()), planned_start: None, planned_finish: None }]
         );
     }
 
@@ -301,7 +375,7 @@ mod tests {
         let cancel = AtomicBool::new(false);
         let users = users(&fake, "PROJ").unwrap();
         let changes: Vec<PushChange> = (1..=3).map(|i| change(&format!("PROJ-{i}"), Some("2026-01-05"), None)).collect();
-        let report = push_issues(&fake, &changes, &users, Lang::Vi, &cancel, &mut |p| {
+        let report = push_issues(&fake, &changes, &users, &HashMap::new(), Lang::Vi, &cancel, &mut |p| {
             if p.done == 1 {
                 cancel.store(true, Ordering::Relaxed);
             }
