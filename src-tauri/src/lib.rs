@@ -617,9 +617,9 @@ fn tracker_pull(app: AppHandle, state: State<'_, AppState>, source: Source) -> R
         Err(tracker::TrackerError::Cancelled) => return Ok(None),
         Err(error) => return Err(say(error)),
     };
-    let converted = backlog::convert(&issues, &source);
-    let pulled_at = now_millis();
     let project = lock(&state).project.clone();
+    let converted = backlog::convert(&issues, &source, &project.fields);
+    let pulled_at = now_millis();
     let changes = tracker::changes(&project, &converted.rows, pulled_at, lang);
     Ok(Some(PullPreview {
         rows: converted.rows,

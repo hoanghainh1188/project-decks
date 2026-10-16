@@ -15,6 +15,14 @@
 //! - `assignee.mailAddress` is the assignee's email; Backlog sends it only to those allowed
 //!   to see it, and an assignee without one is reported as a warning.
 //!
+//! - `customFields` fill the project's custom fields of the same name (letter case aside):
+//!   a number field takes a number, a text or choice field the text, the name of a list item
+//!   or the names of several joined by commas. Only a field that some issue of the pull has
+//!   at the source is touched, so a field that exists only in Sheafly keeps its values; an
+//!   issue with no value for such a field clears it. The public API docs show only an empty
+//!   `customFields` list, so the items are read tolerantly (`name`, and a `value` that is
+//!   text, a number, an object with a `name`, or a list of those).
+//!
 //! Backlog has no story points and no "blocks" links, so the source's points factor and
 //! `after` are not used here.
 
@@ -24,6 +32,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use chrono::{Datelike, NaiveDate};
 use serde::Serialize;
 use serde_json::Value;
+use sheafly_engine::fields::{FieldDef, FieldKind, FieldValue};
 use sheafly_engine::pull::{PullTask, MAX_PULL_ROWS};
 use sheafly_engine::source::{Source, StatusClass};
 use sheafly_engine::timeutil::timestamp;
@@ -70,6 +79,8 @@ pub enum WarningKind {
     NoEmail,
     /// The issue could not be read (no key or title) and was left out.
     Skipped,
+    /// A custom field's value does not read as a number, so the field was left as it was.
+    FieldValue,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -211,8 +222,9 @@ fn status_class(status: Option<&Value>, source: &Source) -> Option<StatusClass> 
 }
 
 /// The issues as rows, parents before their children, otherwise in the order given.
-pub fn convert(issues: &[Value], source: &Source) -> Converted {
+pub fn convert(issues: &[Value], source: &Source, fields: &[FieldDef]) -> Converted {
     let mut out = Converted::default();
+    let at_source = fields_at_source(issues, fields);
     let mut seen_keys = HashSet::new();
     // The id of each issue we keep, to find parents.
     let mut ids: HashMap<i64, usize> = HashMap::new();
@@ -237,6 +249,7 @@ pub fn convert(issues: &[Value], source: &Source) -> Converted {
             ids.insert(id, out.rows.len());
         }
         parent_ids.push(issue.get("parentIssueId").and_then(Value::as_i64));
+        let values = custom_values(issue, &at_source, key, &mut out.warnings);
         out.rows.push(PullTask {
             key: key.to_string(),
             parent_key: None,
@@ -246,7 +259,7 @@ pub fn convert(issues: &[Value], source: &Source) -> Converted {
             due: instant_of(issue.get("dueDate"), 17),
             status: status_class(issue.get("status"), source),
             assignee_email: email.map(str::to_string),
-            values: Vec::new(),
+            values,
             after: Vec::new(),
         });
     }
@@ -267,6 +280,65 @@ pub fn convert(issues: &[Value], source: &Source) -> Converted {
     let mut rows: Vec<Option<PullTask>> = out.rows.into_iter().map(Some).collect();
     out.rows = order.into_iter().filter_map(|row| rows[row].take()).collect();
     out
+}
+
+/// The custom fields of the project that some issue has at the source, by lower-cased name.
+fn fields_at_source<'a>(issues: &[Value], fields: &'a [FieldDef]) -> Vec<&'a FieldDef> {
+    let names: HashSet<String> = issues
+        .iter()
+        .flat_map(|issue| issue.get("customFields").and_then(Value::as_array).into_iter().flatten())
+        .filter_map(|field| field.get("name").and_then(Value::as_str))
+        .map(|name| name.trim().to_lowercase())
+        .collect();
+    fields.iter().filter(|field| names.contains(&field.name.trim().to_lowercase())).collect()
+}
+
+/// The text of a custom field value: text, a number, the name of a list item, or several
+/// of those joined by commas. Empty for nothing.
+fn value_text(value: &Value) -> String {
+    match value {
+        Value::String(text) => text.trim().to_string(),
+        Value::Number(number) => number.to_string(),
+        Value::Object(item) => item.get("name").and_then(Value::as_str).unwrap_or("").trim().to_string(),
+        Value::Array(items) => items.iter().map(value_text).filter(|text| !text.is_empty()).collect::<Vec<_>>().join(", "),
+        _ => String::new(),
+    }
+}
+
+/// What the issue says for each project field the source has. An empty value clears the
+/// field (empty text clears any kind); a number field whose value is not a number is left
+/// alone and reported.
+fn custom_values(
+    issue: &Value,
+    at_source: &[&FieldDef],
+    key: &str,
+    warnings: &mut Vec<PullWarning>,
+) -> Vec<(String, FieldValue)> {
+    let entries = issue.get("customFields").and_then(Value::as_array);
+    let mut values = Vec::new();
+    for field in at_source {
+        let lower = field.name.trim().to_lowercase();
+        let text = entries
+            .into_iter()
+            .flatten()
+            .find(|entry| entry.get("name").and_then(Value::as_str).is_some_and(|name| name.trim().to_lowercase() == lower))
+            .and_then(|entry| entry.get("value"))
+            .map(value_text)
+            .unwrap_or_default();
+        let value = match (&field.kind, text.is_empty()) {
+            (_, true) => FieldValue::Text(String::new()),
+            (FieldKind::Number, false) => match text.replace(',', ".").parse::<f64>() {
+                Ok(number) if number.is_finite() => FieldValue::Number(number),
+                _ => {
+                    warnings.push(PullWarning { key: key.to_string(), kind: WarningKind::FieldValue });
+                    continue;
+                }
+            },
+            (_, false) => FieldValue::Text(text),
+        };
+        values.push((field.name.clone(), value));
+    }
+    values
 }
 
 /// How deep each row is under its parents; `None` for a row on a loop of parents.
@@ -356,7 +428,7 @@ mod tests {
 
     #[test]
     fn the_sample_becomes_rows() {
-        let converted = convert(&issues(), &source());
+        let converted = convert(&issues(), &source(), &[]);
         let keys: Vec<&str> = converted.rows.iter().map(|row| row.key.as_str()).collect();
         // The parent comes first even though the sample lists the child before it.
         assert_eq!(keys, ["PROJ-1", "PROJ-3", "PROJ-5", "PROJ-2"]);
@@ -391,7 +463,7 @@ mod tests {
 
     #[test]
     fn warnings_name_the_issues_that_could_not_be_matched_or_read() {
-        let converted = convert(&issues(), &source());
+        let converted = convert(&issues(), &source(), &[]);
         assert_eq!(
             converted.warnings,
             vec![
@@ -406,7 +478,7 @@ mod tests {
         let a = serde_json::json!({ "id": 1, "issueKey": "L-1", "summary": "Một", "parentIssueId": 2 });
         let b = serde_json::json!({ "id": 2, "issueKey": "L-2", "summary": "Hai", "parentIssueId": 1 });
         let own = serde_json::json!({ "id": 3, "issueKey": "L-3", "summary": "Ba", "parentIssueId": 3 });
-        let converted = convert(&[a, b, own], &source());
+        let converted = convert(&[a, b, own], &source(), &[]);
         assert!(converted.rows.iter().all(|row| row.parent_key.is_none()));
         assert_eq!(converted.rows.len(), 3);
     }
@@ -513,6 +585,68 @@ mod tests {
         }
         let got = fetch(&Odd, &source(), &AtomicBool::new(false), &mut |_| {});
         assert_eq!(got.unwrap_err(), TrackerError::BadResponse);
+    }
+
+    fn field(id: u32, name: &str, kind: FieldKind) -> FieldDef {
+        FieldDef { id, name: name.into(), kind }
+    }
+
+    fn project_fields() -> Vec<FieldDef> {
+        vec![
+            field(1, "Mảng", FieldKind::Choice { options: vec!["BE".into(), "FE".into()] }),
+            field(2, "Điểm", FieldKind::Number),
+            field(3, "Nhãn", FieldKind::Text),
+            // Only in Sheafly: Backlog has no field of this name.
+            field(4, "Ghi chú riêng", FieldKind::Text),
+        ]
+    }
+
+    #[test]
+    fn custom_fields_fill_the_project_fields_of_the_same_name() {
+        let converted = convert(&issues(), &source(), &project_fields());
+        let by = |key: &str| converted.rows.iter().find(|row| row.key == key).unwrap();
+        let first = by("PROJ-1");
+        assert_eq!(
+            first.values,
+            vec![
+                ("Mảng".to_string(), FieldValue::Text("BE".into())),
+                ("Điểm".to_string(), FieldValue::Number(5.0)),
+                ("Nhãn".to_string(), FieldValue::Text("a, b".into())),
+            ]
+        );
+        // A field that only Sheafly has is never sent, so its values are never cleared.
+        assert!(converted.rows.iter().all(|row| row.values.iter().all(|(name, _)| name != "Ghi chú riêng")));
+    }
+
+    #[test]
+    fn an_empty_value_clears_and_a_bad_number_is_left_alone_and_reported() {
+        let converted = convert(&issues(), &source(), &project_fields());
+        let second = converted.rows.iter().find(|row| row.key == "PROJ-2").unwrap();
+        // Name matching ignores letter case; null clears; "abc" is no number: left out.
+        assert!(second.values.contains(&("Mảng".to_string(), FieldValue::Text(String::new()))));
+        assert!(second.values.iter().all(|(name, _)| name != "Điểm"));
+        assert!(converted.warnings.contains(&PullWarning { key: "PROJ-2".into(), kind: WarningKind::FieldValue }));
+        // An issue with no such entry at all clears the field too, since the source has it.
+        let closed = converted.rows.iter().find(|row| row.key == "PROJ-5").unwrap();
+        assert!(closed.values.contains(&("Mảng".to_string(), FieldValue::Text(String::new()))));
+    }
+
+    #[test]
+    fn no_project_field_at_the_source_means_no_values() {
+        let only_ours = vec![field(4, "Ghi chú riêng", FieldKind::Text)];
+        let converted = convert(&issues(), &source(), &only_ours);
+        assert!(converted.rows.iter().all(|row| row.values.is_empty()));
+    }
+
+    #[test]
+    fn values_of_every_shape_read_as_text() {
+        assert_eq!(value_text(&serde_json::json!("  x ")), "x");
+        assert_eq!(value_text(&serde_json::json!(3)), "3");
+        assert_eq!(value_text(&serde_json::json!(2.5)), "2.5");
+        assert_eq!(value_text(&serde_json::json!({ "id": 1, "name": " BE " })), "BE");
+        assert_eq!(value_text(&serde_json::json!([{ "name": "a" }, "b", null, { "id": 3 }])), "a, b");
+        assert_eq!(value_text(&serde_json::json!(true)), "");
+        assert_eq!(value_text(&Value::Null), "");
     }
 
     #[test]
