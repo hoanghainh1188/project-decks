@@ -754,6 +754,7 @@ Kết quả đúng: không còn quá tải, không có giờ rảnh xen giữa c
 **PR.**
 - **PR A — engine (M), không mạng.** `FORMAT_VERSION` 18. `ExternalLink.pushed_start/pushed_due` (chuỗi `YYYY-MM-DD`). `Command::RecordPush { entries }`. Mô-đun `push.rs`: `plan(project, rows, options) -> PushPlan` (hàm thuần: các thay đổi theo issue với giá trị cũ/mới, các task bị bỏ qua kèm lý do, các issue không còn ở nguồn). `pull` bỏ qua ngày trùng ngày đã đẩy. Test `tests/push.rs`.
 - **PR B — Tauri (M).** Ghi `PATCH /api/v2/issues/:key` (form-urlencoded, `startDate`/`dueDate` dạng `yyyy-MM-dd`, `assigneeId`), tra `assigneeId` theo email qua `GET /api/v2/projects/:key/users`, lệnh `tracker_push_preview` và `tracker_push` (tiến độ, hủy, dừng khi 429), test với phản hồi viết tay.
+  - **PR B xong (16/10/2026).** Như plan, thêm: một bản xem trước chỉ dùng được cho một lần đẩy, và `tracker_push` từ chối (`Stale`) khi dự án, nguồn hoặc lựa chọn đã đổi; lỗi một issue (nguồn từ chối, không có người dùng với email đó) không dừng các issue khác, còn lỗi lặp lại cho mọi issue (khóa bị từ chối, 429, mất mạng) thì dừng và liệt kê các issue chưa gửi. Chưa ghi thử lên Backlog thật; `PATCH` kiểm tra bằng `Api` giả.
 - **PR C — giao diện (M).** Hộp thoại "Đẩy ngày về tracker": chọn trường và chế độ, xem trước cũ → mới theo issue, xác nhận, tiến độ, kết quả; sau đó gửi `record_push`.
 - **PR D — tài liệu.**
 
