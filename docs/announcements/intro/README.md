@@ -1,6 +1,7 @@
 # Bài giới thiệu chung về Sheafly
 
 - `facebook.md`: bài Facebook giới thiệu dự án lần đầu, tiếng Việt, giọng thân thiện (xưng "mình"). Không gắn với một phiên bản; link dẫn tới trang Releases.
+- `linkedin.md`: bản tiếng Anh cho LinkedIn, cùng nội dung nhưng giọng chuyên nghiệp hơn, ít biểu tượng cảm xúc. Câu mở đầu nằm trong khoảng 200 ký tự đầu mà LinkedIn hiện trước nút "see more". Đăng kèm 2–4 ảnh dưới đây (LinkedIn hiện tốt nhất với ảnh ngang); nên dùng ảnh tiếng Anh nếu chụp lại được.
 
 Ảnh gợi ý, theo thứ tự đăng:
 1. `../v1.3.0/facebook/1-gantt.png`: bảng công việc và Gantt.
