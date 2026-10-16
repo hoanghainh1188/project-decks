@@ -1,4 +1,5 @@
 mod backlog;
+mod backlog_fields;
 mod backlog_push;
 mod delta;
 mod i18n;
@@ -597,7 +598,11 @@ fn tracker_test(state: State<'_, AppState>, source: Source) -> Result<String, St
     let say = |error: tracker::TrackerError| error.message(lang).to_string();
     let source = source::validate(&source).map_err(engine_message(&state))?;
     let api = tracker::HttpApi::for_site(&source.site).map_err(say)?;
-    backlog::project(&api, &source.project_key).map(|(_, name)| name).map_err(say)
+    let (_, name) = backlog::project(&api, &source.project_key).map_err(say)?;
+    // The settings' references are checked too, so a wrong name shows up here.
+    let fields = lock(&state).project.fields.clone();
+    backlog_fields::plan_for(&api, &source, &fields).map_err(say)?;
+    Ok(name)
 }
 
 /// Fetch the source's issues and say what pulling them would do to the project. Reads
@@ -611,11 +616,12 @@ fn tracker_pull(app: AppHandle, state: State<'_, AppState>, source: Source) -> R
     let source = source::validate(&source).map_err(engine_message(&state))?;
     let cancel = new_tracker_cancel(&state);
     let api = tracker::HttpApi::for_site(&source.site).map_err(say)?;
+    let project = lock(&state).project.clone();
+    let (reads, _) = backlog_fields::plan_for(&api, &source, &project.fields).map_err(say)?;
     let Some(issues) = fetch_issues(&app, &api, &source, &cancel).map_err(say)? else {
         return Ok(None);
     };
-    let project = lock(&state).project.clone();
-    let converted = backlog::convert(&issues, &source, &project.fields);
+    let converted = backlog::convert(&issues, &source, &project.fields, &reads);
     let pulled_at = now_millis();
     let changes = tracker::changes(&project, &converted.rows, pulled_at, &[], lang);
     Ok(Some(PullPreview {
@@ -667,6 +673,8 @@ struct PushBase {
     options: PushOptions,
     plan: PushPlan,
     users: std::collections::HashMap<String, i64>,
+    /// The ids of the date custom fields the plan writes to, by lower-cased name.
+    custom_ids: std::collections::HashMap<String, i64>,
 }
 
 /// Fetch the source's issues and list what pushing the computed dates (and assignees)
@@ -683,12 +691,22 @@ fn tracker_push_preview(
     let source = source::validate(&source).map_err(engine_message(&state))?;
     let cancel = new_tracker_cancel(&state);
     let api = tracker::HttpApi::for_site(&source.site).map_err(say)?;
+    let project = lock(&state).project.clone();
+    let (reads, defs) = backlog_fields::plan_for(&api, &source, &project.fields).map_err(say)?;
     let Some(issues) = fetch_issues(&app, &api, &source, &cancel).map_err(say)? else {
         return Ok(None);
     };
-    let rows = backlog::convert(&issues, &source, &[]).rows;
-    let project = lock(&state).project.clone();
+    let rows = backlog::convert(&issues, &source, &[], &reads).rows;
     let plan = push::plan(&project, &rows, options);
+    // A day sent to a date custom field of its own needs that field's id; a field that is not
+    // a date field of the project refuses the whole push before anything is written.
+    let references: Vec<&str> = plan
+        .changes
+        .iter()
+        .flat_map(|change| [change.start_field.as_deref(), change.due_field.as_deref()])
+        .flatten()
+        .collect();
+    let custom_ids = backlog_fields::push_targets(&defs, &references).map_err(say)?;
     let wants_people = plan.changes.iter().any(|change| change.assignee.is_some());
     let users = if wants_people {
         backlog_push::users(&api, &source.project_key).map_err(say)?
@@ -710,6 +728,7 @@ fn tracker_push_preview(
         options,
         plan: plan.clone(),
         users,
+        custom_ids,
     });
     Ok(Some(PushPreview { plan, unknown_assignees }))
 }
@@ -735,7 +754,7 @@ fn tracker_push(
         .ok_or_else(|| say(tracker::TrackerError::Stale))?;
     let cancel = new_tracker_cancel(&state);
     let api = tracker::HttpApi::for_site(&source.site).map_err(say)?;
-    Ok(backlog_push::push_issues(&api, &base.plan.changes, &base.users, lang, &cancel, &mut |progress| {
+    Ok(backlog_push::push_issues(&api, &base.plan.changes, &base.users, &base.custom_ids, lang, &cancel, &mut |progress| {
         let _ = app.emit("tracker-push-progress", progress);
     }))
 }

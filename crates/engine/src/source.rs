@@ -115,7 +115,10 @@ pub enum OnConflict {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FieldPolicy {
     /// `name`, `work`, `start`, `due`, `status`, `assignee`, `field:<id>` for one custom
-    /// field, or `fields` for every custom field without a policy of its own.
+    /// field, or `fields` for every custom field without a policy of its own. Also
+    /// `planned_start` and `planned_finish`: the days Sheafly computes, pushed (never
+    /// pulled) to the field named by `push_field`; without one, a push writes them to the
+    /// fields of `start` and `due`.
     pub field: String,
     #[serde(default)]
     pub direction: Direction,
@@ -179,6 +182,14 @@ impl SyncSettings {
                     .then(|| self.fields.iter().find(|policy| policy.field == "fields"))
                     .flatten()
             })
+    }
+
+    /// The field at the source a policy writes to (the policy for exactly this key).
+    pub fn push_field(&self, key: &str) -> Option<&str> {
+        self.fields
+            .iter()
+            .find(|policy| policy.field == key)
+            .and_then(|policy| policy.push_field.as_deref())
     }
 
     pub fn direction(&self, key: &str) -> Direction {
@@ -298,7 +309,10 @@ pub const MAX_FIELD_POLICIES: usize = 100;
 pub const MAX_SOURCE_FIELD_CHARS: usize = 100;
 
 fn field_key_ok(key: &str) -> bool {
-    matches!(key, "name" | "work" | "start" | "due" | "status" | "assignee" | "fields")
+    matches!(
+        key,
+        "name" | "work" | "start" | "due" | "status" | "assignee" | "fields" | "planned_start" | "planned_finish"
+    )
         || key.strip_prefix("field:").is_some_and(|id| id.parse::<u32>().is_ok())
 }
 

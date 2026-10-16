@@ -79,6 +79,13 @@ pub struct PullTask {
     /// Keys of the issues it waits for (finish to start).
     #[serde(default)]
     pub after: Vec<String>,
+    /// What the field a push writes the computed start / finish to holds now (as the day's
+    /// instant), when that is a field of its own (`planned_start` / `planned_finish`). A
+    /// pull never reads them; a push compares with them.
+    #[serde(default)]
+    pub planned_start: Option<i64>,
+    #[serde(default)]
+    pub planned_finish: Option<i64>,
 }
 
 /// What a row changes in its task.

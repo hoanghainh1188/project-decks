@@ -171,7 +171,7 @@ fn record_push_remembers_the_days_in_one_undo_step() {
     let (mut doc, _) = pulled();
     let before = doc.project.clone();
     doc.apply(Command::RecordPush {
-        entries: vec![PushedEntry { key: "P-1".into(), start: Some("2026-01-05".into()), due: Some("2026-01-06".into()), assignee: None }],
+        entries: vec![PushedEntry { key: "P-1".into(), start: Some("2026-01-05".into()), due: Some("2026-01-06".into()), assignee: None, planned_start: None, planned_finish: None }],
     })
     .unwrap();
     let link = by_key(&doc.project, "P-1").external.clone().unwrap();
@@ -186,13 +186,13 @@ fn record_push_remembers_the_days_in_one_undo_step() {
 fn record_push_refuses_bad_days_and_entries_that_match_nothing() {
     let (mut doc, _) = pulled();
     let bad = doc.apply(Command::RecordPush {
-        entries: vec![PushedEntry { key: "P-1".into(), start: Some("05/01/2026".into()), due: None, assignee: None }],
+        entries: vec![PushedEntry { key: "P-1".into(), start: Some("05/01/2026".into()), due: None, assignee: None, planned_start: None, planned_finish: None }],
     });
     assert_eq!(bad.unwrap_err(), EngineError::Invalid(Invalid::PushDate));
     for entries in [
         vec![],
-        vec![PushedEntry { key: "NOPE-1".into(), start: Some("2026-01-05".into()), due: None, assignee: None }],
-        vec![PushedEntry { key: "P-1".into(), start: None, due: None, assignee: None }],
+        vec![PushedEntry { key: "NOPE-1".into(), start: Some("2026-01-05".into()), due: None, assignee: None, planned_start: None, planned_finish: None }],
+        vec![PushedEntry { key: "P-1".into(), start: None, due: None, assignee: None, planned_start: None, planned_finish: None }],
     ] {
         let err = doc.apply(Command::RecordPush { entries }).unwrap_err();
         assert_eq!(err, EngineError::Invalid(Invalid::NothingToRecord));
@@ -217,7 +217,7 @@ fn a_pull_does_not_read_back_the_days_it_pushed() {
     assert_eq!(unknown.rows[0].fields, vec![PullField::Start, PullField::Due]);
 
     doc.apply(Command::RecordPush {
-        entries: vec![PushedEntry { key: "P-1".into(), start: Some("2026-01-05".into()), due: Some("2026-01-06".into()), assignee: None }],
+        entries: vec![PushedEntry { key: "P-1".into(), start: Some("2026-01-05".into()), due: Some("2026-01-06".into()), assignee: None, planned_start: None, planned_finish: None }],
     })
     .unwrap();
     let known = diff(&doc.project, &rows, 5);
@@ -234,7 +234,7 @@ fn a_pull_does_not_read_back_the_days_it_pushed() {
 fn a_different_day_at_the_source_is_a_real_change_and_applies() {
     let (mut doc, rows) = pulled();
     doc.apply(Command::RecordPush {
-        entries: vec![PushedEntry { key: "P-1".into(), start: Some("2026-01-05".into()), due: Some("2026-01-06".into()), assignee: None }],
+        entries: vec![PushedEntry { key: "P-1".into(), start: Some("2026-01-05".into()), due: Some("2026-01-06".into()), assignee: None, planned_start: None, planned_finish: None }],
     })
     .unwrap();
     let mut rows = echoed(&rows);
@@ -251,7 +251,7 @@ fn a_different_day_at_the_source_is_a_real_change_and_applies() {
 fn the_pushed_days_survive_a_file() {
     let (mut doc, _) = pulled();
     doc.apply(Command::RecordPush {
-        entries: vec![PushedEntry { key: "P-2".into(), start: None, due: Some("2026-01-05".into()), assignee: None }],
+        entries: vec![PushedEntry { key: "P-2".into(), start: None, due: Some("2026-01-05".into()), assignee: None, planned_start: None, planned_finish: None }],
     })
     .unwrap();
     let dir = std::env::temp_dir().join(format!("sheafly-push-{}", std::process::id()));

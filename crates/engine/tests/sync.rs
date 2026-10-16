@@ -299,7 +299,7 @@ fn a_day_the_source_holds_because_of_a_push_is_not_a_conflict_without_a_base() {
     })
     .unwrap();
     doc.apply(Command::RecordPush {
-        entries: vec![PushedEntry { key: "P-1".into(), start: Some("2026-01-05".into()), due: Some("2026-01-06".into()), assignee: None }],
+        entries: vec![PushedEntry { key: "P-1".into(), start: Some("2026-01-05".into()), due: Some("2026-01-06".into()), assignee: None, planned_start: None, planned_finish: None }],
     })
     .unwrap();
     let row = PullTask {
@@ -328,6 +328,8 @@ fn a_push_keeps_the_base_so_a_pull_right_after_changes_nothing() {
         start: change.start.as_ref().map(|d| d.to.clone()),
         due: change.due.as_ref().map(|d| d.to.clone()),
         assignee: None,
+        planned_start: None,
+        planned_finish: None,
     };
     // The task is scheduled from its SNET start on 2026-01-07 (8 hours: one day) so the start
     // day already matches and only the due day differs.

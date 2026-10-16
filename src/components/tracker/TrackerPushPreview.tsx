@@ -38,8 +38,8 @@ export function TrackerPushPreview({ preview }: { preview: PushPreview }) {
                   <tr key={change.key}>
                     <th scope="row">{change.key}</th>
                     <td>{change.name}</td>
-                    <td>{change.start ? m.change(change.start.from, change.start.to) : ""}</td>
-                    <td>{change.due ? m.change(change.due.from, change.due.to) : ""}</td>
+                    <td title={change.start_field ?? undefined}>{change.start ? m.change(change.start.from, change.start.to) : ""}</td>
+                    <td title={change.due_field ?? undefined}>{change.due ? m.change(change.due.from, change.due.to) : ""}</td>
                     <td>{change.assignee ? m.change(change.assignee.from, change.assignee.to) : ""}</td>
                   </tr>
                 ))}

@@ -59,6 +59,9 @@ pub enum TrackerError {
     NoUser,
     /// The project or the settings changed since the preview the push was made from.
     Stale,
+    /// A field named in the sync settings is not in the source project, or is not the kind
+    /// the sync needs there (a date for a day, a number for points).
+    BadField,
 }
 
 impl TrackerError {
@@ -124,6 +127,10 @@ impl TrackerError {
             Self::Stale => (
                 "Dự án hoặc thiết lập đã đổi từ lúc xem trước; hãy xem trước lại",
                 "The project or settings changed since the preview; preview again",
+            ),
+            Self::BadField => (
+                "Một trường trong thiết lập đồng bộ không có ở nguồn hoặc không đúng kiểu (ngày cho ngày, số cho điểm)",
+                "A field in the sync settings is not at the source or is the wrong kind (a date for a day, a number for points)",
             ),
         };
         match lang {
@@ -408,7 +415,7 @@ mod tests {
         use TrackerError::*;
         for error in [
             NoKey, Rejected, NotFound, RateLimited, Offline, Server, BadResponse, BadSite,
-            BadProject, BadFilter, TooManyIssues, Cancelled, KeyStore, Refused, NoUser, Stale,
+            BadProject, BadFilter, TooManyIssues, Cancelled, KeyStore, Refused, NoUser, Stale, BadField,
         ] {
             let (vi, en) = (error.message(Lang::Vi), error.message(Lang::En));
             assert!(!vi.is_empty() && !en.is_empty() && vi != en, "{error:?}");

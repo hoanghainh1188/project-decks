@@ -688,6 +688,9 @@ export interface PushChange {
   start: DayChange | null;
   due: DayChange | null;
   assignee: AssigneeChange | null;
+  /** The field at the source the start / finish day goes to (`custom:<name>`), when not the usual one. */
+  start_field?: string | null;
+  due_field?: string | null;
 }
 
 export type PushSkipReason = "many_assignees" | "no_email" | "source_changed";
@@ -745,6 +748,9 @@ export interface PushedEntry {
   due?: string | null;
   /** The email written as the assignee. */
   assignee?: string | null;
+  /** The days written to a field of their own (`planned_start`, `planned_finish`). */
+  planned_start?: string | null;
+  planned_finish?: string | null;
 }
 
 /** Mirror of `pull::PullTask`, one issue of `apply_pull` as the adapter read it. */
@@ -760,6 +766,9 @@ export interface PullTask {
   assignee_email?: string | null;
   values?: [string, FieldValue][];
   after?: string[];
+  /** What the field a push writes the computed start / finish to holds now (an instant). */
+  planned_start?: number | null;
+  planned_finish?: number | null;
 }
 
 /** Mirror of `model::Strength`: a share of 0, 0.3, 0.5 or 0.8 in common. */
