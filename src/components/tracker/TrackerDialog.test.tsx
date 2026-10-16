@@ -81,6 +81,36 @@ describe("TrackerDialog", () => {
     expect(fetchButton()).toBeEnabled();
   });
 
+  it("offers Jira Cloud with its own site, JQL filter and an account email", async () => {
+    const { user } = renderDialog(projectWith(null));
+    expect(screen.getByLabelText("Tracker")).toHaveValue("backlog");
+    expect(screen.queryByLabelText("Email tài khoản Atlassian")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Khóa API")).toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText("Tracker"), "jira");
+    expect(screen.getByLabelText(/^Site/)).toHaveAttribute("placeholder", "team.atlassian.net");
+    expect(screen.getByLabelText(/^Bộ lọc JQL/)).toBeInTheDocument();
+    expect(screen.getByLabelText("API token")).toBeInTheDocument();
+    expect(screen.getByLabelText("Email tài khoản Atlassian")).toBeInTheDocument();
+    await user.type(screen.getByLabelText(/^Site/), "Team.Atlassian.net");
+    await user.type(screen.getByLabelText("Khóa dự án ở nguồn"), "PROJ");
+    expect(fetchButton()).toBeEnabled();
+  });
+
+  it("sends a Jira token with the account email, and asks for the email when it is missing", async () => {
+    const jira: Source = { ...SOURCE, kind: "jira", site: "team.atlassian.net" };
+    const { user } = renderDialog(projectWith(jira));
+    await user.type(screen.getByLabelText("API token"), "TOKEN");
+    await user.click(fetchButton());
+    expect(await screen.findByRole("alert")).toHaveTextContent("Nhập email tài khoản Atlassian cùng với token.");
+    expect(calls("tracker_save_key")).toHaveLength(0);
+    await user.type(screen.getByLabelText("Email tài khoản Atlassian"), "an@example.com");
+    await user.click(fetchButton());
+    await screen.findByText(/^Thêm 1 · Đổi 1/);
+    expect(calls("tracker_save_key")[0].args).toEqual({ kind: "jira", site: "team.atlassian.net", key: "TOKEN", account: "an@example.com" });
+    expect(calls("tracker_pull")[0].args).toMatchObject({ source: { kind: "jira", site: "team.atlassian.net" } });
+    expect(document.body.textContent).not.toContain("TOKEN");
+  });
+
   it("fills the form from the saved source and says whether a key is saved", async () => {
     const project = projectWith({ ...SOURCE, filter: "statusId[]=1", status_map: [{ status: "Đang review", class: "in_progress" }] });
     renderDialog(project, PREVIEW, ["team.backlog.com"]);

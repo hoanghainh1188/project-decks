@@ -1,9 +1,9 @@
 import { Plus, Trash2 } from "lucide-react";
 
 import { useMessages } from "../../i18n";
-import type { StatusClass } from "../../types";
+import type { StatusClass, TrackerKind } from "../../types";
 import { Button } from "../Button";
-import { STATUS_CLASSES, type SourceForm } from "./trackerSource";
+import { needsAccount, STATUS_CLASSES, TRACKER_KINDS, type SourceForm } from "./trackerSource";
 import { trackerDialogMessages } from "./TrackerDialog.i18n";
 
 const CLASS_LABEL = { not_started: "notStarted", in_progress: "inProgress", done: "done" } as const;
@@ -14,6 +14,8 @@ export function TrackerSetup({
   onForm,
   keyInput,
   onKeyInput,
+  account,
+  onAccount,
   hasKey,
   onForgetKey,
   disabled,
@@ -22,6 +24,8 @@ export function TrackerSetup({
   onForm: (form: SourceForm) => void;
   keyInput: string;
   onKeyInput: (key: string) => void;
+  account: string;
+  onAccount: (account: string) => void;
   hasKey: boolean;
   onForgetKey: () => void;
   disabled: boolean;
@@ -29,19 +33,34 @@ export function TrackerSetup({
   const m = useMessages(trackerDialogMessages);
   const setStatus = (index: number, change: Partial<SourceForm["statuses"][number]>) =>
     onForm({ ...form, statuses: form.statuses.map((item, at) => (at === index ? { ...item, ...change } : item)) });
+  const jira = form.kind === "jira";
   return (
     <div className="tracker-setup">
+      <label>
+        {m.tracker}
+        <select
+          value={form.kind}
+          disabled={disabled}
+          onChange={(event) => onForm({ ...form, kind: event.target.value as TrackerKind })}
+        >
+          {TRACKER_KINDS.map((kind) => (
+            <option key={kind} value={kind}>
+              {kind === "jira" ? m.jira : m.backlog}
+            </option>
+          ))}
+        </select>
+      </label>
       <label>
         {m.site}
         <input
           value={form.site}
           disabled={disabled}
-          placeholder="team.backlog.com"
+          placeholder={jira ? "team.atlassian.net" : "team.backlog.com"}
           autoCapitalize="off"
           spellCheck={false}
           onChange={(event) => onForm({ ...form, site: event.target.value })}
         />
-        <span className="meta">{m.siteHint}</span>
+        <span className="meta">{jira ? m.siteHintJira : m.siteHint}</span>
       </label>
       <label>
         {m.projectKey}
@@ -54,18 +73,32 @@ export function TrackerSetup({
         />
       </label>
       <label>
-        {m.filter}
+        {jira ? m.filterJira : m.filter}
         <input
           value={form.filter}
           disabled={disabled}
           spellCheck={false}
           onChange={(event) => onForm({ ...form, filter: event.target.value })}
         />
-        <span className="meta">{m.filterHint}</span>
+        <span className="meta">{jira ? m.filterHintJira : m.filterHint}</span>
       </label>
       <div className="tracker-key">
+        {needsAccount(form.kind) && (
+          <label>
+            {m.account}
+            <input
+              type="email"
+              value={account}
+              disabled={disabled}
+              placeholder={m.accountPlaceholder}
+              autoComplete="off"
+              spellCheck={false}
+              onChange={(event) => onAccount(event.target.value)}
+            />
+          </label>
+        )}
         <label>
-          {m.apiKey}
+          {jira ? m.apiToken : m.apiKey}
           <input
             type="password"
             value={keyInput}
@@ -87,7 +120,7 @@ export function TrackerSetup({
       </div>
       <fieldset className="tracker-statuses">
         <legend>{m.statuses}</legend>
-        <p className="meta">{m.statusHint}</p>
+        <p className="meta">{jira ? m.statusHintJira : m.statusHint}</p>
         {form.statuses.map((item, index) => (
           <div className="tracker-status" key={index}>
             <input

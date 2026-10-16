@@ -2,7 +2,7 @@ import { defineMessages } from "../../i18n";
 
 export const trackerPushMessages = defineMessages(
   {
-    title: "Đẩy ngày về task tracker (Backlog)",
+    title: "Đẩy ngày về task tracker",
     noSource: "Dự án chưa kéo từ task tracker nào. Dùng Tệp → Nhập → Kéo từ task tracker trước.",
     noKey: (site: string) => `Chưa có khóa API cho ${site}. Nhập khóa ở Tệp → Nhập → Kéo từ task tracker.`,
     to: (site: string, project: string) => `Ghi về ${site}, dự án ${project}. Chỉ những việc đã kéo từ đó.`,
@@ -24,8 +24,8 @@ export const trackerPushMessages = defineMessages(
     back: "Quay lại",
     cancel: "Hủy",
     close: "Đóng",
-    write: (count: number) => `Ghi ${count} việc lên Backlog`,
-    willWrite: "Sẽ ghi lên Backlog. Sheafly không hoàn tác được thay đổi ở nguồn.",
+    write: (count: number) => `Ghi ${count} việc lên tracker`,
+    willWrite: "Sẽ ghi lên tracker. Sheafly không hoàn tác được thay đổi ở nguồn.",
     nothing: "Không có gì để ghi: ngày ở nguồn đã khớp hoặc đã có giá trị.",
     changesTable: "Việc sẽ ghi",
     key: "Khóa",
@@ -51,7 +51,7 @@ export const trackerPushMessages = defineMessages(
     changed: "Dự án đã đổi từ lúc xem trước; hãy xem trước lại.",
   },
   {
-    title: "Push dates to a task tracker (Backlog)",
+    title: "Push dates to a task tracker",
     noSource: "This project has not been pulled from a task tracker. Use File → Import → Pull from Task Tracker first.",
     noKey: (site: string) => `No API key is saved for ${site}. Enter it in File → Import → Pull from Task Tracker.`,
     to: (site: string, project: string) => `Writes to ${site}, project ${project}. Only tasks pulled from there.`,
@@ -73,8 +73,8 @@ export const trackerPushMessages = defineMessages(
     back: "Back",
     cancel: "Cancel",
     close: "Close",
-    write: (count: number) => `Write ${count} ${count === 1 ? "issue" : "issues"} to Backlog`,
-    willWrite: "This writes to Backlog. Sheafly cannot undo changes at the source.",
+    write: (count: number) => `Write ${count} ${count === 1 ? "issue" : "issues"} to the tracker`,
+    willWrite: "This writes to the tracker. Sheafly cannot undo changes at the source.",
     nothing: "Nothing to write: the source already matches or already has values.",
     changesTable: "Issues to write",
     key: "Key",
