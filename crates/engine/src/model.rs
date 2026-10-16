@@ -173,6 +173,12 @@ pub struct Task {
     /// people, which is split to let it in (`level_interrupt.rs`).
     #[serde(default)]
     pub interrupts: bool,
+    /// The least and most effort the task may take, in working minutes, for the finish
+    /// forecast (`SetWorkRange`); both or neither. Scheduling never reads them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub work_low: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub work_high: Option<i64>,
 }
 
 impl Task {
@@ -232,6 +238,8 @@ impl Task {
             splits: Vec::new(),
             segments: Vec::new(),
             interrupts: false,
+            work_low: None,
+            work_high: None,
         }
     }
 
@@ -403,6 +411,54 @@ pub struct Project {
     /// matches a task is used. Only suggestions read them.
     #[serde(default)]
     pub assignment_rules: Vec<AssignmentRule>,
+    /// How tasks' effort varies together in the finish forecast.
+    #[serde(default)]
+    pub forecast: ForecastSettings,
+}
+
+/// How strongly tasks' effort moves together in the finish forecast.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Strength {
+    None,
+    #[default]
+    Low,
+    Medium,
+    High,
+}
+
+impl Strength {
+    /// The share of a task's variation it has in common with the others (a correlation).
+    pub fn share(self) -> f64 {
+        match self {
+            Strength::None => 0.0,
+            Strength::Low => 0.3,
+            Strength::Medium => 0.5,
+            Strength::High => 0.8,
+        }
+    }
+}
+
+/// The finish forecast's correlation: tasks with the same value of `field` (a text or
+/// choice custom field) vary together by `group`, and every task shares `common`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ForecastSettings {
+    #[serde(default)]
+    pub field: Option<u32>,
+    #[serde(default = "medium")]
+    pub group: Strength,
+    #[serde(default)]
+    pub common: Strength,
+}
+
+fn medium() -> Strength {
+    Strength::Medium
+}
+
+impl Default for ForecastSettings {
+    fn default() -> Self {
+        Self { field: None, group: Strength::Medium, common: Strength::Low }
+    }
 }
 
 impl Project {
@@ -434,6 +490,7 @@ impl Project {
             skills: Vec::new(),
             next_skill_id: 1,
             assignment_rules: Vec::new(),
+            forecast: ForecastSettings::default(),
         }
     }
 

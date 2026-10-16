@@ -47,6 +47,11 @@ pub struct TaskCopy {
     /// Urgent (`Task::interrupts`).
     #[serde(default)]
     pub interrupts: bool,
+    /// The effort range of the finish forecast (`Task::work_low`, `Task::work_high`).
+    #[serde(default)]
+    pub work_low: Option<i64>,
+    #[serde(default)]
+    pub work_high: Option<i64>,
     pub assignments: Vec<AssignmentCopy>,
     /// Custom field values by field name: a paste into another project keeps those whose
     /// field has the same name there and can hold the value.
@@ -93,6 +98,9 @@ pub enum FillField {
     Field(u32),
     /// The interrupt flag (`Task::interrupts`); summaries and milestones are skipped.
     Interrupts,
+    /// The effort range of the finish forecast, both ends; summaries and milestones are
+    /// skipped.
+    WorkRange,
 }
 
 /// Copy the tasks `uids` with their subtrees, in outline order.
@@ -162,6 +170,8 @@ fn task_copy(project: &Project, task: &Task, base: u32) -> TaskCopy {
         // Leveling's own splits stay behind: they belong to that run, not to the task.
         splits: task.splits.iter().filter(|split| !split.leveling).cloned().collect(),
         interrupts: task.interrupts,
+        work_low: task.work_low,
+        work_high: task.work_high,
         assignments: project
             .assignments
             .iter()
@@ -294,6 +304,10 @@ fn pasted_task(project: &Project, uid: u32, copy: &TaskCopy, level: u32) -> Task
     task.splits = copy.splits.iter().map(|split| Split { leveling: false, ..split.clone() }).collect();
     split::normalize_task(&mut task);
     task.interrupts = copy.interrupts && !task.summary && !task.milestone;
+    if !task.summary && !task.milestone {
+        task.work_low = copy.work_low;
+        task.work_high = copy.work_high;
+    }
     for (name, value) in &copy.values {
         let name = name.to_lowercase();
         let field = project.fields.iter().find(|field| field.name.to_lowercase() == name);
@@ -365,8 +379,9 @@ fn push_assignment(project: &mut Project, task_uid: u32, resource_uid: u32, copy
 
 /// Copy `field` of `from_uid` to each task in `to_uids`, as the edit that field's cell makes.
 /// Summary tasks only take a name or a custom field value; the rest of their fields roll
-/// up from their tasks. Milestones never take the interrupt flag, and a summary or milestone
-/// source, which never has it, fills nothing rather than clearing it below.
+/// up from their tasks. The interrupt flag and the effort range go only to leaves that are
+/// not milestones, and a summary or milestone source fills nothing rather than clearing
+/// them below; a leaf source without a range clears the targets'.
 pub fn fill_down(
     project: &mut Project,
     from_uid: u32,
@@ -377,13 +392,14 @@ pub fn fill_down(
         .task(from_uid)
         .ok_or(EngineError::TaskNotFound)?
         .clone();
-    if field == FillField::Interrupts && (source.summary || source.milestone) {
+    let leaf_only = matches!(field, FillField::Interrupts | FillField::WorkRange);
+    if leaf_only && (source.summary || source.milestone) {
         return Ok(());
     }
     for uid in to_uids {
         let target = project.task(*uid).ok_or(EngineError::TaskNotFound)?;
         let summary_takes = matches!(field, FillField::Name | FillField::Field(_));
-        let flag_refused = field == FillField::Interrupts && target.milestone;
+        let flag_refused = leaf_only && target.milestone;
         if *uid == from_uid || (target.summary && !summary_takes) || flag_refused {
             continue;
         }
@@ -427,6 +443,11 @@ fn fill_command(source: &Task, uid: u32, field: FillField) -> Command {
         FillField::Interrupts => Command::SetInterrupts {
             uid,
             interrupts: source.interrupts,
+        },
+        FillField::WorkRange => Command::SetWorkRange {
+            uid,
+            low: source.work_low,
+            high: source.work_high,
         },
     }
 }

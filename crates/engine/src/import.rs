@@ -70,6 +70,11 @@ pub struct ImportTask {
     /// from the effort and the units of the people on it.
     #[serde(default)]
     pub work: Option<i64>,
+    /// The effort range of the finish forecast: both or neither.
+    #[serde(default)]
+    pub work_low: Option<i64>,
+    #[serde(default)]
+    pub work_high: Option<i64>,
     /// Duration in working minutes, for a task without effort.
     #[serde(default)]
     pub duration: Option<i64>,
@@ -116,6 +121,8 @@ pub enum ImportColumn {
     Skills,
     Level,
     Work,
+    WorkLow,
+    WorkHigh,
     Duration,
     Priority,
     Deadline,
@@ -397,6 +404,15 @@ fn task_from(
     if group && !input.assignees.is_empty() {
         return fail(ImportColumn::Assignees, Invalid::ImportGroupWork);
     }
+    let has_range = input.work_low.is_some() || input.work_high.is_some();
+    if group && has_range {
+        return fail(ImportColumn::WorkLow, Invalid::ImportGroupWork);
+    }
+    match (input.work_low, input.work_high) {
+        (None, None) => {}
+        (Some(low), Some(high)) if 0 <= low && low <= high => {}
+        _ => return fail(ImportColumn::WorkHigh, Invalid::BadWorkRange),
+    }
     if input.priority.is_some_and(|priority| !(0..=1000).contains(&priority)) {
         return fail(ImportColumn::Priority, Invalid::ImportPriority);
     }
@@ -420,6 +436,8 @@ fn task_from(
         task.priority = priority;
     }
     task.deadline = input.deadline;
+    task.work_low = input.work_low;
+    task.work_high = input.work_high;
     if let Some(date) = input.start_no_earlier {
         task.constraint_type = ConstraintType::Snet;
         task.constraint_date = Some(date);

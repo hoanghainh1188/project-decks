@@ -96,6 +96,9 @@ pub enum Invalid {
     DuplicateCondition,
     NoAssignments,
     InterruptsLeaf,
+    WorkRangeLeaf,
+    BadWorkRange,
+    ForecastFieldKind,
     NothingToImport,
     ImportHasErrors,
     TooManyImportRows,
@@ -377,6 +380,18 @@ impl Invalid {
                 "Chỉ công việc có thời lượng mới chen ngang được, không phải tóm tắt hay mốc",
                 "Only a task with a duration can interrupt, not a summary or a milestone",
             ),
+            Self::WorkRangeLeaf => fixed(
+                "Chỉ công việc có thời lượng mới có khoảng effort, không phải tóm tắt hay mốc",
+                "Only a task with a duration can have an effort range, not a summary or a milestone",
+            ),
+            Self::BadWorkRange => fixed(
+                "Khoảng effort cần cả mức thấp và mức cao, không âm, mức thấp không lớn hơn mức cao",
+                "An effort range needs both a low and a high amount, not negative, the low one no larger",
+            ),
+            Self::ForecastFieldKind => fixed(
+                "Chỉ trường văn bản hoặc danh sách chọn mới nhóm được công việc cho dự báo",
+                "Only a text or choice field can group tasks for the forecast",
+            ),
             Self::NothingToImport => fixed(
                 "Không có dòng nào để nhập",
                 "There are no rows to import",
@@ -515,6 +530,9 @@ mod tests {
             DuplicateCondition,
             NoAssignments,
             InterruptsLeaf,
+            WorkRangeLeaf,
+            BadWorkRange,
+            ForecastFieldKind,
             NothingToImport,
             ImportHasErrors,
             TooManyImportRows,

@@ -98,6 +98,9 @@ export interface Task {
   leveling_delay: number;
   /** Urgent: when leveling, it goes ahead of work in progress ranked below it on the same people. */
   interrupts: boolean;
+  /** The least and most effort for the finish forecast, in working minutes; both or neither. */
+  work_low?: number | null;
+  work_high?: number | null;
   start: number;
   finish: number;
   early_start: number;
@@ -344,6 +347,8 @@ export interface ImportTask {
   name: string;
   level?: number;
   work?: number | null;
+  work_low?: number | null;
+  work_high?: number | null;
   duration?: number | null;
   priority?: number | null;
   deadline?: number | null;
@@ -363,6 +368,8 @@ export type ImportColumn =
   | "skills"
   | "level"
   | "work"
+  | "work_low"
+  | "work_high"
   | "duration"
   | "priority"
   | "deadline"
@@ -459,6 +466,19 @@ export interface Project {
   next_skill_id: number;
   /** Ordered rules from custom field values to a person or a skill. */
   assignment_rules: AssignmentRule[];
+  /** How tasks' effort varies together in the finish forecast. */
+  forecast: ForecastSettings;
+}
+
+/** Mirror of `model::Strength`: a share of 0, 0.3, 0.5 or 0.8 in common. */
+export type Strength = "none" | "low" | "medium" | "high";
+
+/** Mirror of `model::ForecastSettings`. */
+export interface ForecastSettings {
+  /** A text or choice custom field; tasks with the same value vary together by `group`. */
+  field: number | null;
+  group: Strength;
+  common: Strength;
 }
 
 export interface Snapshot {
@@ -547,6 +567,8 @@ export type Command =
   | { type: "reschedule_uncompleted" }
   | { type: "set_leveling_delay"; uid: number; minutes: number }
   | { type: "set_interrupts"; uid: number; interrupts: boolean }
+  | { type: "set_work_range"; uid: number; low: number | null; high: number | null }
+  | { type: "set_forecast_settings"; settings: ForecastSettings }
   | { type: "set_deadline"; uid: number; date: number | null }
   | { type: "set_editable_actual_costs"; editable: boolean }
   | { type: "set_task_actual_cost"; uid: number; cost: number | null }
@@ -623,6 +645,7 @@ export type FillField =
   | "percent_complete"
   | "calendar"
   | "interrupts"
+  | "work_range"
   | { field: number };
 
 export type ViewId = "gantt" | "tracking" | "resources" | "usage" | "load" | "network";

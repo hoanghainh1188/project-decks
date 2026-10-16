@@ -11,8 +11,8 @@ use crate::plan;
 use crate::level_order::{self, SortKey};
 use crate::level::level_project;
 use crate::model::{
-    Accrual, Baseline, ConstraintType, DepKind, Dependency, Project, Resource, ResourceKind, Task,
-    TaskType,
+    Accrual, Baseline, ConstraintType, DepKind, Dependency, ForecastSettings, Project, Resource,
+    ResourceKind, Task, TaskType,
 };
 use crate::recurrence::{self, Recurrence, RecurrenceSpec};
 use crate::schedule::normalize_outline;
@@ -342,6 +342,16 @@ pub enum Command {
         uid: u32,
         interrupts: bool,
     },
+    /// Set or clear (both `None`) the effort range of a leaf task for the finish forecast.
+    SetWorkRange {
+        uid: u32,
+        low: Option<i64>,
+        high: Option<i64>,
+    },
+    /// Replace the finish forecast's correlation settings.
+    SetForecastSettings {
+        settings: ForecastSettings,
+    },
     /// Replace the days a resource has other units than its max units. Only
     /// overallocation and leveling read them.
     SetResourceAvailability {
@@ -496,7 +506,8 @@ fn edited_task(project: &Project, command: &Command) -> Option<u32> {
         | Command::RemoveSplit { uid, .. }
         | Command::MoveSegment { uid, .. }
         | Command::SetFieldValue { uid, .. }
-        | Command::SetInterrupts { uid, .. } => Some(*uid),
+        | Command::SetInterrupts { uid, .. }
+        | Command::SetWorkRange { uid, .. } => Some(*uid),
         // Before any progress these set the duration or work: that is an edit.
         Command::SetRemainingDuration { uid, .. } | Command::SetRemainingWork { uid, .. } => project
             .task(*uid)
@@ -1079,6 +1090,8 @@ fn apply_inner(project: &mut Project, command: &Command) -> Result<(), EngineErr
             }
             task.interrupts = *interrupts;
         }
+        Command::SetWorkRange { uid, low, high } => set_work_range(project, *uid, *low, *high)?,
+        Command::SetForecastSettings { settings } => set_forecast_settings(project, settings)?,
         Command::AddSkill { name } => {
             skills::add_skill(project, name)?;
         }
@@ -1445,4 +1458,37 @@ fn normalize_ranges(ranges: &[TimeRange]) -> Result<Vec<TimeRange>, EngineError>
         last_end = range.end_minute;
     }
     Ok(ordered)
+}
+
+/// Both amounts or neither, `0 <= low <= high`, on a task that has work of its own.
+pub(crate) fn set_work_range(
+    project: &mut Project,
+    uid: u32,
+    low: Option<i64>,
+    high: Option<i64>,
+) -> Result<(), EngineError> {
+    let task = project.task_mut(uid).ok_or(EngineError::TaskNotFound)?;
+    if task.summary || task.milestone {
+        return Err(Invalid::WorkRangeLeaf.into());
+    }
+    match (low, high) {
+        (None, None) => {}
+        (Some(low), Some(high)) if 0 <= low && low <= high => {}
+        _ => return Err(Invalid::BadWorkRange.into()),
+    }
+    task.work_low = low;
+    task.work_high = high;
+    Ok(())
+}
+
+/// The field, when given, must be a text or choice field of the project.
+fn set_forecast_settings(project: &mut Project, settings: &ForecastSettings) -> Result<(), EngineError> {
+    if let Some(id) = settings.field {
+        let field = project.fields.iter().find(|field| field.id == id).ok_or(Invalid::NoSuchField)?;
+        if matches!(field.kind, crate::fields::FieldKind::Number) {
+            return Err(Invalid::ForecastFieldKind.into());
+        }
+    }
+    project.forecast = settings.clone();
+    Ok(())
 }
