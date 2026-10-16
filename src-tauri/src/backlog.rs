@@ -381,6 +381,7 @@ mod tests {
                 status: "Đang review".into(),
                 class: StatusClass::InProgress,
             }],
+            sync: Default::default(),
         }
     }
 

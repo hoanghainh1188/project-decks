@@ -595,6 +595,34 @@ export interface StatusMapping {
   class: StatusClass;
 }
 
+/** Mirror of `source::Direction`. */
+export type SyncDirection = "both" | "pull" | "push" | "off";
+
+/** Mirror of `source::OnConflict`: what happens when a field changed on both sides. */
+export type OnConflict = "ask" | "source" | "sheafly";
+
+/** Mirror of `source::FieldPolicy`. */
+export interface FieldPolicy {
+  /** `name`, `work`, `start`, `due`, `status`, `assignee`, `field:<id>` or `fields`. */
+  field: string;
+  direction: SyncDirection;
+  on_conflict: OnConflict;
+  /** Which field at the source to read, when not the tracker's usual one. */
+  source_field?: string | null;
+  /** Which field at the source to write, when not the tracker's usual one. */
+  push_field?: string | null;
+}
+
+/** Mirror of `source::SyncSettings`. */
+export interface SyncSettings {
+  fields: FieldPolicy[];
+  in_progress_percent: number;
+  start_hour: number;
+  due_hour: number;
+}
+
+export const DEFAULT_SYNC_SETTINGS: SyncSettings = { fields: [], in_progress_percent: 50, start_hour: 8, due_hour: 17 };
+
 /** Mirror of `source::Source`. */
 export interface Source {
   kind: TrackerKind;
@@ -604,6 +632,8 @@ export interface Source {
   /** Working hours one story point stands for. */
   hours_per_point: number;
   status_map: StatusMapping[];
+  /** How each field syncs and the constants the sync uses. */
+  sync: SyncSettings;
 }
 
 /** Mirror of `source::ExternalLink`. */

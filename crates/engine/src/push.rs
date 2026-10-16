@@ -128,6 +128,14 @@ fn day_change(from: Option<i64>, to: i64, overwrite: bool) -> Option<DayChange> 
 pub fn plan(project: &Project, rows: &[PullTask], options: PushOptions) -> PushPlan {
     let at_source: HashMap<&str, &PullTask> = rows.iter().map(|row| (row.key.trim(), row)).collect();
     let mut plan = PushPlan::default();
+    // A field the source's settings do not push is not pushed whatever the options say.
+    let sync = project.source.as_ref().map(|source| source.sync.clone()).unwrap_or_default();
+    let options = PushOptions {
+        start: options.start && sync.direction(&SyncField::Start.key()).pushes(),
+        due: options.due && sync.direction(&SyncField::Due.key()).pushes(),
+        assignee: options.assignee && sync.direction(&SyncField::Assignee.key()).pushes(),
+        ..options
+    };
     for task in &project.tasks {
         let Some(link) = task.external.as_ref().filter(|link| !link.gone) else { continue };
         let Some(row) = at_source.get(link.key.as_str()) else {

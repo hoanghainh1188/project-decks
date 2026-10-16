@@ -33,8 +33,9 @@ use crate::recovery::{self, Damage, OpenReport, Recovery};
 /// `SetForecastSettings` (the finish forecast) and the effort range of `FillDown`, version 17
 /// `SetResourceEmail`, `SetSource` and `ApplyPull` (tasks pulled from an external tracker).
 /// `RecordPush` and the pushed days of a task's link (a push to the tracker) are version 18, and `ApplyPull`'s `resolutions` with the `base` of a task's link (three-way
-/// sync, conflicts) version 19. None of them changes how older commands schedule.
-pub const FORMAT_VERSION: u32 = 19;
+/// sync, conflicts) version 19, and a source's `sync` settings (per-field direction and conflict policy,
+/// constants) version 20. None of them changes how older commands schedule.
+pub const FORMAT_VERSION: u32 = 20;
 
 /// Checkpoints a file keeps below the cursor, besides the one at the cursor. Each is
 /// a whole scheduled project (about 1 MB for 1,000 tasks), so only a few nearby ones.

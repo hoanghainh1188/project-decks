@@ -123,6 +123,7 @@ pub(crate) fn delete_field(project: &mut Project, id: u32) -> Result<(), EngineE
     project.fields.remove(position);
     level_order::drop_field(project, id);
     skills::drop_field(project, id);
+    crate::source::drop_field(project, id);
     if project.forecast.field == Some(id) {
         project.forecast.field = None;
     }

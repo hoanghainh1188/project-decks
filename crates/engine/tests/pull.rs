@@ -9,7 +9,7 @@ use sheafly_engine::fields::{FieldKind, FieldValue};
 use sheafly_engine::lang::Lang;
 use sheafly_engine::model::{ConstraintType, ResourceKind, Task, TaskType};
 use sheafly_engine::pull::{diff, PullColumn, PullField, PullKind, PullTask};
-use sheafly_engine::source::{Source, StatusClass, StatusMapping, TrackerKind};
+use sheafly_engine::source::{Source, StatusClass, StatusMapping, SyncSettings, TrackerKind};
 use sheafly_engine::store::{load, save};
 use sheafly_engine::timeutil::timestamp;
 use sheafly_engine::{Document, EngineError, Invalid, Project};
@@ -151,6 +151,7 @@ fn source() -> Source {
             status: " Đang xử lý ".into(),
             class: StatusClass::InProgress,
         }],
+        sync: SyncSettings::default(),
     }
 }
 

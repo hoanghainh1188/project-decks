@@ -68,6 +68,126 @@ pub struct Source {
     /// What each status of the source means; the adapter reads a status not listed.
     #[serde(default)]
     pub status_map: Vec<StatusMapping>,
+    /// How each field syncs, and the constants the sync uses (all defaults when absent).
+    #[serde(default)]
+    pub sync: SyncSettings,
+}
+
+/// Which way a field syncs.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Direction {
+    /// Pulled from the source and pushed back to it.
+    #[default]
+    Both,
+    /// Pulled only: never written to the source.
+    Pull,
+    /// Pushed only: never read from the source.
+    Push,
+    /// Not synced.
+    Off,
+}
+
+impl Direction {
+    pub fn pulls(self) -> bool {
+        matches!(self, Self::Both | Self::Pull)
+    }
+
+    pub fn pushes(self) -> bool {
+        matches!(self, Self::Both | Self::Push)
+    }
+}
+
+/// What happens when a field changed on both sides since the last sync.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OnConflict {
+    /// Wait for the user's choice.
+    #[default]
+    Ask,
+    /// The source wins.
+    Source,
+    /// Sheafly keeps its value.
+    Sheafly,
+}
+
+/// How one field (or all custom fields) syncs.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FieldPolicy {
+    /// `name`, `work`, `start`, `due`, `status`, `assignee`, `field:<id>` for one custom
+    /// field, or `fields` for every custom field without a policy of its own.
+    pub field: String,
+    #[serde(default)]
+    pub direction: Direction,
+    #[serde(default)]
+    pub on_conflict: OnConflict,
+    /// Which field at the source to read, when not the tracker's usual one; the adapter
+    /// reads it (the engine does not look inside).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_field: Option<String>,
+    /// Which field at the source to write, when not the tracker's usual one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub push_field: Option<String>,
+}
+
+fn default_in_progress_percent() -> u8 {
+    50
+}
+fn default_start_hour() -> u8 {
+    8
+}
+fn default_due_hour() -> u8 {
+    17
+}
+
+/// Per-source settings of the sync, beyond the field mapping the adapter knows.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SyncSettings {
+    #[serde(default)]
+    pub fields: Vec<FieldPolicy>,
+    /// The percent complete an in-progress issue gets when the task has none between 0
+    /// and 100.
+    #[serde(default = "default_in_progress_percent")]
+    pub in_progress_percent: u8,
+    /// The hour a source's start date becomes (the adapter converts dates).
+    #[serde(default = "default_start_hour")]
+    pub start_hour: u8,
+    /// The hour a source's due date becomes.
+    #[serde(default = "default_due_hour")]
+    pub due_hour: u8,
+}
+
+impl Default for SyncSettings {
+    fn default() -> Self {
+        Self {
+            fields: Vec::new(),
+            in_progress_percent: default_in_progress_percent(),
+            start_hour: default_start_hour(),
+            due_hour: default_due_hour(),
+        }
+    }
+}
+
+impl SyncSettings {
+    /// The policy for a field key: its own, else the one for all custom fields, else none.
+    fn policy(&self, key: &str) -> Option<&FieldPolicy> {
+        self.fields
+            .iter()
+            .find(|policy| policy.field == key)
+            .or_else(|| {
+                key.starts_with("field:")
+                    .then(|| self.fields.iter().find(|policy| policy.field == "fields"))
+                    .flatten()
+            })
+    }
+
+    pub fn direction(&self, key: &str) -> Direction {
+        self.policy(key).map_or(Direction::Both, |policy| policy.direction)
+    }
+
+    pub fn on_conflict(&self, key: &str) -> OnConflict {
+        self.policy(key).map_or(OnConflict::Ask, |policy| policy.on_conflict)
+    }
 }
 
 /// The issue a task was pulled from.
@@ -168,7 +288,58 @@ pub fn validate(source: &Source) -> Result<Source, EngineError> {
         filter,
         hours_per_point: points,
         status_map,
+        sync: checked_sync(&source.sync)?,
     })
+}
+
+/// Most field policies one source can have.
+pub const MAX_FIELD_POLICIES: usize = 100;
+/// Longest source field reference.
+pub const MAX_SOURCE_FIELD_CHARS: usize = 100;
+
+fn field_key_ok(key: &str) -> bool {
+    matches!(key, "name" | "work" | "start" | "due" | "status" | "assignee" | "fields")
+        || key.strip_prefix("field:").is_some_and(|id| id.parse::<u32>().is_ok())
+}
+
+fn checked_sync(sync: &SyncSettings) -> Result<SyncSettings, EngineError> {
+    if sync.fields.len() > MAX_FIELD_POLICIES {
+        return Err(Invalid::SyncPolicy.into());
+    }
+    if !(1..=99).contains(&sync.in_progress_percent) || sync.start_hour > 23 || sync.due_hour > 23 {
+        return Err(Invalid::SyncSetting.into());
+    }
+    let mut fields: Vec<FieldPolicy> = Vec::with_capacity(sync.fields.len());
+    for policy in &sync.fields {
+        let tidy = |text: &Option<String>| -> Result<Option<String>, EngineError> {
+            match text.as_deref().map(str::trim) {
+                None | Some("") => Ok(None),
+                Some(text) if text.chars().count() > MAX_SOURCE_FIELD_CHARS || text.chars().any(char::is_control) => {
+                    Err(Invalid::SyncPolicy.into())
+                }
+                Some(text) => Ok(Some(text.to_string())),
+            }
+        };
+        if !field_key_ok(&policy.field) || fields.iter().any(|other| other.field == policy.field) {
+            return Err(Invalid::SyncPolicy.into());
+        }
+        fields.push(FieldPolicy {
+            field: policy.field.clone(),
+            direction: policy.direction,
+            on_conflict: policy.on_conflict,
+            source_field: tidy(&policy.source_field)?,
+            push_field: tidy(&policy.push_field)?,
+        });
+    }
+    Ok(SyncSettings { fields, ..sync.clone() })
+}
+
+/// `DeleteField`: the policy for a custom field goes with it.
+pub(crate) fn drop_field(project: &mut Project, id: u32) {
+    if let Some(source) = project.source.as_mut() {
+        let key = format!("field:{id}");
+        source.sync.fields.retain(|policy| policy.field != key);
+    }
 }
 
 /// `SetResourceEmail`: an address, or empty to clear it. Unique among the project's

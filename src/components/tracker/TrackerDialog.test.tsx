@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { applyCommand } from "../../api";
 import { fakeBackend } from "../../test/fakeBackend";
 import { makeProject, makeResource, makeSnapshot, makeTask } from "../../test/fixtures";
+import { DEFAULT_SYNC_SETTINGS } from "../../types";
 import type { Command, Project, PullPreview, Source } from "../../types";
 import { TrackerDialog } from "./TrackerDialog";
 
@@ -15,6 +16,7 @@ const SOURCE: Source = {
   filter: "",
   hours_per_point: 4,
   status_map: [],
+  sync: DEFAULT_SYNC_SETTINGS,
 };
 
 function projectWith(source: Source | null): Project {
