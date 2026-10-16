@@ -57,6 +57,9 @@ interface Props {
   onForecastColumns?: (show: boolean) => void;
   /** Whether the task sheet shows the effort range (finish forecast) as two columns. */
   estimateColumns?: boolean;
+  /** Custom fields left out of the sheet. */
+  hiddenFields?: ReadonlySet<number>;
+  onFieldColumn?: (fieldId: number, show: boolean) => void;
   onEstimateColumns?: (show: boolean) => void;
   /** Where the span of "Không vừa khoảng" ends. */
   spanEnd: SpanEnd;
@@ -287,9 +290,47 @@ export function ViewBar(props: Props) {
               {m.forecastColumns}
             </label>
           )}
+          {chart && props.onFieldColumn && project && project.fields.length > 0 && (
+            <FieldColumnsPicker
+              project={project}
+              hidden={props.hiddenFields ?? new Set()}
+              onToggle={props.onFieldColumn}
+            />
+          )}
         </div>
       )}
     </div>
+  );
+}
+
+/** A disclosure listing the custom fields, each with a checkbox for its sheet column. */
+function FieldColumnsPicker({
+  project,
+  hidden,
+  onToggle,
+}: {
+  project: Project;
+  hidden: ReadonlySet<number>;
+  onToggle: (fieldId: number, show: boolean) => void;
+}) {
+  const m = useMessages(viewBarMessages);
+  const shown = project.fields.filter((field) => !hidden.has(field.id)).length;
+  return (
+    <details className="view-control field-columns">
+      <summary>{m.fieldColumns(shown, project.fields.length)}</summary>
+      <fieldset className="field-columns-list" aria-label={m.fieldColumns(shown, project.fields.length)}>
+        {project.fields.map((field) => (
+          <label key={field.id}>
+            <input
+              type="checkbox"
+              checked={!hidden.has(field.id)}
+              onChange={(event) => onToggle(field.id, event.target.checked)}
+            />
+            {field.name}
+          </label>
+        ))}
+      </fieldset>
+    </details>
   );
 }
 

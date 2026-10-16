@@ -1,3 +1,4 @@
+import { toggleHidden, visibleFields } from "./fieldColumns";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -132,6 +133,8 @@ export default function App() {
   const [interruptsColumn, setInterruptsColumn] = useState(false);
   const [estimateColumns, setEstimateColumns] = useState(false);
   const [forecastColumns, setForecastColumns] = useState(false);
+  // Custom fields left out of the sheet; a field added later shows until hidden.
+  const [hiddenFields, setHiddenFields] = useState<ReadonlySet<number>>(() => new Set());
   const [sheetShare, setSheetShare] = useState(readShare);
   const changeSheetShare = useCallback((share: number) => setSheetShare(share), []);
   // Kept once a drag settles, not on every pointer move.
@@ -646,6 +649,8 @@ export default function App() {
         onEstimateColumns={setEstimateColumns}
         forecastColumns={forecastColumns}
         onForecastColumns={setForecastColumns}
+        hiddenFields={hiddenFields}
+        onFieldColumn={(fieldId, show) => setHiddenFields((hidden) => toggleHidden(hidden, fieldId, show))}
         spanEnd={spanEnd}
         onSpanEnd={setSpanEnd}
       />
@@ -661,7 +666,7 @@ export default function App() {
                 <TaskSheet
                   rows={rows}
                   calendars={project.calendars}
-                  fields={project.fields}
+                  fields={visibleFields(project.fields, hiddenFields)}
                   assignments={project.assignments}
                   resources={project.resources}
                   selected={selected}
