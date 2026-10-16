@@ -784,6 +784,7 @@ Kết quả đúng: không còn quá tải, không có giờ rảnh xen giữa c
 - **(kế hoạch ban đầu) PR B — Tauri (S).** Xung đột trong `PullChanges`/`PullPreview`, `tracker_check` nhận quyết định, lỗi thông báo.
 - **PR C — giao diện (M).** Mục xung đột trong hộp thoại kéo (từng trường: nền, nguồn, Sheafly; chọn giữ Sheafly hoặc lấy nguồn, chọn cả loạt), nút áp dụng chỉ bật khi đã giải quyết hết; hộp thoại đẩy hiện các trường bị bỏ qua vì nguồn đã đổi.
 - **PR D — tài liệu.**
+  - **PR D xong (16/10/2026). Pha 3 xong về mã.** README và README.vi mô tả xung đột và giới hạn mới (chỉ ngày và người được giao được ghi ngược); `CLAUDE.md` đã có ba mục (engine, Tauri, hộp thoại) từ các PR trước. **Còn lại trước khi coi pha 3 là xong hẳn:** thử với một space Backlog thử hai phía cùng sửa một issue (tên, ngày, người được giao, trạng thái) và kiểm tra từng lựa chọn Nguồn / Sheafly; kéo ngay sau khi đẩy không sinh xung đột; mở một tệp có liên kết từ trước pha 3 (không có nền) và xem các xung đột "không rõ"; xem hộp thoại ở hai chủ đề; build Windows/Linux. Chưa có: đẩy tên, effort, trạng thái về nguồn; xung đột khi đổi cha; Jira Cloud và Asana.
 
 **Xong khi.** Kéo không bao giờ ghi đè giá trị đã sửa ở Sheafly khi nguồn không đổi; cùng trường đổi ở hai phía thì hiện xung đột và không áp dụng được khi chưa chọn; đẩy không ghi đè giá trị mới ở nguồn; kéo ngay sau khi đẩy không đổi gì và không sinh xung đột giả; tệp cũ có `ApplyPull` replay y như cũ; giao diện và lỗi có tiếng Việt và tiếng Anh.
 
