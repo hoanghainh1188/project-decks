@@ -6,6 +6,8 @@ import type { ViewRow } from "./viewRows";
 /** What a key press on the focused Gantt asks for. */
 export type GanttKeyAction =
   | { kind: "select"; uid: number }
+  /** Shift+↑ ↓ Home End: the selected task stays, the range now ends at `uid`. */
+  | { kind: "extend"; uid: number }
   | { kind: "move"; uid: number; start: number }
   | { kind: "resize"; uid: number; finish: number }
   | { kind: "edit"; uid: number };
@@ -19,7 +21,8 @@ export interface KeyPress {
 }
 
 /**
- * Keys on the focused Gantt: ↑ ↓ Home End pick a row; Alt+← → move the selected bar a
+ * Keys on the focused Gantt: ↑ ↓ Home End pick a row, with Shift they move the end of
+ * the selected range (`end`, else the selected row); Alt+← → move the selected bar a
  * working day; Alt+Shift+← → move its finish; Enter opens the task. The engine still
  * schedules the result; this only picks the date to ask for.
  */
@@ -28,6 +31,7 @@ export function ganttKeyAction(
   rows: ViewRow[],
   selected: number | null,
   project: Project,
+  end: number | null = null,
 ): GanttKeyAction | null {
   if (press.metaKey || press.ctrlKey) return null;
   // Grouped by person, one task can show on several rows; step over each task once.
@@ -50,6 +54,19 @@ export function ganttKeyAction(
     if (press.key === "End") return pick(tasks.length - 1);
     if (press.key === "Enter" && current) return { kind: "edit", uid: current.uid };
     return null;
+  }
+  if (press.shiftKey && !press.altKey) {
+    if (!current) return null;
+    const from = end == null ? at : tasks.findIndex((task) => task.uid === end);
+    const origin = from < 0 ? at : from;
+    const target =
+      press.key === "ArrowDown" ? origin + 1
+      : press.key === "ArrowUp" ? origin - 1
+      : press.key === "Home" ? 0
+      : press.key === "End" ? tasks.length - 1
+      : null;
+    if (target == null) return null;
+    return { kind: "extend", uid: tasks[Math.max(0, Math.min(tasks.length - 1, target))].uid };
   }
   if (!press.altKey || !current || current.summary) return null;
   const step = press.key === "ArrowRight" ? 1 : press.key === "ArrowLeft" ? -1 : 0;
