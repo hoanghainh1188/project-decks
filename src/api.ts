@@ -31,6 +31,7 @@ import type {
   Suggestion,
   TaskAssignment,
   TaskClipboard,
+  TrackerKind,
 } from "./types";
 
 const apiMessages = defineMessages(
@@ -154,18 +155,21 @@ export function checkImport(afterUid: number | null, resources: ImportResource[]
   return inOrder(() => invoke<ImportProblem[]>("check_import", { afterUid, resources, tasks }));
 }
 
-/** Save the API key for a tracker's site in the operating system's credential store. */
-export function trackerSaveKey(site: string, key: string): Promise<void> {
-  return invoke<void>("tracker_save_key", { site, key });
+/**
+ * Save the credentials for a tracker's site in the operating system's credential store: the
+ * API key or token, and for trackers that sign in with an email, that account.
+ */
+export function trackerSaveKey(kind: TrackerKind, site: string, key: string, account: string | null = null): Promise<void> {
+  return invoke<void>("tracker_save_key", { kind, site, key, account });
 }
 
 /** Whether a key is saved for the site; the key itself is never sent back. */
-export function trackerHasKey(site: string): Promise<boolean> {
-  return invoke<boolean>("tracker_has_key", { site });
+export function trackerHasKey(kind: TrackerKind, site: string): Promise<boolean> {
+  return invoke<boolean>("tracker_has_key", { kind, site });
 }
 
-export function trackerForgetKey(site: string): Promise<void> {
-  return invoke<void>("tracker_forget_key", { site });
+export function trackerForgetKey(kind: TrackerKind, site: string): Promise<void> {
+  return invoke<void>("tracker_forget_key", { kind, site });
 }
 
 /** Check the saved key and the project key against the tracker; the project's name. */

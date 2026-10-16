@@ -16,9 +16,10 @@ use serde::Serialize;
 use serde_json::Value;
 use sheafly_engine::pull::{self, GoneTask, PullColumn, PullConflict, PullRowDiff, PullTask};
 use sheafly_engine::sync::Resolution;
+use sheafly_engine::source::TrackerKind;
 use sheafly_engine::{Lang, Project};
 
-use crate::backlog::PullWarning;
+use crate::connector::{connector_for, PullWarning};
 
 /// Where keys are kept in the credential store; the user is `<tracker>:<site>`.
 const SERVICE: &str = "com.hoanghainh.sheafly.tracker";
@@ -96,8 +97,8 @@ impl TrackerError {
                 "The source returned data that cannot be read",
             ),
             Self::BadSite => (
-                "Site phải là địa chỉ Backlog (…backlog.com, …backlog.jp hoặc …backlogtool.com)",
-                "The site must be a Backlog address (…backlog.com, …backlog.jp or …backlogtool.com)",
+                "Site không phải địa chỉ của tracker đã chọn (Backlog: …backlog.com, …backlog.jp hoặc …backlogtool.com)",
+                "The site is not an address of the chosen tracker (Backlog: …backlog.com, …backlog.jp or …backlogtool.com)",
             ),
             Self::BadProject => (
                 "Khóa dự án chỉ gồm chữ, số, dấu gạch dưới hoặc gạch ngang",
@@ -148,63 +149,92 @@ pub trait Api {
     fn patch(&self, path: &str, form: &[(String, String)]) -> Result<Value, TrackerError>;
 }
 
-/// Backlog spaces live under these domains. Only they are called, so a project file naming
-/// another site cannot make the app send a key anywhere else.
-pub fn is_backlog_site(site: &str) -> bool {
-    [".backlog.com", ".backlog.jp", ".backlogtool.com"].iter().any(|suffix| {
-        site.strip_suffix(suffix)
-            .is_some_and(|label| !label.is_empty() && !label.contains(['.', '/', ':', '@']))
-    })
+/// What the credential store keeps for a tracker's site: a single API key, or an account
+/// (an email) and a token.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Credentials {
+    ApiKey(String),
+    Basic { account: String, token: String },
 }
 
-fn user_of(site: &str) -> String {
-    format!("backlog:{site}")
+impl Credentials {
+    /// The text kept in the credential store: the key itself, or a small JSON object.
+    fn to_secret(&self) -> String {
+        match self {
+            Self::ApiKey(key) => key.clone(),
+            Self::Basic { account, token } => serde_json::json!({ "account": account, "token": token }).to_string(),
+        }
+    }
+
+    /// Read what `to_secret` made. Text that is not such an object is an API key, so keys
+    /// saved before there were accounts still read.
+    fn from_secret(secret: &str) -> Self {
+        if secret.starts_with('{')
+            && let Ok(Value::Object(object)) = serde_json::from_str::<Value>(secret)
+            && let (Some(account), Some(token)) = (
+                object.get("account").and_then(Value::as_str),
+                object.get("token").and_then(Value::as_str),
+            )
+        {
+            return Self::Basic { account: account.to_string(), token: token.to_string() };
+        }
+        Self::ApiKey(secret.to_string())
+    }
 }
 
-fn entry(site: &str) -> Result<keyring::Entry, TrackerError> {
-    keyring::Entry::new(SERVICE, &user_of(site)).map_err(|_| TrackerError::KeyStore)
+fn kind_name(kind: TrackerKind) -> &'static str {
+    match kind {
+        TrackerKind::Backlog => "backlog",
+    }
 }
 
-/// Save (or replace) the key for `site`.
-pub fn save_key(site: &str, key: &str) -> Result<(), TrackerError> {
-    if !is_backlog_site(site) {
+fn entry(kind: TrackerKind, site: &str) -> Result<keyring::Entry, TrackerError> {
+    keyring::Entry::new(SERVICE, &format!("{}:{site}", kind_name(kind))).map_err(|_| TrackerError::KeyStore)
+}
+
+/// Save (or replace) the credentials for `site` of a tracker.
+pub fn save_key(kind: TrackerKind, site: &str, credentials: &Credentials) -> Result<(), TrackerError> {
+    if !connector_for(kind).allows_site(site) {
         return Err(TrackerError::BadSite);
     }
-    entry(site)?.set_password(key.trim()).map_err(|_| TrackerError::KeyStore)
+    entry(kind, site)?.set_password(&credentials.to_secret()).map_err(|_| TrackerError::KeyStore)
 }
 
-/// The key for `site`, if one is saved.
-pub fn load_key(site: &str) -> Result<Option<String>, TrackerError> {
-    match entry(site)?.get_password() {
-        Ok(key) => Ok(Some(key)),
+/// The credentials for `site`, if any are saved.
+pub fn load_key(kind: TrackerKind, site: &str) -> Result<Option<Credentials>, TrackerError> {
+    match entry(kind, site)?.get_password() {
+        Ok(secret) => Ok(Some(Credentials::from_secret(&secret))),
         Err(keyring::Error::NoEntry) => Ok(None),
         Err(_) => Err(TrackerError::KeyStore),
     }
 }
 
-/// Forget the key for `site`; nothing saved is fine.
-pub fn forget_key(site: &str) -> Result<(), TrackerError> {
-    match entry(site)?.delete_credential() {
+/// Forget the credentials for `site`; nothing saved is fine.
+pub fn forget_key(kind: TrackerKind, site: &str) -> Result<(), TrackerError> {
+    match entry(kind, site)?.delete_credential() {
         Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
         Err(_) => Err(TrackerError::KeyStore),
     }
 }
 
-/// The real network: HTTPS to the space, the key in a header, no redirects followed (a
-/// redirect could carry the key to another host).
+/// The real network: HTTPS to the space, the credentials in a header, no redirects followed (a
+/// redirect could carry them to another host).
 pub struct HttpApi {
     agent: ureq::Agent,
     base: String,
-    key: String,
+    /// The header that authorizes a request, as the connector builds it.
+    authorization: (String, String),
 }
 
 impl HttpApi {
-    /// Ready to call `site` with its saved key.
-    pub fn for_site(site: &str) -> Result<Self, TrackerError> {
-        if !is_backlog_site(site) {
+    /// Ready to call `site` of a tracker with its saved credentials.
+    pub fn for_site(kind: TrackerKind, site: &str) -> Result<Self, TrackerError> {
+        let connector = connector_for(kind);
+        if !connector.allows_site(site) {
             return Err(TrackerError::BadSite);
         }
-        let key = load_key(site)?.ok_or(TrackerError::NoKey)?;
+        let credentials = load_key(kind, site)?.ok_or(TrackerError::NoKey)?;
+        let authorization = connector.authorize(&credentials)?;
         let agent: ureq::Agent = ureq::Agent::config_builder()
             .timeout_global(Some(REQUEST_TIMEOUT))
             .max_redirects(0)
@@ -215,7 +245,7 @@ impl HttpApi {
         Ok(Self {
             agent,
             base: format!("https://{site}"),
-            key,
+            authorization,
         })
     }
 }
@@ -234,12 +264,20 @@ fn status_error(code: u16) -> TrackerError {
 
 fn read_json(result: Result<ureq::http::Response<ureq::Body>, ureq::Error>) -> Result<Value, TrackerError> {
     match result {
-        Ok(mut response) => response
-            .body_mut()
-            .with_config()
-            .limit(MAX_RESPONSE_BYTES)
-            .read_json::<Value>()
-            .map_err(|_| TrackerError::BadResponse),
+        Ok(mut response) => {
+            let text = response
+                .body_mut()
+                .with_config()
+                .limit(MAX_RESPONSE_BYTES)
+                .read_to_string()
+                .map_err(|_| TrackerError::BadResponse)?;
+            // A change answered with "no content" has no body.
+            if text.trim().is_empty() {
+                Ok(Value::Null)
+            } else {
+                serde_json::from_str(&text).map_err(|_| TrackerError::BadResponse)
+            }
+        }
         Err(ureq::Error::StatusCode(code)) => Err(status_error(code)),
         Err(_) => Err(TrackerError::Offline),
     }
@@ -250,7 +288,7 @@ impl Api for HttpApi {
         let mut request = self
             .agent
             .get(format!("{}{path}", self.base))
-            .header("Backlog-API-Key", &self.key)
+            .header(&self.authorization.0, &self.authorization.1)
             .header("Accept", "application/json");
         for (name, value) in query {
             request = request.query(name, value);
@@ -262,10 +300,11 @@ impl Api for HttpApi {
         let request = self
             .agent
             .patch(format!("{}{path}", self.base))
-            .header("Backlog-API-Key", &self.key)
+            .header(&self.authorization.0, &self.authorization.1)
             .header("Accept", "application/json");
         read_json(request.send_form(form.iter().map(|(name, value)| (name.as_str(), value.as_str()))))
     }
+
 }
 
 /// A problem with one row of a pull, said in the user's language.
@@ -337,23 +376,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn only_backlog_spaces_are_called() {
-        for good in ["team.backlog.com", "a-b.backlog.jp", "x1.backlogtool.com"] {
-            assert!(is_backlog_site(good), "{good}");
-        }
-        for bad in [
-            "backlog.com",
-            ".backlog.com",
-            "evil.com",
-            "team.backlog.com.evil.com",
-            "a.b.backlog.com",
-            "evil.com/team.backlog.com",
-            "user@team.backlog.com",
-            "team.backlog.com:8080",
-            "",
-        ] {
-            assert!(!is_backlog_site(bad), "{bad}");
-        }
+    fn credentials_round_trip_through_the_secret_and_old_keys_still_read() {
+        let key = Credentials::ApiKey("abc123".into());
+        assert_eq!(Credentials::from_secret(&key.to_secret()), key);
+        let basic = Credentials::Basic { account: "an@example.com".into(), token: "tok\"en".into() };
+        assert_eq!(Credentials::from_secret(&basic.to_secret()), basic);
+        // A key saved before accounts existed is plain text; so is text that merely starts with {.
+        assert_eq!(Credentials::from_secret("plain"), Credentials::ApiKey("plain".into()));
+        assert_eq!(Credentials::from_secret("{not json"), Credentials::ApiKey("{not json".into()));
+        assert_eq!(Credentials::from_secret("{\"account\":\"a\"}"), Credentials::ApiKey("{\"account\":\"a\"}".into()));
     }
 
     #[test]
@@ -366,7 +397,7 @@ mod tests {
                 .build()
                 .into(),
             base: "https://127.0.0.1:9".into(),
-            key: "SECRET-KEY".into(),
+            authorization: ("Backlog-API-Key".into(), "SECRET-KEY".into()),
         };
         let error = api.get("/api/v2/projects/X", &[]).unwrap_err();
         assert_eq!(error, TrackerError::Offline);

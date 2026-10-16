@@ -97,7 +97,7 @@ describe("TrackerDialog", () => {
     await user.click(fetchButton());
     await screen.findByText(/^Thêm 1 · Đổi 1/);
     expect(calls("tracker_save_key")).toHaveLength(1);
-    expect(calls("tracker_save_key")[0].args).toEqual({ site: "team.backlog.com", key: "SECRET" });
+    expect(calls("tracker_save_key")[0].args).toEqual({ kind: "backlog", site: "team.backlog.com", key: "SECRET", account: null });
     expect(fakeBackend.trackerKeys.has("team.backlog.com")).toBe(true);
     await user.click(screen.getByRole("button", { name: "Quay lại" }));
     expect(screen.getByLabelText("Khóa API")).toHaveValue("");
