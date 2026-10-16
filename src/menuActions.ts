@@ -47,6 +47,8 @@ export interface MenuContext {
   openImportTable: () => void;
   /** Tệp → Nhập → Kéo từ task tracker. */
   openTracker: () => void;
+  /** Tệp → Xuất → Đẩy ngày về task tracker. */
+  openTrackerPush: () => void;
   /** Lịch làm việc, on the project calendar. */
   openWorkingTime: () => void;
   openBaseline: () => void;
@@ -94,6 +96,9 @@ function documentAction(id: string, ctx: MenuContext): boolean {
       return true;
     case "import-table":
       ctx.openImportTable();
+      return true;
+    case "push-tracker":
+      if (ctx.snap && !ctx.fileDialogBusy) ctx.openTrackerPush();
       return true;
     case "pull-tracker":
       if (ctx.snap && !ctx.fileDialogBusy) ctx.openTracker();

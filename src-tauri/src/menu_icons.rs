@@ -20,6 +20,7 @@ pub const SYMBOLS: &[(&str, &str)] = &[
     ("export", "square.and.arrow.up"),
     ("export-xml", "doc.text"),
     ("export-pdf", "doc.richtext"),
+    ("push-tracker", "arrow.up.circle"),
     ("undo", "arrow.uturn.backward"),
     ("redo", "arrow.uturn.forward"),
     ("copy-task", "plus.square.on.square"),

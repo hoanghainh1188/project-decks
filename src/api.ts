@@ -21,6 +21,10 @@ import type {
   PullPreview,
   PullProgress,
   PullTask,
+  PushOptions,
+  PushPreview,
+  PushProgress,
+  PushReport,
   Source,
   Snapshot,
   Suggestion,
@@ -184,6 +188,20 @@ export function trackerCheck(rows: PullTask[], pulledAt: number): Promise<PullCh
 /** Stop the pull that is fetching. */
 export function trackerCancel(): Promise<void> {
   return invoke<void>("tracker_cancel");
+}
+
+/** What a push would write to the source's issues; nothing is written. Null when cancelled. */
+export function trackerPushPreview(source: Source, options: PushOptions): Promise<PushPreview | null> {
+  return invoke<PushPreview | null>("tracker_push_preview", { source, options });
+}
+
+/** Write the plan last previewed; refused when the project or settings changed since. */
+export function trackerPush(source: Source, options: PushOptions): Promise<PushReport> {
+  return invoke<PushReport>("tracker_push", { source, options });
+}
+
+export function onTrackerPushProgress(handler: (progress: PushProgress) => void): Promise<UnlistenFn> {
+  return listen<PushProgress>("tracker-push-progress", (event) => handler(event.payload));
 }
 
 export function onTrackerProgress(handler: (progress: PullProgress) => void): Promise<UnlistenFn> {
