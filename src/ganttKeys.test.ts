@@ -76,3 +76,25 @@ describe("nextWorkingDay", () => {
     expect(nextWorkingDay(calendar, at(2026, 1, 20, 8), 1)).toBe(at(2026, 1, 26, 8));
   });
 });
+
+describe("ganttKeyAction with Shift", () => {
+  const shift = (key: string) => press(key, { shiftKey: true });
+
+  it("moves the end of the range from the selected row, then from the end", () => {
+    expect(ganttKeyAction(shift("ArrowDown"), rows, 1, project)).toEqual({ kind: "extend", uid: 2 });
+    expect(ganttKeyAction(shift("ArrowDown"), rows, 1, project, 2)).toEqual({ kind: "extend", uid: 3 });
+    expect(ganttKeyAction(shift("ArrowUp"), rows, 3, project, 2)).toEqual({ kind: "extend", uid: 1 });
+  });
+
+  it("stops at the first and last rows and reaches them with Home and End", () => {
+    expect(ganttKeyAction(shift("ArrowUp"), rows, 1, project)).toEqual({ kind: "extend", uid: 1 });
+    expect(ganttKeyAction(shift("ArrowDown"), rows, 2, project, 4)).toEqual({ kind: "extend", uid: 4 });
+    expect(ganttKeyAction(shift("End"), rows, 2, project)).toEqual({ kind: "extend", uid: 4 });
+    expect(ganttKeyAction(shift("Home"), rows, 3, project)).toEqual({ kind: "extend", uid: 1 });
+  });
+
+  it("needs a selected row and ignores other keys", () => {
+    expect(ganttKeyAction(shift("ArrowDown"), rows, null, project)).toBeNull();
+    expect(ganttKeyAction(shift("Enter"), rows, 1, project)).toBeNull();
+  });
+});

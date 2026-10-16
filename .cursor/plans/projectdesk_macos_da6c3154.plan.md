@@ -484,8 +484,9 @@ Chia 5 PR: (A) dọn dẹp và chỉnh nhỏ, (B) sơ đồ mạng, (C) thanh c�
 - *Phím và menu:* Sửa có Cắt/Sao chép/Dán/Chọn tất cả của hệ thống, nên ô nhập vẫn chép/dán chữ (trước đây macOS thiếu các mục này). Ngoài ô nhập, không bôi đen chữ và không có hộp thoại, ⌘C/⌘V thành sao chép/dán task qua sự kiện `copy`/`paste` của trang (văn bản thường nhận tên các task). Thêm mục Sao chép công việc (⌘⌥C), Dán công việc (⌘⌥V), Điền xuống (⌘D); bật/tắt và lý do ở `toolbarState.ts`. Bộ nhớ tạm nằm trong app (không ghi JSON task vào clipboard hệ thống); dán ngoài ô nhập luôn dán task đã chép.
 - *Điền xuống:* bảng chưa có chọn nhiều dòng nên làm bản nhỏ nhất: Shift+bấm chọn dải dòng từ dòng đang chọn (theo thứ tự trên màn hình, kể cả khi lọc/nhóm), ⌘D chép giá trị của cột có ô focus gần nhất (Tên, Thời lượng, Bắt đầu, Tiền nhiệm, %, Lịch) từ dòng đầu xuống. Ô cột khác (ID, Kết thúc, Trễ…) tắt lệnh. `FillDown` áp lệnh sửa của chính ô đó cho từng dòng trong một bước hoàn tác; summary chỉ nhận tên; một dòng lỗi (ví dụ tiền nhiệm thành vòng lặp) làm cả lệnh lỗi.
 - *Kéo từng đoạn:* kéo đoạn thứ hai trở đi của task tách trên Gantt gửi `MoveSegment { uid, index, start }`: engine đổi khoảng ngắt ngay trước đoạn (theo phút làm việc trên lịch task), các đoạn sau đi theo; kéo chạm đoạn trước thì nối lại. Đoạn đầu vẫn dời cả task.
+- Shift+↑↓ (cả Shift+Home/End) trên Gantt đang focus mở rộng dải chọn từ việc đang chọn (#117; ô của bảng vẫn dùng Shift+mũi tên để chọn chữ).
 - Dán từ Excel, Numbers, Google Sheets (#118): chữ dán không phải chữ app vừa sao chép mà đọc ra bảng (có tab hoặc từ hai dòng) thì mở hộp Nhập bảng với các dòng đó, như nhập tệp.
-- Còn lại: Shift+↑↓ để mở rộng dải bằng bàn phím; chọn dải ở sơ đồ mạng.
+- Còn lại: chọn dải ở sơ đồ mạng.
 
 - Copy/paste và điền xuống (fill-down) task. (PR D)
 - Tách `App.tsx` tiếp (PR #25 đã giảm còn 730 dòng); thêm test cho `GanttChart`, `ganttPdf`, `networkPdf`, `App`, `ResourceSheet`, `CalendarEditor`, `SplitDialog`, `TaskUsage`. (PR E; `TaskUsage` đã có test từ trước)

@@ -59,6 +59,10 @@ interface Props {
   tracking: boolean;
   bodyRef: RefObject<HTMLDivElement | null>;
   onSelect: (uid: number) => void;
+  /** The end of the Shift range, or null when only the selected row is. */
+  selectionEnd?: number | null;
+  /** Shift+arrow keys moved the end of the range to `uid`. */
+  onExtend?: (uid: number) => void;
   onMove: (uid: number, start: number) => void;
   onResize: (uid: number, finish: number) => void;
   /** Drag piece `index` (1 or later) of a split bar to start at `start`. */
@@ -79,6 +83,8 @@ export function GanttChart({
   tracking,
   bodyRef,
   onSelect,
+  selectionEnd,
+  onExtend,
   onMove,
   onResize,
   onMoveSegment,
@@ -234,12 +240,13 @@ export function GanttChart({
         onKeyDown={(event) => {
           // A held key would send the same edit again before the new dates arrive.
           if (event.repeat && event.altKey) return;
-          const action = ganttKeyAction(event, rows, selected, project);
+          const action = ganttKeyAction(event, rows, selected, project, selectionEnd ?? null);
           if (!action) return;
           event.preventDefault();
           event.stopPropagation();
-          if (action.kind === "select") {
-            onSelect(action.uid);
+          if (action.kind === "select" || action.kind === "extend") {
+            if (action.kind === "select") onSelect(action.uid);
+            else onExtend?.(action.uid);
             revealRow(event.currentTarget, rows, action.uid);
           } else if (action.kind === "move") onMove(action.uid, action.start);
           else if (action.kind === "resize") onResize(action.uid, action.finish);

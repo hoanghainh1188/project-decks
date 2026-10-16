@@ -725,6 +725,8 @@ export default function App() {
                   tracking={view === "tracking"}
                   bodyRef={ganttRef}
                   onSelect={selectOne}
+                  selectionEnd={selectionEnd}
+                  onExtend={(uid) => setSelectionEnd(uid === selected ? null : uid)}
                   onMove={(uid, start) => send({ type: "move_task", uid, start })}
                   onResize={(uid, finish) => send({ type: "resize_task", uid, finish })}
                   onMoveSegment={(uid, index, start) => send({ type: "move_segment", uid, index, start })}
