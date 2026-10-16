@@ -1,6 +1,7 @@
 import { formatUnits, parseUnits, showsUnits } from "../assignmentUnits";
 import { useMessages } from "../i18n";
 import type { Calendar, Overallocation, Resource, ResourceKind, SkillDef } from "../types";
+import { MoneyInput } from "./MoneyInput";
 import { resourceSheetMessages } from "./ResourceSheet.i18n";
 
 interface Props {
@@ -129,24 +130,24 @@ export function ResourceSheet({
                 </div>
               </td>
               <td>
-                <input
-                  key={`${resource.uid}-rate-${resource.standard_rate}`}
-                  defaultValue={String(resource.standard_rate)}
-                  onBlur={(event) => onChange({ ...resource, standard_rate: Number(event.target.value) || 0 })}
+                <MoneyInput
+                  ariaLabel={`${m.standardRate}: ${resource.name}`}
+                  value={resource.standard_rate}
+                  onCommit={(amount) => onChange({ ...resource, standard_rate: amount ?? 0 })}
                 />
               </td>
               <td>
-                <input
-                  key={`${resource.uid}-ot-${resource.overtime_rate}`}
-                  defaultValue={String(resource.overtime_rate)}
-                  onBlur={(event) => onChange({ ...resource, overtime_rate: Number(event.target.value) || 0 })}
+                <MoneyInput
+                  ariaLabel={`${m.overtimeRate}: ${resource.name}`}
+                  value={resource.overtime_rate}
+                  onCommit={(amount) => onChange({ ...resource, overtime_rate: amount ?? 0 })}
                 />
               </td>
               <td>
-                <input
-                  key={`${resource.uid}-use-${resource.cost_per_use}`}
-                  defaultValue={String(resource.cost_per_use)}
-                  onBlur={(event) => onChange({ ...resource, cost_per_use: Number(event.target.value) || 0 })}
+                <MoneyInput
+                  ariaLabel={`${m.costPerUse}: ${resource.name}`}
+                  value={resource.cost_per_use}
+                  onCommit={(amount) => onChange({ ...resource, cost_per_use: amount ?? 0 })}
                 />
               </td>
               <td className="skills-cell">{skillNames(resource)}</td>

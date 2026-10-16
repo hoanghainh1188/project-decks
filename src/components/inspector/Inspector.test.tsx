@@ -143,7 +143,7 @@ describe("Inspector", () => {
     renderInspector({ ...leaf, actual_cost: 1250 });
     const field = screen.getByLabelText("Chi phí thực tế");
     expect(field).toBeDisabled();
-    expect(field).toHaveValue("1250");
+    expect(field).toHaveValue("1.250");
   });
 
   it("sends, and clears, a hand-entered actual cost when costs are editable", () => {

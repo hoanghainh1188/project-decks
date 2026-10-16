@@ -12,6 +12,8 @@ import {
   formatHours,
   formatInstant,
   formatMoney,
+  formatMoneyInput,
+  parseMoney,
   normalizePredecessorText,
   instantToDateKey,
   instantToDatetimeLocal,
@@ -286,3 +288,32 @@ describe("normalizePredecessorText", () => {
     expect(normalizePredecessorText("2SS+2giờ")).toBe("2SS+2giờ");
   });
 });
+
+describe("money in fields", () => {
+  afterEach(() => setCurrentLang("vi"));
+
+  it("shows an amount with the language's grouping and up to two decimals", () => {
+    expect(formatMoneyInput(1_248_000)).toBe("1.248.000");
+    expect(formatMoneyInput(65_000.5)).toBe("65.000,5");
+    setCurrentLang("en");
+    expect(formatMoneyInput(1_248_000)).toBe("1,248,000");
+    expect(formatMoneyInput(65_000.5)).toBe("65,000.5");
+  });
+
+  it("reads an amount grouped as shown, or plain with either decimal mark", () => {
+    expect(parseMoney("1.248.000")).toBe(1_248_000);
+    expect(parseMoney("1.248.000,5")).toBe(1_248_000.5);
+    expect(parseMoney(" 1 248 000 ")).toBe(1_248_000);
+    expect(parseMoney("1248000")).toBe(1_248_000);
+    expect(parseMoney("12,5")).toBe(12.5);
+    expect(parseMoney("12.5")).toBe(12.5);
+    setCurrentLang("en");
+    expect(parseMoney("1,248,000.5")).toBe(1_248_000.5);
+    expect(parseMoney("12.5")).toBe(12.5);
+  });
+
+  it("refuses what is not an amount", () => {
+    for (const text of ["", "abc", "1.2.3", "-5", "1,,2"]) expect(parseMoney(text)).toBeNull();
+  });
+});
+

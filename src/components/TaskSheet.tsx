@@ -3,11 +3,12 @@ import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { DateTimeField } from "./DateTimeField";
 import { FieldInput } from "./FieldInput";
 import { valueOf } from "../fieldValues";
-import { formatDuration, formatInstant, parseDuration } from "../format";
+import { formatDateOnly, formatDuration, formatInstant, parseDuration } from "../format";
 import { useMessages } from "../i18n";
 import { resourceNamesByTask } from "../resourceNames";
 import { effortAmount, rangeAfterEdit, type RangeEnd } from "../workRange";
-import type { Assignment, Calendar, FieldDef, FieldValue, FillField, Resource, Task } from "../types";
+import { ON_TIME_WARN } from "./forecast/forecastData";
+import type { Assignment, Calendar, FieldDef, FieldValue, FillField, Resource, Task, TaskForecast } from "../types";
 import type { ViewRow } from "../viewRows";
 import { taskSheetMessages } from "./TaskSheet.i18n";
 
@@ -35,11 +36,15 @@ interface ColumnOptions {
   tracking: boolean;
   interrupts: boolean;
   estimates: boolean;
+  forecast: boolean;
   nameWidth: number;
   fields: FieldDef[];
 }
 
-function sheetColumns(m: SheetMessages, { tracking, interrupts, estimates, nameWidth, fields }: ColumnOptions): SheetColumn[] {
+function sheetColumns(
+  m: SheetMessages,
+  { tracking, interrupts, estimates, forecast, nameWidth, fields }: ColumnOptions,
+): SheetColumn[] {
   const built: Omit<SheetColumn, "key">[] = [
     { label: m.id, width: 42 },
     { label: m.wbs, width: 72 },
@@ -70,6 +75,13 @@ function sheetColumns(m: SheetMessages, { tracking, interrupts, estimates, nameW
       ? [
           { label: m.workLow, width: 92, fill: "work_range" as const },
           { label: m.workHigh, width: 92, fill: "work_range" as const },
+        ]
+      : []),
+    ...(forecast
+      ? [
+          { label: m.forecastP50, width: 96 },
+          { label: m.forecastP90, width: 96 },
+          { label: m.forecastOnTime, width: 72 },
         ]
       : []),
   ];
@@ -107,6 +119,10 @@ interface Props {
   interruptsColumn: boolean;
   /** Show the effort range of the finish forecast as two columns. */
   estimateColumns?: boolean;
+  /** Show the forecast's P50 and P90 finish and on-time chance; empty without a current forecast. */
+  forecastColumns?: boolean;
+  /** The last forecast by task, when it is for the project as it is now. */
+  forecast?: ReadonlyMap<number, TaskForecast> | null;
   bodyRef: RefObject<HTMLDivElement | null>;
   /** `extend` is true for Shift+click, which selects every row from the selected one. */
   onSelect: (uid: number, extend: boolean) => void;
@@ -141,6 +157,7 @@ export function TaskSheet(props: Props) {
     tracking: props.tracking,
     interrupts: props.interruptsColumn,
     estimates: props.estimateColumns ?? false,
+    forecast: props.forecastColumns ?? false,
     fields: props.fields,
   };
   const baseWidth = sheetWidthOf(sheetColumns(m, { ...options, nameWidth: NAME_WIDTH }));
@@ -331,6 +348,7 @@ export function TaskSheet(props: Props) {
                     onCommit={(low, high) => props.onWorkRange?.(task.uid, low, high)}
                   />
                 ))}
+              {props.forecastColumns && <ForecastCells forecast={props.forecast?.get(task.uid)} />}
               {props.fields.map((field) => (
                 <FieldInput
                   key={field.id}
@@ -469,6 +487,19 @@ function DurationCell({
         if (parsed !== null && parsed !== source) onCommit(task.uid, parsed);
       }}
     />
+  );
+}
+
+/** The forecast's P50 and P90 finish and on-time chance of one task, read only. */
+function ForecastCells({ forecast }: { forecast: TaskForecast | undefined }) {
+  return (
+    <>
+      <span className="ro">{forecast ? formatDateOnly(forecast.p50) : ""}</span>
+      <span className="ro">{forecast ? formatDateOnly(forecast.p90) : ""}</span>
+      <span className={`ro${forecast?.on_time != null && forecast.on_time < ON_TIME_WARN ? " bad" : ""}`}>
+        {forecast?.on_time == null ? "" : `${Math.round(forecast.on_time * 100)}%`}
+      </span>
+    </>
   );
 }
 

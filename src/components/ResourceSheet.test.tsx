@@ -102,11 +102,17 @@ describe("ResourceSheet", () => {
     await user.type(rate, "120000");
     await user.tab();
     expect(handlers.onChange).toHaveBeenLastCalledWith({ ...an, standard_rate: 120000 });
+    // Text that is not an amount is refused, not saved as 0.
+    const calls = handlers.onChange.mock.calls.length;
     await user.clear(overtime);
     await user.type(overtime, "abc");
     await user.tab();
-    // Text that is not a number counts as 0.
-    expect(handlers.onChange).toHaveBeenLastCalledWith({ ...an, overtime_rate: 0 });
+    expect(handlers.onChange).toHaveBeenCalledTimes(calls);
+    expect(overtime).toHaveAttribute("aria-invalid", "true");
+    await user.clear(overtime);
+    await user.type(overtime, "1.500.000");
+    await user.tab();
+    expect(handlers.onChange).toHaveBeenLastCalledWith({ ...an, overtime_rate: 1_500_000 });
     await user.clear(perUse);
     await user.type(perUse, "50000");
     await user.tab();

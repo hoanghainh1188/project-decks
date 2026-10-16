@@ -198,6 +198,29 @@ export function formatMoney(value: number): string {
   return new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(Math.round(value));
 }
 
+/** An amount as a money field shows it: the language's grouping, up to two decimals. */
+export function formatMoneyInput(value: number): string {
+  const locale = getLang() === "en" ? "en-US" : "vi-VN";
+  return new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(value);
+}
+
+/**
+ * An amount typed in a money field: grouped the way the language shows money ("1.248.000,5"
+ * in Vietnamese, "1,248,000.5" in English), or plain with either decimal mark ("12,5",
+ * "12.5"); spaces are ignored. Null for anything else, negatives included.
+ */
+export function parseMoney(text: string): number | null {
+  const cleaned = text.replace(/\s/g, "");
+  const en = getLang() === "en";
+  const grouped = en ? /^\d{1,3}(,\d{3})+(\.\d+)?$/ : /^\d{1,3}(\.\d{3})+(,\d+)?$/;
+  if (grouped.test(cleaned)) {
+    const [whole, part] = cleaned.split(en ? "." : ",");
+    return Number(`${whole.replace(/[.,]/g, "")}${part ? `.${part}` : ""}`);
+  }
+  if (/^\d+([.,]\d+)?$/.test(cleaned)) return Number(cleaned.replace(",", "."));
+  return null;
+}
+
 /** Hours with at most one decimal, with the language's decimal mark ("2,5" or "2.5"). */
 export function formatHours(value: number): string {
   if (Math.abs(value) < 0.05) return "";

@@ -39,6 +39,8 @@ import { SplitDialog } from "./components/SplitDialog";
 import { StatusBar } from "./components/StatusBar";
 import { TaskEditDialog } from "./components/TaskEditDialog";
 import { stepZoom } from "./ganttZoom";
+import { ForecastView } from "./components/forecast/ForecastView";
+import { useForecast } from "./components/forecast/useForecast";
 import { PaneSplitter } from "./components/split/PaneSplitter";
 import { readShare, saveShare } from "./components/split/sheetShare";
 import { TaskSheet } from "./components/TaskSheet";
@@ -129,6 +131,7 @@ export default function App() {
   const [networkSummaries, setNetworkSummaries] = useState(false);
   const [interruptsColumn, setInterruptsColumn] = useState(false);
   const [estimateColumns, setEstimateColumns] = useState(false);
+  const [forecastColumns, setForecastColumns] = useState(false);
   const [sheetShare, setSheetShare] = useState(readShare);
   const changeSheetShare = useCallback((share: number) => setSheetShare(share), []);
   // Kept once a drag settles, not on every pointer move.
@@ -300,6 +303,15 @@ export default function App() {
   }, []);
 
   const project = snap?.project;
+  // Each forecast costs about a second of CPU: run it only while something shows it.
+  const forecastState = useForecast(
+    project,
+    view === "forecast" || (forecastColumns && (view === "gantt" || view === "tracking")),
+  );
+  const forecastByTask = useMemo(
+    () => (forecastState.current && forecastState.result ? new Map(forecastState.result.tasks.map((item) => [item.uid, item])) : null),
+    [forecastState.current, forecastState.result],
+  );
   const availabilityResource = availability ? project?.resources.find((item) => item.uid === availability.uid) : undefined;
   // A resource that is gone (a file opened elsewhere) ends its Khả dụng transaction.
   useEffect(() => {
@@ -632,6 +644,8 @@ export default function App() {
         onInterruptsColumn={setInterruptsColumn}
         estimateColumns={estimateColumns}
         onEstimateColumns={setEstimateColumns}
+        forecastColumns={forecastColumns}
+        onForecastColumns={setForecastColumns}
         spanEnd={spanEnd}
         onSpanEnd={setSpanEnd}
       />
@@ -655,6 +669,8 @@ export default function App() {
                   tracking={view === "tracking"}
                   interruptsColumn={interruptsColumn}
                   estimateColumns={estimateColumns}
+                  forecastColumns={forecastColumns}
+                  forecast={forecastByTask}
                   onWorkRange={(uid, low, high) => send({ type: "set_work_range", uid, low, high })}
                   share={sheetShare}
                   bodyRef={sheetRef}
@@ -724,6 +740,16 @@ export default function App() {
                 onPickResource={(uid) => {
                   setRowFilter("resource");
                   setFilterResource(uid);
+                  setView("gantt");
+                }}
+              />
+            )}
+            {project && view === "forecast" && (
+              <ForecastView
+                project={project}
+                state={forecastState}
+                onPickTask={(uid) => {
+                  selectOne(uid);
                   setView("gantt");
                 }}
               />

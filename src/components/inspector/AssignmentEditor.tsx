@@ -1,7 +1,9 @@
 import { useState } from "react";
 
 import { formatUnits, hoursPerDay, parseUnits, showsUnits } from "../../assignmentUnits";
+import { formatMoney } from "../../format";
 import { useMessages } from "../../i18n";
+import { MoneyInput } from "../MoneyInput";
 import type { Command, Project, Task } from "../../types";
 import { assignmentEditorMessages } from "./AssignmentEditor.i18n";
 
@@ -58,22 +60,12 @@ export function AssignmentEditor({
                 {project.editable_actual_costs && !task.summary && (
                   <label>
                     {m.actualCost}
-                    <input
-                      aria-label={m.actualCostOf(name)}
-                      defaultValue={assignment.manual_actual_cost ?? ""}
-                      placeholder={String(Math.round(assignment.actual_cost))}
-                      key={`ac-${assignment.uid}-${assignment.manual_actual_cost}-${assignment.actual_cost}`}
-                      onBlur={(event) => {
-                        const text = event.target.value.trim();
-                        const cost = text === "" ? null : Math.max(0, Number(text));
-                        if (cost !== null && !Number.isFinite(cost)) {
-                          event.target.value = String(assignment.manual_actual_cost ?? "");
-                          return;
-                        }
-                        if (cost !== assignment.manual_actual_cost) {
-                          send({ type: "set_assignment_actual_cost", uid: assignment.uid, cost });
-                        }
-                      }}
+                    <MoneyInput
+                      ariaLabel={m.actualCostOf(name)}
+                      optional
+                      value={assignment.manual_actual_cost ?? null}
+                      placeholder={formatMoney(assignment.actual_cost)}
+                      onCommit={(cost) => send({ type: "set_assignment_actual_cost", uid: assignment.uid, cost })}
                     />
                   </label>
                 )}
