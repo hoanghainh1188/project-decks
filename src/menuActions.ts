@@ -49,6 +49,8 @@ export interface MenuContext {
   openTracker: () => void;
   /** Tệp → Xuất → Đẩy ngày về task tracker. */
   openTrackerPush: () => void;
+  /** Dự án → Đồng bộ task tracker: how each field syncs. */
+  openTrackerSettings: () => void;
   /** Lịch làm việc, on the project calendar. */
   openWorkingTime: () => void;
   openBaseline: () => void;
@@ -96,6 +98,9 @@ function documentAction(id: string, ctx: MenuContext): boolean {
       return true;
     case "import-table":
       ctx.openImportTable();
+      return true;
+    case "tracker-settings":
+      if (ctx.snap && !ctx.fileDialogBusy) ctx.openTrackerSettings();
       return true;
     case "push-tracker":
       if (ctx.snap && !ctx.fileDialogBusy) ctx.openTrackerPush();

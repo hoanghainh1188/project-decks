@@ -27,6 +27,7 @@ function context(overrides: Partial<MenuContext> = {}): MenuContext {
     openImportTable: vi.fn(),
     openTracker: vi.fn(),
     openTrackerPush: vi.fn(),
+    openTrackerSettings: vi.fn(),
     openWorkingTime: vi.fn(),
     openBaseline: vi.fn(),
     openRecurring: vi.fn(),
@@ -148,6 +149,18 @@ describe("handleMenuAction", () => {
     const empty = context({ snap: null });
     handleMenuAction("push-tracker", empty);
     expect(empty.openTrackerPush).not.toHaveBeenCalled();
+  });
+
+  it("opens the tracker sync settings only with a project and no file dialog open", () => {
+    const ctx = context();
+    handleMenuAction("tracker-settings", ctx);
+    expect(ctx.openTrackerSettings).toHaveBeenCalledOnce();
+    const busy = context({ fileDialogBusy: true });
+    handleMenuAction("tracker-settings", busy);
+    expect(busy.openTrackerSettings).not.toHaveBeenCalled();
+    const empty = context({ snap: null });
+    handleMenuAction("tracker-settings", empty);
+    expect(empty.openTrackerSettings).not.toHaveBeenCalled();
   });
 
   it("stops undo at the state Thông tin dự án opened with", () => {

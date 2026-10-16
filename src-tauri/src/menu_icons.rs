@@ -48,6 +48,7 @@ pub const SYMBOLS: &[(&str, &str)] = &[
     ("project-info", "info.circle"),
     ("custom-fields", "list.bullet.rectangle"),
     ("working-time", "clock"),
+    ("tracker-settings", "arrow.triangle.2.circlepath"),
     ("baseline", "flag"),
     ("leveling", "slider.horizontal.3"),
     ("level", "wand.and.stars"),

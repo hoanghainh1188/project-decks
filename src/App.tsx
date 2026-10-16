@@ -37,6 +37,7 @@ import { AssignPreviewDialog } from "./components/AssignPreviewDialog";
 import { ImportDialog } from "./components/ImportDialog";
 import { TrackerDialog } from "./components/tracker/TrackerDialog";
 import { TrackerPushDialog } from "./components/tracker/TrackerPushDialog";
+import { TrackerSettingsDialog } from "./components/tracker/TrackerSettingsDialog";
 import { ResourceSheet } from "./components/ResourceSheet";
 import { SplitDialog } from "./components/SplitDialog";
 import { StatusBar } from "./components/StatusBar";
@@ -123,6 +124,8 @@ export default function App() {
   const [trackerOpen, setTrackerOpen] = useState(false);
   // Đẩy ngày về task tracker is open.
   const [trackerPushOpen, setTrackerPushOpen] = useState(false);
+  // Đồng bộ task tracker (settings) is open.
+  const [trackerSettingsOpen, setTrackerSettingsOpen] = useState(false);
   const [rowFilter, setRowFilter] = useState<FilterMode>("none");
   const [filterResource, setFilterResource] = useState<number | null>(null);
   const [filterValue, setFilterValue] = useState("");
@@ -391,6 +394,10 @@ export default function App() {
         openTrackerPush: () => {
           setDialogError(null);
           setTrackerPushOpen(true);
+        },
+        openTrackerSettings: () => {
+          setDialogError(null);
+          setTrackerSettingsOpen(true);
         },
         openWorkingTime: () => void openWorkingTime(snap?.project.calendar_id ?? 1),
         openBaseline: () => setBaselineOpen(true),
@@ -944,6 +951,17 @@ export default function App() {
           onClose={() => {
             setDialogError(null);
             setImportSheet(null);
+          }}
+        />
+      )}
+      {trackerSettingsOpen && project && (
+        <TrackerSettingsDialog
+          project={project}
+          error={dialogError}
+          send={sendInDialog}
+          onClose={() => {
+            setDialogError(null);
+            setTrackerSettingsOpen(false);
           }}
         />
       )}
