@@ -21,7 +21,8 @@ import {
 } from "./ganttLayout";
 import { pick } from "./i18n";
 import { blend, clipRect, clipSegment, fitText, rgb, setDraw, setFill, setText, type Clip } from "./pdfDraw";
-import type { Project, Scale, Segment, Task } from "./types";
+import { formatFieldValue } from "./fieldValues";
+import type { FieldDef, Project, Scale, Segment, Task } from "./types";
 import type { ViewRow } from "./viewRows";
 
 const PAGE_W = 297;
@@ -35,6 +36,9 @@ const PX_TO_MM = 0.24;
 const NAME_W = 46;
 const DATE_W = 28;
 const SHEET_W = NAME_W + DATE_W * 2;
+const FIELD_W = 24;
+/** The narrowest timeline a page keeps; custom field columns that would squeeze it more are left out. */
+const MIN_GANTT_W = 100;
 const FONT = "BeVietnamPro";
 
 export interface GanttPdfInput {
@@ -43,6 +47,14 @@ export interface GanttPdfInput {
   scale: Scale;
   selected: number | null;
   tracking: boolean;
+  /** Custom fields shown in the sheet, printed after the dates as far as the page allows. */
+  fields?: FieldDef[];
+}
+
+/** The custom fields that fit beside the name and dates while the timeline keeps `MIN_GANTT_W`. */
+export function pdfFieldColumns(fields: FieldDef[]): FieldDef[] {
+  const room = PAGE_W - MARGIN_X * 2 - SHEET_W - MIN_GANTT_W;
+  return fields.slice(0, Math.max(0, Math.floor(room / FIELD_W)));
 }
 
 export function embeddedFont(): string {
@@ -82,7 +94,7 @@ export interface GanttPageGrid {
  * Page layout for `rowCount` rows and `dayCount` days at `px` screen pixels per day:
  * pages go down the rows first, then across the days.
  */
-export function ganttPageGrid(rowCount: number, dayCount: number, px: number): GanttPageGrid {
+export function ganttPageGrid(rowCount: number, dayCount: number, px: number, sheetW = SHEET_W): GanttPageGrid {
   const headerTop = MARGIN_TOP + TITLE_H;
   const headMm = HEAD * PX_TO_MM;
   const bodyTop = headerTop + headMm;
@@ -90,7 +102,7 @@ export function ganttPageGrid(rowCount: number, dayCount: number, px: number): G
   const bodyHeight = Math.max(headMm, bodyBottomLimit - bodyTop);
   const rowMm = Math.min(ROW * PX_TO_MM, bodyHeight);
   const rowsPerPage = Math.max(1, Math.floor(bodyHeight / rowMm));
-  const ganttLeft = MARGIN_X + SHEET_W;
+  const ganttLeft = MARGIN_X + sheetW;
   const ganttWidth = PAGE_W - MARGIN_X - ganttLeft;
   const dayMm = Math.min(px * PX_TO_MM, ganttWidth);
   const daysPerPage = Math.max(1, Math.floor((ganttWidth + 1e-6) / dayMm));
@@ -122,7 +134,9 @@ export function renderGanttPdf(input: GanttPdfInput, fontData: string): Uint8Arr
 
   const timescale = buildTimescale(input.project);
   const px = pixelsPerDay(input.scale);
-  const grid = ganttPageGrid(input.rows.length, timescale.days.length, px);
+  const fields = pdfFieldColumns(input.fields ?? []);
+  const sheetW = SHEET_W + fields.length * FIELD_W;
+  const grid = ganttPageGrid(input.rows.length, timescale.days.length, px, sheetW);
   const { headerTop, headMm, bodyTop, rowMm, dayMm, ganttLeft, rowsPerPage, daysPerPage, rowPages, dayPages, pageCount } = grid;
   const holidays = holidayKeys(input.project);
 
@@ -137,6 +151,8 @@ export function renderGanttPdf(input: GanttPdfInput, fontData: string): Uint8Arr
       const dayEnd = Math.min(timescale.days.length, dayStart + daysPerPage);
       drawPage(doc, input, {
         title,
+        fields,
+        sheetW,
         pageNumber,
         pageCount,
         timescale,
@@ -161,6 +177,8 @@ export function renderGanttPdf(input: GanttPdfInput, fontData: string): Uint8Arr
 
 interface PageGeom {
   title: string;
+  fields: FieldDef[];
+  sheetW: number;
   pageNumber: number;
   pageCount: number;
   timescale: { origin: number; days: number[] };
@@ -206,7 +224,7 @@ function drawPage(doc: jsPDF, input: GanttPdfInput, geom: PageGeom) {
 
   setDraw(doc, "#d0d0d5");
   doc.setLineWidth(0.2);
-  doc.rect(MARGIN_X, geom.headerTop, SHEET_W + usedW, geom.headMm + bodyHeight);
+  doc.rect(MARGIN_X, geom.headerTop, geom.sheetW + usedW, geom.headMm + bodyHeight);
   doc.line(geom.ganttLeft, geom.headerTop, geom.ganttLeft, tableBottom);
 
   doc.setFontSize(8);
@@ -219,7 +237,7 @@ function drawPage(doc: jsPDF, input: GanttPdfInput, geom: PageGeom) {
 
 function paintSheetHeader(doc: jsPDF, geom: PageGeom) {
   setFill(doc, "#f6f6f8");
-  doc.rect(MARGIN_X, geom.headerTop, SHEET_W, geom.headMm, "F");
+  doc.rect(MARGIN_X, geom.headerTop, geom.sheetW, geom.headMm, "F");
   doc.setFontSize(8);
   setText(doc, "#1d1d1f");
   const mid = geom.headerTop + geom.headMm / 2;
@@ -231,6 +249,16 @@ function paintSheetHeader(doc: jsPDF, geom: PageGeom) {
   doc.setLineWidth(0.15);
   doc.line(MARGIN_X + NAME_W, geom.headerTop, MARGIN_X + NAME_W, geom.headerTop + geom.headMm);
   doc.line(MARGIN_X + NAME_W + DATE_W, geom.headerTop, MARGIN_X + NAME_W + DATE_W, geom.headerTop + geom.headMm);
+  geom.fields.forEach((field, index) => {
+    const x = fieldX(index);
+    doc.line(x, geom.headerTop, x, geom.headerTop + geom.headMm);
+    doc.text(fitText(doc, field.name, FIELD_W - 2.4), x + 1.2, mid, { baseline: "middle" });
+  });
+}
+
+/** The left edge of the custom field column at `index`. */
+function fieldX(index: number): number {
+  return MARGIN_X + SHEET_W + index * FIELD_W;
 }
 
 function paintTimescale(doc: jsPDF, geom: PageGeom, usedW: number) {
@@ -281,12 +309,12 @@ function paintSheetRows(doc: jsPDF, input: GanttPdfInput, geom: PageGeom, bodyHe
     const y = geom.bodyTop + (index - geom.rowStart) * geom.rowMm;
     if (row.kind === "group") {
       setFill(doc, "#ececf1");
-      doc.rect(MARGIN_X, y, SHEET_W, geom.rowMm, "F");
+      doc.rect(MARGIN_X, y, geom.sheetW, geom.rowMm, "F");
       doc.setFontSize(8);
       setText(doc, "#1d1d1f");
-      doc.text(fitText(doc, row.label, SHEET_W - 3), MARGIN_X + 1.6, y + geom.rowMm / 2, { baseline: "middle" });
+      doc.text(fitText(doc, row.label, geom.sheetW - 3), MARGIN_X + 1.6, y + geom.rowMm / 2, { baseline: "middle" });
     } else {
-      paintRowWash(doc, row.highlighted, row.task.uid === input.selected, MARGIN_X, y, SHEET_W, geom.rowMm);
+      paintRowWash(doc, row.highlighted, row.task.uid === input.selected, MARGIN_X, y, geom.sheetW, geom.rowMm);
       doc.setFontSize(8);
       const nameX = MARGIN_X + 1.6 + Math.max(0, row.task.outline_level - 1) * 14 * PX_TO_MM;
       const nameW = Math.max(4, MARGIN_X + NAME_W - nameX - 1);
@@ -302,16 +330,21 @@ function paintSheetRows(doc: jsPDF, input: GanttPdfInput, geom: PageGeom, bodyHe
         y + geom.rowMm / 2,
         { baseline: "middle" },
       );
+      geom.fields.forEach((field, column) => {
+        const text = formatFieldValue(row.task.values?.[field.id]);
+        if (text) doc.text(fitText(doc, text, FIELD_W - 2.4), fieldX(column) + 1.2, y + geom.rowMm / 2, { baseline: "middle" });
+      });
     }
     setDraw(doc, row.kind === "group" ? "#e4e4e8" : "#f0f0f2");
     doc.setLineWidth(0.1);
-    doc.line(MARGIN_X, y + geom.rowMm, MARGIN_X + SHEET_W, y + geom.rowMm);
+    doc.line(MARGIN_X, y + geom.rowMm, MARGIN_X + geom.sheetW, y + geom.rowMm);
   }
   if (bodyHeight > 0) {
     setDraw(doc, "#e4e4e8");
     doc.setLineWidth(0.1);
     doc.line(MARGIN_X + NAME_W, geom.bodyTop, MARGIN_X + NAME_W, geom.bodyTop + bodyHeight);
     doc.line(MARGIN_X + NAME_W + DATE_W, geom.bodyTop, MARGIN_X + NAME_W + DATE_W, geom.bodyTop + bodyHeight);
+    geom.fields.forEach((_, index) => doc.line(fieldX(index), geom.bodyTop, fieldX(index), geom.bodyTop + bodyHeight));
   }
 }
 
