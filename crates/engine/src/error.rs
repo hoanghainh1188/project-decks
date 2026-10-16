@@ -134,6 +134,8 @@ pub enum Invalid {
     PullUnknownAssignee,
     PullParent,
     PullLink,
+    PushDate,
+    NothingToRecord,
 }
 
 impl EngineError {
@@ -546,6 +548,14 @@ impl Invalid {
                 "Chờ một công việc không có trong lần kéo, hoặc chính nó",
                 "Waits for an issue that is not in the pull, or for itself",
             ),
+            Self::PushDate => fixed(
+                "Ngày ghi về nguồn không hợp lệ",
+                "The day written to the source is not valid",
+            ),
+            Self::NothingToRecord => fixed(
+                "Không có công việc liên kết nào khớp để ghi nhớ",
+                "No linked task matches, so there is nothing to record",
+            ),
         }
     }
 }
@@ -660,6 +670,8 @@ mod tests {
             PullUnknownAssignee,
             PullParent,
             PullLink,
+            PushDate,
+            NothingToRecord,
         ];
         for reason in all {
             let (vi, en) = (reason.message(Lang::Vi), reason.message(Lang::En));

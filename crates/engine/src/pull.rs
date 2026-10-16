@@ -41,6 +41,7 @@ use crate::lang::Lang;
 use crate::model::{ConstraintType, DepKind, Dependency, Project, Task, TaskType};
 use crate::schedule::{normalize_outline, schedule};
 use crate::source::{ExternalLink, StatusClass};
+use crate::timeutil::{civil, date_key};
 use crate::work;
 
 /// Issues a pull can have.
@@ -372,6 +373,14 @@ fn field_targets(
     Ok(targets)
 }
 
+/// The instant falls on the day `pushed` (`YYYY-MM-DD`) names.
+fn day_matches(instant: Option<i64>, pushed: Option<&str>) -> bool {
+    match (instant, pushed) {
+        (Some(instant), Some(pushed)) => date_key(civil(instant).0) == pushed,
+        _ => false,
+    }
+}
+
 fn percent_for(status: StatusClass, current: f64) -> f64 {
     match status {
         StatusClass::NotStarted => 0.0,
@@ -455,6 +464,8 @@ fn add_task(
         key: checked.key.clone(),
         synced_at: pulled_at,
         gone: false,
+        pushed_start: None,
+        pushed_due: None,
     });
     project.tasks.insert(index, task);
     if !group {
@@ -516,7 +527,10 @@ fn update_task(
         }
         let wanted = input.start.map(|date| (ConstraintType::Snet, Some(date)));
         let current = (task.constraint_type, task.constraint_date);
+        // A start day equal to the one a push wrote is our own, not a change at the source.
+        let own_start = day_matches(input.start, task.external.as_ref().and_then(|l| l.pushed_start.as_deref()));
         match wanted {
+            _ if own_start => {}
             Some(wanted) if wanted != current => {
                 apply_one(
                     project,
@@ -541,7 +555,8 @@ fn update_task(
             }
         }
     }
-    if task.deadline != input.due {
+    let own_due = day_matches(input.due, task.external.as_ref().and_then(|l| l.pushed_due.as_deref()));
+    if !own_due && task.deadline != input.due {
         apply_one(project, &Command::SetDeadline { uid, date: input.due })?;
         changed.push(PullField::Due);
     }
