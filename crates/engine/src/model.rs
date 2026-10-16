@@ -8,6 +8,7 @@ use crate::fields::{FieldDef, FieldValue};
 use crate::level_order::SortKey;
 use crate::recurrence::Recurrence;
 use crate::skills::{AssignmentRule, SkillDef};
+use crate::source::{ExternalLink, Source};
 use crate::split::{Segment, Split};
 use crate::timeutil::MINUTES_PER_DAY;
 
@@ -179,6 +180,9 @@ pub struct Task {
     pub work_low: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub work_high: Option<i64>,
+    /// The issue in an external tracker this task was pulled from (`source.rs`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub external: Option<ExternalLink>,
 }
 
 impl Task {
@@ -240,6 +244,7 @@ impl Task {
             interrupts: false,
             work_low: None,
             work_high: None,
+            external: None,
         }
     }
 
@@ -307,6 +312,10 @@ pub struct Resource {
     /// Ids of the project's skills this resource has, ascending.
     #[serde(default)]
     pub skills: Vec<u32>,
+    /// Email address, empty when unknown; unique in the project, letter case aside. A task
+    /// pulled from a tracker goes to the person whose email its assignee has.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub email: String,
 }
 
 impl Resource {
@@ -322,6 +331,7 @@ impl Resource {
             cost_per_use: 0.0,
             availability: Vec::new(),
             skills: Vec::new(),
+            email: String::new(),
         }
     }
 }
@@ -414,6 +424,10 @@ pub struct Project {
     /// How tasks' effort varies together in the finish forecast.
     #[serde(default)]
     pub forecast: ForecastSettings,
+    /// The external task tracker this project is pulled from (`SetSource`). Written even
+    /// when empty (as null), so a patch of the snapshot can clear it.
+    #[serde(default)]
+    pub source: Option<Source>,
 }
 
 /// How strongly tasks' effort moves together in the finish forecast.
@@ -491,6 +505,7 @@ impl Project {
             next_skill_id: 1,
             assignment_rules: Vec::new(),
             forecast: ForecastSettings::default(),
+            source: None,
         }
     }
 

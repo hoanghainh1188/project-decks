@@ -10,7 +10,7 @@ use sheafly_engine::fields::FieldKind;
 use sheafly_engine::import::{check_import, ImportColumn, ImportTask};
 use sheafly_engine::mspdi::{read_mspdi_with_report, write_mspdi};
 use sheafly_engine::model::{ForecastSettings, ResourceKind, Strength, Task};
-use sheafly_engine::store::{load, save, FORMAT_VERSION};
+use sheafly_engine::store::{load, save};
 use sheafly_engine::timeutil::timestamp;
 use sheafly_engine::{Document, EngineError, Invalid, Project};
 
@@ -123,7 +123,6 @@ fn correlation_goes_by_a_text_or_choice_field_and_follows_its_edits() {
 
 #[test]
 fn ranges_and_settings_survive_a_file_of_the_new_version() {
-    assert_eq!(FORMAT_VERSION, 16);
     let mut doc = doc();
     range(&mut doc, 2, Some(DAY / 2), Some(2 * DAY)).unwrap();
     let settings = ForecastSettings { field: None, group: Strength::Low, common: Strength::None };

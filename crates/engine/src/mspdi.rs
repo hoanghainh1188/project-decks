@@ -452,6 +452,7 @@ pub fn read_mspdi_with_report(xml: &str) -> Result<(Project, ImportReport), Engi
         }
     }
 
+    drop_repeated_emails(&mut project);
     fields.finish(&mut project, &mut notes, &effort_ranges.taken());
     effort_ranges.finish(&mut project);
     skills.finish(&mut project);
@@ -859,6 +860,11 @@ fn apply_text(name: &str, parent: Option<&str>, text: &str, project: &mut Projec
                 resource.group = value.to_string();
             }
         }
+        (Some("Resource"), "EmailAddress") => {
+            if let Some(resource) = resource {
+                resource.email = value.trim().to_string();
+            }
+        }
         (Some("Resource"), "MaxUnits") => {
             if let Some(resource) = resource {
                 resource.max_units = value.parse().unwrap_or(1.0);
@@ -1118,6 +1124,9 @@ fn write_resource(xml: &mut String, project: &Project, resource: &Resource) {
             ResourceKind::Machine => "Máy",
         },
     );
+    if !resource.email.is_empty() {
+        el(xml, "EmailAddress", &escape(&resource.email));
+    }
     el(xml, "MaxUnits", &format_number(resource.max_units));
     el(xml, "StandardRate", &format_number(resource.standard_rate));
     el(xml, "OvertimeRate", &format_number(resource.overtime_rate));
@@ -1438,11 +1447,24 @@ impl TaskBuilder {
     }
 }
 
+/// An address means one person in a project: a file that gives the same one to two people
+/// keeps it with the first, and an address that is not one is dropped.
+fn drop_repeated_emails(project: &mut Project) {
+    let mut seen = std::collections::HashSet::new();
+    for resource in &mut project.resources {
+        let lower = resource.email.to_lowercase();
+        if !lower.is_empty() && (!crate::source::looks_like_email(&resource.email) || !seen.insert(lower)) {
+            resource.email.clear();
+        }
+    }
+}
+
 #[derive(Default)]
 struct ResourceBuilder {
     uid: u32,
     name: String,
     group: String,
+    email: String,
     max_units: f64,
     standard_rate: f64,
     overtime_rate: f64,
@@ -1477,6 +1499,7 @@ impl ResourceBuilder {
             cost_per_use: self.cost_per_use,
             availability: Vec::new(),
             skills: Vec::new(),
+            email: self.email,
         };
         mspdi_availability::apply(&mut resource, self.periods, notes);
         resource
