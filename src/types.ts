@@ -584,7 +584,7 @@ export interface Project {
 }
 
 /** Mirror of `source::TrackerKind`. */
-export type TrackerKind = "backlog";
+export type TrackerKind = "backlog" | "jira";
 
 /** Mirror of `source::StatusClass`. */
 export type StatusClass = "not_started" | "in_progress" | "done";
@@ -764,6 +764,8 @@ export interface PullTask {
   due?: number | null;
   status?: StatusClass | null;
   assignee_email?: string | null;
+  /** Their name, for a tracker that hides emails; used when there is no email. */
+  assignee_name?: string | null;
   values?: [string, FieldValue][];
   after?: string[];
   /** What the field a push writes the computed start / finish to holds now (an instant). */

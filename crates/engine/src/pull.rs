@@ -73,6 +73,10 @@ pub struct PullTask {
     /// Email of the person it is assigned to; they must be in the project.
     #[serde(default)]
     pub assignee_email: Option<String>,
+    /// Their name, for a tracker that hides emails: used when there is no email, and it must
+    /// then be the name of exactly one person of the project.
+    #[serde(default)]
+    pub assignee_name: Option<String>,
     /// Custom field values by field name, letter case aside; an empty value clears.
     #[serde(default)]
     pub values: Vec<(String, FieldValue)>,
@@ -271,6 +275,8 @@ struct Checked {
     name: String,
     parent: Option<u32>,
     assignee: Option<u32>,
+    /// The assignee as canonical text (`sync::person_text`).
+    assignee_text: Option<String>,
     values: Vec<(u32, Option<FieldValue>)>,
 }
 
@@ -278,6 +284,8 @@ struct State {
     /// Keys the pull can refer to: linked tasks of the project and the rows done so far.
     known: HashMap<String, u32>,
     people: HashMap<String, u32>,
+    /// People of the project by lower-cased name; a name more than one person has is no match.
+    names: HashMap<String, Vec<u32>>,
     seen: HashSet<String>,
     parents: HashSet<String>,
     assignments: Vec<(u32, u32)>,
@@ -328,6 +336,7 @@ fn run(
             .filter(|resource| !resource.email.is_empty())
             .map(|resource| (resource.email.to_lowercase(), resource.uid))
             .collect(),
+        names: names_of(project),
         seen: HashSet::new(),
         parents: rows
             .iter()
@@ -403,13 +412,22 @@ fn check(
             _ => return fail(PullColumn::Parent, Invalid::PullParent),
         },
     };
-    let assignee = match input.assignee_email.as_deref().map(str::trim).filter(|e| !e.is_empty()) {
-        None => None,
-        Some(email) => match state.people.get(&email.to_lowercase()) {
+    let email = input.assignee_email.as_deref().map(str::trim).filter(|e| !e.is_empty());
+    let named = input.assignee_name.as_deref().map(str::trim).filter(|n| !n.is_empty());
+    let assignee = match (email, named) {
+        (Some(email), _) => match state.people.get(&email.to_lowercase()) {
             Some(uid) => Some(*uid),
             None => return fail(PullColumn::Assignee, Invalid::PullUnknownAssignee),
         },
+        (None, Some(name)) => match state.names.get(&name.to_lowercase()).map(Vec::as_slice) {
+            Some([uid]) => Some(*uid),
+            _ => return fail(PullColumn::Assignee, Invalid::PullUnknownAssignee),
+        },
+        (None, None) => None,
     };
+    let assignee_text = assignee
+        .and_then(|uid| project.resources.iter().find(|resource| resource.uid == uid))
+        .map(sync::person_text);
     if input.after.iter().any(|after| after.trim() == key) {
         return fail(PullColumn::After, Invalid::PullLink);
     }
@@ -419,6 +437,7 @@ fn check(
         name: name.to_string(),
         parent,
         assignee,
+        assignee_text,
         values,
     })
 }
@@ -449,6 +468,15 @@ fn day_matches(instant: Option<i64>, pushed: Option<&str>) -> bool {
         (Some(instant), Some(pushed)) => date_key(civil(instant).0) == pushed,
         _ => false,
     }
+}
+
+/// The people of the project by lower-cased name.
+fn names_of(project: &Project) -> HashMap<String, Vec<u32>> {
+    let mut names: HashMap<String, Vec<u32>> = HashMap::new();
+    for resource in &project.resources {
+        names.entry(resource.name.trim().to_lowercase()).or_default().push(resource.uid);
+    }
+    names
 }
 
 fn percent_for(status: StatusClass, current: f64, in_progress: f64) -> f64 {
@@ -724,9 +752,7 @@ fn source_value(input: &PullTask, checked: &Checked, field: SyncField) -> Option
         SyncField::Start => Some(input.start.map(sync::day_text)),
         SyncField::Due => Some(input.due.map(sync::day_text)),
         SyncField::Status => input.status.map(|status| Some(sync::status_text(status).to_string())),
-        SyncField::Assignee => checked.assignee.map(|_| {
-            input.assignee_email.as_deref().map(|email| email.trim().to_lowercase())
-        }),
+        SyncField::Assignee => checked.assignee_text.clone().map(Some),
         SyncField::Field(id) => checked
             .values
             .iter()

@@ -1,0 +1,78 @@
+{
+  "isLast": true,
+  "issues": [
+    {
+      "id": "10012",
+      "key": "PROJ-2",
+      "self": "https://team.atlassian.net/rest/api/3/issue/10012",
+      "fields": {
+        "summary": "Kiểm tra mật khẩu",
+        "status": { "id": "10000", "name": "To Do", "statusCategory": { "id": 2, "key": "new", "name": "To Do" } },
+        "assignee": { "accountId": "5b10ac8d82e05b22cc7d4ef5", "displayName": "Bình Trần", "active": true },
+        "duedate": null,
+        "timetracking": { "originalEstimate": "2h 30m", "originalEstimateSeconds": 9000 },
+        "parent": { "id": "10011", "key": "PROJ-1", "fields": { "summary": "Màn hình đăng nhập" } },
+        "customfield_10016": null,
+        "customfield_10030": null,
+        "customfield_10040": "khó",
+        "issuelinks": [
+          {
+            "id": "10100",
+            "type": { "name": "Blocks", "inward": "is blocked by", "outward": "blocks" },
+            "inwardIssue": { "key": "PROJ-1" }
+          },
+          {
+            "id": "10101",
+            "type": { "name": "Blocks", "inward": "is blocked by", "outward": "blocks" },
+            "inwardIssue": { "key": "PROJ-77" }
+          },
+          {
+            "id": "10102",
+            "type": { "name": "Relates", "inward": "relates to", "outward": "relates to" },
+            "inwardIssue": { "key": "PROJ-3" }
+          }
+        ]
+      }
+    },
+    {
+      "id": "10011",
+      "key": "PROJ-1",
+      "fields": {
+        "summary": "Màn hình đăng nhập",
+        "status": { "id": "3", "name": "In Progress", "statusCategory": { "id": 4, "key": "indeterminate" } },
+        "assignee": {
+          "accountId": "5b10a2844c20165700ede21g",
+          "displayName": "An Nguyễn",
+          "emailAddress": "an@example.com",
+          "active": true
+        },
+        "duedate": "2026-01-16",
+        "timetracking": { "originalEstimate": "2d", "originalEstimateSeconds": 57600 },
+        "customfield_10015": "2026-01-05",
+        "customfield_10016": 5,
+        "customfield_10020": "2026-02-03",
+        "customfield_10030": { "value": "Backend", "id": "10200" },
+        "customfield_10040": 3,
+        "issuelinks": []
+      }
+    },
+    {
+      "id": "10013",
+      "key": "PROJ-3",
+      "fields": {
+        "summary": "Việc đã xong",
+        "status": { "id": "10001", "name": "Done", "statusCategory": { "id": 3, "key": "done" } },
+        "assignee": null,
+        "duedate": "2026-01-09",
+        "parent": { "key": "PROJ-99" },
+        "issuelinks": [
+          {
+            "id": "10103",
+            "type": { "name": "Blocks", "inward": "is blocked by", "outward": "blocks" },
+            "outwardIssue": { "key": "PROJ-2" }
+          }
+        ]
+      }
+    }
+  ]
+}
