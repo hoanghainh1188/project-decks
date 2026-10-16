@@ -1,4 +1,4 @@
-import { toggleHidden, visibleFields } from "./fieldColumns";
+import { tasksAsText, toggleHidden, visibleFields } from "./fieldColumns";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -433,7 +433,7 @@ export default function App() {
 
   const dispatchFocused = useCallback((id: string) => dispatchAction(id, document.activeElement), [dispatchAction]);
   useClipboardEvents(dispatchFocused, () =>
-    selection.map((uid) => project?.tasks.find((item) => item.uid === uid)?.name ?? "").join("\n"),
+    project ? tasksAsText(project.tasks, selection, visibleFields(project.fields, hiddenFields)) : "",
   );
 
   const title = windowTitle(snap);
@@ -574,6 +574,7 @@ export default function App() {
         scale,
         selected,
         tracking: view === "tracking",
+        fields: visibleFields(project.fields, hiddenFields),
       });
       await savePdf(bytes, pdfSuggestedName(project.name));
     });
