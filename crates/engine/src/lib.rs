@@ -30,6 +30,7 @@ mod mspdi_calendar_days;
 mod mspdi_cost;
 mod mspdi_fields;
 mod mspdi_progress;
+mod mspdi_range;
 mod mspdi_skills;
 pub mod mspdi_report;
 mod mspdi_workweeks;

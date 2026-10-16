@@ -14,7 +14,7 @@ use std::collections::BTreeMap;
 
 use crate::fields::{self, FieldDef, FieldKind, FieldValue, MAX_NAME_CHARS, MAX_TEXT_CHARS};
 use crate::mspdi::escape_text;
-use crate::mspdi_skills;
+use crate::{mspdi_range, mspdi_skills};
 use crate::mspdi_report::ImportNote;
 use crate::model::Project;
 
@@ -69,9 +69,10 @@ fn slots(project: &Project) -> BTreeMap<u32, u32> {
 }
 
 /// `<ExtendedAttributes>`, which goes before `<Calendars>`; nothing without fields or
-/// skills (`mspdi_skills.rs` declares its resource field here too).
+/// skills or effort ranges (`mspdi_skills.rs` and `mspdi_range.rs` declare theirs here too).
 pub(crate) fn write_definitions(xml: &mut String, project: &Project) {
-    if project.fields.is_empty() && !mspdi_skills::any(project) {
+    if project.fields.is_empty() && !mspdi_skills::any(project) && !mspdi_range::any(project)
+    {
         return;
     }
     let slots = slots(project);
@@ -101,6 +102,7 @@ pub(crate) fn write_definitions(xml: &mut String, project: &Project) {
         xml.push_str("</ExtendedAttribute>\n");
     }
     mspdi_skills::write_definition(xml, project);
+    mspdi_range::write_definitions(xml, project);
     xml.push_str("</ExtendedAttributes>\n");
 }
 
@@ -214,8 +216,8 @@ impl FieldReader {
     }
 
     /// Declare the fields the tasks use and give the tasks their values. Values of a kind
-    /// Sheafly has no field for are left out and noted.
-    pub fn finish(self, project: &mut Project, notes: &mut Vec<ImportNote>) {
+    /// Sheafly has no field for are left out and noted; `taken` slots are read elsewhere.
+    pub fn finish(self, project: &mut Project, notes: &mut Vec<ImportNote>, taken: &[u32]) {
         let declared: BTreeMap<u32, &Declared> =
             self.declared.iter().map(|declared| (declared.field_id, declared)).collect();
         let mut field_of: BTreeMap<u32, u32> = BTreeMap::new();
@@ -242,6 +244,9 @@ impl FieldReader {
             field_of.insert(field_id, id);
         }
         for (uid, field_id, text) in self.values {
+            if taken.contains(&field_id) {
+                continue;
+            }
             let Some(&id) = field_of.get(&field_id) else {
                 if !text.trim().is_empty() {
                     let name = declared

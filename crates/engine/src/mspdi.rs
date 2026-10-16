@@ -14,6 +14,7 @@ use crate::mspdi_availability::{self, PeriodBuilder};
 use crate::mspdi_calendar_days;
 use crate::mspdi_cost;
 use crate::mspdi_fields::{self, FieldReader};
+use crate::mspdi_range::{self, RangeReader};
 use crate::mspdi_skills::{self, SkillReader};
 use crate::mspdi_report::{ImportNote, ImportReport};
 use crate::mspdi_workweeks::{self, WorkWeekBuilder};
@@ -204,6 +205,7 @@ pub fn read_mspdi_with_report(xml: &str) -> Result<(Project, ImportReport), Engi
     let mut actuals: BTreeMap<u32, TimephasedActual> = BTreeMap::new();
     let mut fields = FieldReader::default();
     let mut skills = SkillReader::default();
+    let mut effort_ranges = RangeReader::default();
 
     loop {
         match reader.read_event() {
@@ -213,6 +215,7 @@ pub fn read_mspdi_with_report(xml: &str) -> Result<(Project, ImportReport), Engi
                 if let Some(name) = stack.last() {
                     let parent = stack.iter().rev().nth(1).map(String::as_str);
                     fields.start(name, parent);
+                    effort_ranges.start(name, parent);
                     skills.start(name, parent);
                 }
                 match stack.last().map(String::as_str) {
@@ -274,6 +277,8 @@ pub fn read_mspdi_with_report(xml: &str) -> Result<(Project, ImportReport), Engi
                 }
                 fields.text(&name, parent, &text);
                 fields.end(&name, parent);
+                effort_ranges.text(&name, parent, &text);
+                effort_ranges.end(&name, parent);
                 skills.text(&name, parent, &text);
                 skills.end(&name, parent);
                 apply_text(
@@ -368,6 +373,7 @@ pub fn read_mspdi_with_report(xml: &str) -> Result<(Project, ImportReport), Engi
                         if let Some(builder) = task.take() {
                             if !builder.is_null && builder.uid != 0 {
                                 fields.end_task(builder.uid);
+                                effort_ranges.end_task(builder.uid);
                                 file_progress.insert(
                                     builder.uid,
                                     FileProgress {
@@ -446,7 +452,8 @@ pub fn read_mspdi_with_report(xml: &str) -> Result<(Project, ImportReport), Engi
         }
     }
 
-    fields.finish(&mut project, &mut notes);
+    fields.finish(&mut project, &mut notes, &effort_ranges.taken());
+    effort_ranges.finish(&mut project);
     skills.finish(&mut project);
     if project.calendars.is_empty() {
         project.calendars.push(Calendar::standard());
@@ -1085,6 +1092,7 @@ fn write_task(xml: &mut String, project: &Project, task: &Task) {
         xml.push_str("</PredecessorLink>\n");
     }
     mspdi_fields::write_values(xml, project, task);
+    mspdi_range::write_values(xml, task);
     for baseline in &task.baselines {
         xml.push_str("<Baseline>\n");
         el(xml, "Number", &baseline.number.to_string());

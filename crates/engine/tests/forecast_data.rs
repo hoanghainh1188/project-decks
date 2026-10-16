@@ -8,6 +8,7 @@ use sheafly_engine::clipboard::{copy_tasks, FillField};
 use sheafly_engine::command::Command;
 use sheafly_engine::fields::FieldKind;
 use sheafly_engine::import::{check_import, ImportColumn, ImportTask};
+use sheafly_engine::mspdi::{read_mspdi_with_report, write_mspdi};
 use sheafly_engine::model::{ForecastSettings, ResourceKind, Strength, Task};
 use sheafly_engine::store::{load, save, FORMAT_VERSION};
 use sheafly_engine::timeutil::timestamp;
@@ -201,4 +202,49 @@ fn tempfile_dir() -> std::path::PathBuf {
     let dir = std::env::temp_dir().join(format!("sheafly-forecast-{}-{unique}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     dir
+}
+
+#[test]
+fn mspdi_carries_ranges_as_two_duration_fields() {
+    let mut doc = doc();
+    range(&mut doc, 2, Some(DAY / 2), Some(3 * DAY)).unwrap();
+    let xml = write_mspdi(&doc.project).unwrap();
+    assert!(xml.contains("<FieldID>188743783</FieldID>\n<FieldName>Duration1</FieldName>"));
+    assert!(xml.contains("<Alias>Effort thấp</Alias>"));
+    assert!(xml.contains("<Alias>Effort cao</Alias>"));
+    assert!(xml.contains("<FieldID>188743784</FieldID>\n<Value>PT24H0M0S</Value>"));
+
+    let (imported, report) = read_mspdi_with_report(&xml).unwrap();
+    assert!(report.notes.is_empty(), "{:?}", report.notes);
+    assert!(imported.fields.is_empty());
+    let back = imported.task(2).unwrap();
+    assert_eq!((back.work_low, back.work_high), (Some(DAY / 2), Some(3 * DAY)));
+    assert_eq!(imported.task(1).unwrap().work_low, None);
+
+    // Without a range nothing is declared.
+    range(&mut doc, 2, None, None).unwrap();
+    assert!(!write_mspdi(&doc.project).unwrap().contains("<ExtendedAttributes>"));
+}
+
+#[test]
+fn mspdi_import_reads_other_duration_slots_by_alias_and_drops_bad_ranges() {
+    let mut doc = doc();
+    range(&mut doc, 2, Some(DAY), Some(2 * DAY)).unwrap();
+    range(&mut doc, 3, Some(DAY), Some(2 * DAY)).unwrap();
+    let xml = write_mspdi(&doc.project)
+        .unwrap()
+        .replace("188743783", "188743785")
+        .replace("188743784", "188743955")
+        .replace("Effort thấp", "LOW EFFORT")
+        .replace("Effort cao", "High effort");
+    // Task 3's low comes after its high: Sheafly refuses that range, so it is dropped.
+    let task3 = xml.find("<UID>3</UID>").unwrap();
+    let low3 = task3 + xml[task3..].find("<Value>PT8H0M0S</Value>").unwrap();
+    let xml = format!("{}<Value>PT40H0M0S</Value>{}", &xml[..low3], &xml[low3 + 23..]);
+
+    let (imported, report) = read_mspdi_with_report(&xml).unwrap();
+    assert!(report.notes.is_empty(), "{:?}", report.notes);
+    let two = imported.task(2).unwrap();
+    assert_eq!((two.work_low, two.work_high), (Some(DAY), Some(2 * DAY)));
+    assert_eq!(imported.task(3).unwrap().work_low, None);
 }
