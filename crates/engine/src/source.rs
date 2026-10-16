@@ -88,12 +88,14 @@ pub(crate) fn set_source(
 ) -> Result<(), EngineError> {
     project.source = match source {
         None => None,
-        Some(source) => Some(checked(source)?),
+        Some(source) => Some(validate(source)?),
     };
     Ok(())
 }
 
-fn checked(source: &Source) -> Result<Source, EngineError> {
+/// The source tidied (site lower-cased, texts trimmed), or why it is refused. The Tauri
+/// layer checks a source the same way before it talks to the tracker.
+pub fn validate(source: &Source) -> Result<Source, EngineError> {
     let site = source.site.trim().to_lowercase();
     let host_char = |c: char| c.is_ascii_alphanumeric() || c == '.' || c == '-';
     if site.is_empty()
