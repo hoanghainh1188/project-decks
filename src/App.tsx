@@ -72,6 +72,7 @@ import { lastFinish, spanEndInstant, type SpanEnd } from "./spanFit";
 import { buildViewRows, fieldOfMode, type FilterMode, type GroupMode, type HighlightMode } from "./viewRows";
 import { windowTitle } from "./windowTitle";
 import { selectionRange } from "./taskSelection";
+import { parsePastedTable } from "./pastedTable";
 import { useClipboardEvents } from "./useClipboardEvents";
 import "./styles.css";
 
@@ -432,8 +433,21 @@ export default function App() {
   }, [project, rowFilter, rowGroup, filterValue, fillField, spanEnd]);
 
   const dispatchFocused = useCallback((id: string) => dispatchAction(id, document.activeElement), [dispatchAction]);
-  useClipboardEvents(dispatchFocused, () =>
-    project ? tasksAsText(project.tasks, selection, visibleFields(project.fields, hiddenFields)) : "",
+  const pasteTable = useCallback(
+    (text: string) => {
+      if (!project || fileDialogBusy || importSheet) return false;
+      const sheet = parsePastedTable(text.normalize("NFC"));
+      if (!sheet) return false;
+      setDialogError(null);
+      setImportSheet(sheet);
+      return true;
+    },
+    [project, fileDialogBusy, importSheet],
+  );
+  useClipboardEvents(
+    dispatchFocused,
+    () => (project ? tasksAsText(project.tasks, selection, visibleFields(project.fields, hiddenFields)) : ""),
+    pasteTable,
   );
 
   const title = windowTitle(snap);
