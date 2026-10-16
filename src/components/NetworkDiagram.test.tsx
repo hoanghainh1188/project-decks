@@ -32,7 +32,7 @@ function fixture(): { project: Project; layout: NetworkLayout } {
   return { project, layout };
 }
 
-function renderDiagram(selected: number | null = null, highlighted = new Set<number>()) {
+function renderDiagram(selected: number | null = null, highlighted = new Set<number>(), selection?: ReadonlySet<number>) {
   const { project, layout } = fixture();
   const onSelect = vi.fn();
   const onEdit = vi.fn();
@@ -41,6 +41,7 @@ function renderDiagram(selected: number | null = null, highlighted = new Set<num
       project={project}
       layout={layout}
       selected={selected}
+      selection={selection}
       highlighted={highlighted}
       onSelect={onSelect}
       onEdit={onEdit}
@@ -84,9 +85,19 @@ describe("NetworkDiagram", () => {
   it("selects on click and asks to edit on double-click", () => {
     const { node, onSelect, onEdit } = renderDiagram();
     fireEvent.click(node("Lắp điện"));
-    expect(onSelect).toHaveBeenCalledWith(2);
+    expect(onSelect).toHaveBeenCalledWith(2, false);
+    fireEvent.click(node("Bàn giao"), { shiftKey: true });
+    expect(onSelect).toHaveBeenLastCalledWith(3, true);
     fireEvent.doubleClick(node("Lắp điện"));
     expect(onEdit).toHaveBeenCalledWith(2);
+  });
+
+  it("outlines every box of a Shift range", () => {
+    const { node } = renderDiagram(1, new Set(), new Set([1, 2]));
+    const outlined = (name: string) => node(name).querySelector('[style*="stroke: var(--accent)"]');
+    expect(outlined("Đào móng")).toBeInTheDocument();
+    expect(outlined("Lắp điện")).toBeInTheDocument();
+    expect(outlined("Bàn giao")).not.toBeInTheDocument();
   });
 
   it("outlines the shared selection and tints highlighted tasks", () => {

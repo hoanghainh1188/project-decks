@@ -330,10 +330,10 @@ export default function App() {
     // Group headers ("Chưa gán" / "Unassigned") are text, so they follow the language.
     [project, rowFilter, filterResource, rowGroup, rowHighlight, filterValue, spanEnd, lang],
   );
-  // Ranges exist only in the sheet; the network diagram selects one box.
+  // A Shift+click range runs in the rows' order, also when picked on the network diagram.
   const selection = useMemo(
     () => {
-      const range = view === "network" ? (selected == null ? [] : [selected]) : selectionRange(rows, selected, selectionEnd);
+      const range = selectionRange(rows, selected, selectionEnd);
       // A deleted or undone task leaves the selection before the effect below replaces it.
       return range.filter((uid) => project?.tasks.some((item) => item.uid === uid));
     },
@@ -766,8 +766,9 @@ export default function App() {
                 project={project}
                 layout={networkLayout}
                 selected={selected}
+                selection={selectionSet}
                 highlighted={networkHighlighted}
-                onSelect={selectOne}
+                onSelect={(uid, extend) => (extend && selected != null ? setSelectionEnd(uid) : selectOne(uid))}
                 onEdit={(uid) => {
                   selectOne(uid);
                   setEditUid(uid);
