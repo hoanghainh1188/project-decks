@@ -45,6 +45,8 @@ export interface MenuContext {
   openAssignByRules: () => void;
   /** Tệp → Nhập bảng: pick a CSV or workbook, then map its columns. */
   openImportTable: () => void;
+  /** Tệp → Nhập → Kéo từ task tracker. */
+  openTracker: () => void;
   /** Lịch làm việc, on the project calendar. */
   openWorkingTime: () => void;
   openBaseline: () => void;
@@ -92,6 +94,9 @@ function documentAction(id: string, ctx: MenuContext): boolean {
       return true;
     case "import-table":
       ctx.openImportTable();
+      return true;
+    case "pull-tracker":
+      if (ctx.snap && !ctx.fileDialogBusy) ctx.openTracker();
       return true;
     case "export-xml":
       ctx.startFileDialog(async () => {

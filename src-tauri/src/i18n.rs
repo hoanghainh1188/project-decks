@@ -230,6 +230,7 @@ pub const FILE_MENU: &[Entry] = &[
         &[
             item("import-xml", "Nhập MSPDI…", "Import MSPDI…", None),
             item("import-table", "Nhập bảng (CSV, Excel)…", "Import Table (CSV, Excel)…", None),
+            item("pull-tracker", "Kéo từ task tracker…", "Pull from Task Tracker…", None),
         ],
     ),
     group(

@@ -35,6 +35,7 @@ import { ResourceAvailabilityDialog } from "./components/ResourceAvailabilityDia
 import { AssignmentDialog } from "./components/AssignmentDialog";
 import { AssignPreviewDialog } from "./components/AssignPreviewDialog";
 import { ImportDialog } from "./components/ImportDialog";
+import { TrackerDialog } from "./components/tracker/TrackerDialog";
 import { ResourceSheet } from "./components/ResourceSheet";
 import { SplitDialog } from "./components/SplitDialog";
 import { StatusBar } from "./components/StatusBar";
@@ -117,6 +118,8 @@ export default function App() {
   // Giao việc theo quy tắc: the suggestions being reviewed, null while closed.
   const [suggestions, setSuggestions] = useState<Suggestion[] | null>(null);
   const [importSheet, setImportSheet] = useState<ImportSheet | null>(null);
+  // Kéo từ task tracker is open.
+  const [trackerOpen, setTrackerOpen] = useState(false);
   const [rowFilter, setRowFilter] = useState<FilterMode>("none");
   const [filterResource, setFilterResource] = useState<number | null>(null);
   const [filterValue, setFilterValue] = useState("");
@@ -378,6 +381,10 @@ export default function App() {
         openAssignmentRules: () => void openAssignmentRules(),
         openAssignByRules: () => void openAssignByRules(),
         openImportTable,
+        openTracker: () => {
+          setDialogError(null);
+          setTrackerOpen(true);
+        },
         openWorkingTime: () => void openWorkingTime(snap?.project.calendar_id ?? 1),
         openBaseline: () => setBaselineOpen(true),
         openRecurring: () => setSeriesDialog(0),
@@ -745,6 +752,7 @@ export default function App() {
                 overallocations={project.overallocations}
                 onAdd={(kind) => send({ type: "add_resource", name: m.newResource(project.next_resource_uid), kind })}
                 onChange={(resource) => send(resourceCommand(resource))}
+                onChangeEmail={(uid, email) => send({ type: "set_resource_email", uid, email })}
                 onDelete={(uid) => send({ type: "delete_resource", uid })}
                 onEditCalendar={(id) => void openWorkingTime(id)}
                 onEditAvailability={(uid) => void openAvailability(uid)}
@@ -929,6 +937,17 @@ export default function App() {
           onClose={() => {
             setDialogError(null);
             setImportSheet(null);
+          }}
+        />
+      )}
+      {trackerOpen && project && (
+        <TrackerDialog
+          project={project}
+          error={dialogError}
+          send={sendInDialog}
+          onClose={() => {
+            setDialogError(null);
+            setTrackerOpen(false);
           }}
         />
       )}
