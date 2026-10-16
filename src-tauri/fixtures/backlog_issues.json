@@ -11,13 +11,41 @@
     "estimatedHours": 2.5,
     "actualHours": null,
     "parentIssueId": 11,
-    "issueType": { "id": 1, "projectId": 77, "name": "Task", "color": "#7ea800", "displayOrder": 0 },
-    "priority": { "id": 3, "name": "Normal" },
-    "status": { "id": 1, "projectId": 77, "name": "Open", "color": "#ed8077", "displayOrder": 1000 },
+    "issueType": {
+      "id": 1,
+      "projectId": 77,
+      "name": "Task",
+      "color": "#7ea800",
+      "displayOrder": 0
+    },
+    "priority": {
+      "id": 3,
+      "name": "Normal"
+    },
+    "status": {
+      "id": 1,
+      "projectId": 77,
+      "name": "Open",
+      "color": "#ed8077",
+      "displayOrder": 1000
+    },
     "assignee": null,
     "created": "2026-01-02T03:04:05Z",
     "updated": "2026-01-03T03:04:05Z",
-    "customFields": []
+    "customFields": [
+      {
+        "id": 3,
+        "fieldTypeId": 5,
+        "name": "mảng",
+        "value": null
+      },
+      {
+        "id": 4,
+        "fieldTypeId": 3,
+        "name": "Điểm",
+        "value": "abc"
+      }
+    ]
   },
   {
     "id": 11,
@@ -31,22 +59,72 @@
     "estimatedHours": 16,
     "actualHours": 4,
     "parentIssueId": null,
-    "issueType": { "id": 1, "projectId": 77, "name": "Task", "color": "#7ea800", "displayOrder": 0 },
-    "priority": { "id": 2, "name": "High" },
-    "status": { "id": 2, "projectId": 77, "name": "In Progress", "color": "#4488c5", "displayOrder": 2000 },
+    "issueType": {
+      "id": 1,
+      "projectId": 77,
+      "name": "Task",
+      "color": "#7ea800",
+      "displayOrder": 0
+    },
+    "priority": {
+      "id": 2,
+      "name": "High"
+    },
+    "status": {
+      "id": 2,
+      "projectId": 77,
+      "name": "In Progress",
+      "color": "#4488c5",
+      "displayOrder": 2000
+    },
     "assignee": {
       "id": 5,
       "userId": "an",
       "name": "An",
       "roleType": 2,
       "lang": "ja",
-      "nulabAccount": { "nulabId": "abc", "name": "An", "uniqueId": "an" },
+      "nulabAccount": {
+        "nulabId": "abc",
+        "name": "An",
+        "uniqueId": "an"
+      },
       "mailAddress": "an@example.com",
       "lastLoginTime": "2026-01-04T00:00:00Z"
     },
     "created": "2026-01-02T00:00:00Z",
     "updated": "2026-01-04T00:00:00Z",
-    "customFields": []
+    "customFields": [
+      {
+        "id": 3,
+        "fieldTypeId": 5,
+        "name": "Mảng",
+        "value": {
+          "id": 8,
+          "name": "BE"
+        }
+      },
+      {
+        "id": 4,
+        "fieldTypeId": 3,
+        "name": "Điểm",
+        "value": "5"
+      },
+      {
+        "id": 9,
+        "fieldTypeId": 6,
+        "name": "Nhãn",
+        "value": [
+          {
+            "id": 1,
+            "name": "a"
+          },
+          {
+            "id": 2,
+            "name": "b"
+          }
+        ]
+      }
+    ]
   },
   {
     "id": 13,
@@ -58,8 +136,20 @@
     "dueDate": "2026-01-20T00:00:00Z",
     "estimatedHours": 0,
     "parentIssueId": null,
-    "status": { "id": 7, "projectId": 77, "name": "đang REVIEW", "color": "#999999", "displayOrder": 3500 },
-    "assignee": { "id": 6, "userId": "binh", "name": "Bình", "roleType": 2, "lang": "vi" },
+    "status": {
+      "id": 7,
+      "projectId": 77,
+      "name": "đang REVIEW",
+      "color": "#999999",
+      "displayOrder": 3500
+    },
+    "assignee": {
+      "id": 6,
+      "userId": "binh",
+      "name": "Bình",
+      "roleType": 2,
+      "lang": "vi"
+    },
     "created": "2026-01-02T00:00:00Z",
     "updated": "2026-01-04T00:00:00Z",
     "customFields": []
@@ -80,7 +170,13 @@
     "dueDate": null,
     "estimatedHours": null,
     "parentIssueId": 99,
-    "status": { "id": 4, "projectId": 77, "name": "Closed", "color": "#5e6b73", "displayOrder": 4000 },
+    "status": {
+      "id": 4,
+      "projectId": 77,
+      "name": "Closed",
+      "color": "#5e6b73",
+      "displayOrder": 4000
+    },
     "assignee": null,
     "customFields": []
   }
