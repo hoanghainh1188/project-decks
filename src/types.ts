@@ -442,11 +442,32 @@ export interface PullProblem {
   column: PullColumn;
 }
 
+/**
+ * Mirror of `pull::PullConflict`: a field changed at the source and in Sheafly since the
+ * last sync, to different values. Values are canonical text (a day is `YYYY-MM-DD`, effort
+ * is minutes, status is `not_started`, `in_progress` or `done`); null is no value.
+ */
+export interface PullConflict {
+  row: number;
+  key: string;
+  name: string;
+  uid: number;
+  /** `name`, `work`, `start`, `due`, `status`, `assignee` or `field:<id>`. */
+  field: string;
+  base: string | null;
+  source: string | null;
+  local: string | null;
+}
+
 /** Mirror of `tracker::PullChanges`: what a pull would do to the project as it is now. */
 export interface PullChanges {
   changes: PullRowDiff[];
   gone: GoneTask[];
   problems: PullProblem[];
+  /** Fields changed on both sides that the resolutions given do not settle. */
+  conflicts: PullConflict[];
+  /** A conflict settled by keeping Sheafly changes no task but is worth applying. */
+  bases_changed: boolean;
 }
 
 /** Mirror of `backlog::PullWarning`. */
@@ -639,7 +660,7 @@ export interface PushChange {
   assignee: AssigneeChange | null;
 }
 
-export type PushSkipReason = "many_assignees" | "no_email";
+export type PushSkipReason = "many_assignees" | "no_email" | "source_changed";
 
 /** Mirror of `push::PushSkip`. */
 export interface PushSkip {
@@ -647,6 +668,8 @@ export interface PushSkip {
   key: string;
   name: string;
   reason: PushSkipReason;
+  /** The field a `source_changed` skip is about (`start`, `due` or `assignee`). */
+  field?: string | null;
 }
 
 /** Mirror of `push::MissingTask`: a linked task whose issue the source did not return. */

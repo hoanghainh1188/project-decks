@@ -44,6 +44,8 @@ const PREVIEW: PullPreview = {
   ],
   gone: [{ uid: 5, key: "PROJ-7", name: "Việc đã xóa" }],
   problems: [],
+  conflicts: [],
+  bases_changed: false,
 };
 
 function renderDialog(project: Project, preview: PullPreview | null = PREVIEW, keys: string[] = []) {
@@ -132,7 +134,7 @@ describe("TrackerDialog", () => {
     await waitFor(() => expect(onClose).toHaveBeenCalled());
     expect(send.mock.calls.map(([command]) => command.type)).toEqual(["set_source", "apply_pull"]);
     expect(send.mock.calls[0][0]).toMatchObject({ source: { site: "team.backlog.com", project_key: "PROJ", filter: "keyword=đăng nhập" } });
-    expect(send.mock.calls[1][0]).toEqual({ type: "apply_pull", rows: PREVIEW.rows, pulled_at: 123 });
+    expect(send.mock.calls[1][0]).toEqual({ type: "apply_pull", rows: PREVIEW.rows, pulled_at: 123, resolutions: [] });
   });
 
   it("saves no source when the form is the one the project holds", async () => {
@@ -159,13 +161,88 @@ describe("TrackerDialog", () => {
     expect(options.map((option) => option.textContent)).toEqual(["Chọn người…", "An"]);
 
     // The project now has the email: the dialog asks the engine again and the problem is gone.
-    fakeBackend.pullChanges = { changes: PREVIEW.changes, gone: PREVIEW.gone, problems: [] };
+    fakeBackend.pullChanges = { changes: PREVIEW.changes, gone: PREVIEW.gone, problems: [], conflicts: [], bases_changed: false };
     const next = fakeBackend.snapshot.project;
     const before = calls("tracker_check").length;
     view.rerender(<TrackerDialog project={{ ...next }} error={null} send={send} onClose={() => {}} />);
     await waitFor(() => expect(calls("tracker_check").length).toBe(before + 1));
     await waitFor(() => expect(screen.getByRole("button", { name: /^Áp dụng/ })).toBeEnabled());
-    expect(calls("tracker_check")[calls("tracker_check").length - 1]?.args).toEqual({ rows: PREVIEW.rows, pulledAt: 123 });
+    expect(calls("tracker_check")[calls("tracker_check").length - 1]?.args).toEqual({ rows: PREVIEW.rows, pulledAt: 123, resolutions: [] });
+  });
+
+  const CONFLICTS: PullPreview = {
+    ...PREVIEW,
+    changes: PREVIEW.changes.map((row) => ({ ...row, kind: "same" as const, fields: [] })),
+    gone: [],
+    warnings: [],
+    conflicts: [
+      { row: 0, key: "PROJ-1", name: "Màn hình đăng nhập", uid: 2, field: "name", base: "Cũ", source: "Tên ở nguồn", local: "Tên của tôi" },
+      { row: 1, key: "PROJ-2", name: "Kiểm tra mật khẩu", uid: 3, field: "work", base: null, source: "480", local: "180" },
+      { row: 1, key: "PROJ-2", name: "Kiểm tra mật khẩu", uid: 3, field: "status", base: "not_started", source: "done", local: "in_progress" },
+    ],
+  };
+
+  it("lists fields changed on both sides and blocks Apply until each has a choice", async () => {
+    const { user } = renderDialog(projectWith(SOURCE), CONFLICTS);
+    await user.click(fetchButton());
+    const table = await screen.findByRole("table", { name: "Xung đột" });
+    expect(screen.getByText("Xung đột: 3 chưa chọn")).toBeInTheDocument();
+    expect(within(table).getByText("Tên ở nguồn")).toBeInTheDocument();
+    expect(within(table).getByText("không rõ")).toBeInTheDocument();
+    expect(within(table).getByText("8 giờ")).toBeInTheDocument();
+    expect(within(table).getByText("3 giờ")).toBeInTheDocument();
+    expect(within(table).getByText("Đang làm")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Áp dụng/ })).toBeDisabled();
+    await user.click(screen.getByRole("radio", { name: "PROJ-1 Tên: Sheafly" }));
+    await user.click(screen.getByRole("radio", { name: "PROJ-2 Effort: Nguồn" }));
+    expect(screen.getByText("Xung đột: 1 chưa chọn")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Áp dụng/ })).toBeDisabled();
+  });
+
+  it("asks the engine again under the choices and applies them with the pull", async () => {
+    const { user, send, onClose } = renderDialog(projectWith(SOURCE), CONFLICTS);
+    fakeBackend.pullChanges = {
+      changes: PREVIEW.changes,
+      gone: PREVIEW.gone,
+      problems: [],
+      conflicts: [],
+      bases_changed: false,
+    };
+    await user.click(fetchButton());
+    await screen.findByRole("table", { name: "Xung đột" });
+    await user.click(screen.getByRole("button", { name: "Lấy nguồn cho tất cả" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Áp dụng 3 thay đổi" })).toBeEnabled());
+    const last = calls("tracker_check")[calls("tracker_check").length - 1];
+    expect(last.args).toMatchObject({
+      resolutions: [
+        { key: "PROJ-1", field: "name", keep: "source" },
+        { key: "PROJ-2", field: "work", keep: "source" },
+        { key: "PROJ-2", field: "status", keep: "source" },
+      ],
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Áp dụng 3 thay đổi" }));
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    const pull = send.mock.calls.map(([command]) => command).find((command) => command.type === "apply_pull");
+    expect(pull).toMatchObject({ type: "apply_pull", resolutions: [{ key: "PROJ-1", field: "name", keep: "source" }, { key: "PROJ-2" }, { key: "PROJ-2" }] });
+  });
+
+  it("can apply a choice that only keeps Sheafly even though no task changes", async () => {
+    const { user, send, onClose } = renderDialog(projectWith(SOURCE), CONFLICTS);
+    fakeBackend.pullChanges = {
+      changes: CONFLICTS.changes,
+      gone: [],
+      problems: [],
+      conflicts: [],
+      bases_changed: true,
+    };
+    await user.click(fetchButton());
+    await screen.findByRole("table", { name: "Xung đột" });
+    await user.click(screen.getByRole("button", { name: "Giữ Sheafly cho tất cả" }));
+    const apply = await screen.findByRole("button", { name: "Áp dụng 0 thay đổi" });
+    await waitFor(() => expect(apply).toBeEnabled());
+    fireEvent.click(apply);
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(send.mock.calls.some(([command]) => command.type === "apply_pull")).toBe(true);
   });
 
   it("lists other problems by issue", async () => {
