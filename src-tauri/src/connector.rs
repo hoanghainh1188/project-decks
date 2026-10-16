@@ -22,6 +22,7 @@ use sheafly_engine::source::{Source, TrackerKind};
 use sheafly_engine::Lang;
 
 use crate::backlog_connector::BacklogConnector;
+use crate::jira_connector::JiraConnector;
 use crate::tracker::{Api, Credentials, TrackerError};
 
 /// How far a fetch has got: issues so far, and how many there are.
@@ -136,11 +137,43 @@ pub trait Connector: Sync {
     ) -> PushReport;
 }
 
+/// Name each row's parent and put parents before their children, the rest in the order
+/// given. `parents[row]` is the index of the row's parent, if it is in the pull. A loop of
+/// parents (which trackers do not allow) has no depth: its rows stand alone.
+pub fn link_parents(rows: &mut Vec<PullTask>, parents: &[Option<usize>]) {
+    let depths: Vec<Option<usize>> = parents
+        .iter()
+        .map(|&start| {
+            let mut depth = 0;
+            let mut at = start;
+            while let Some(parent) = at {
+                depth += 1;
+                if depth > parents.len() {
+                    return None;
+                }
+                at = parents[parent];
+            }
+            Some(depth)
+        })
+        .collect();
+    for (row, parent) in parents.iter().enumerate() {
+        if let (Some(parent), Some(_)) = (parent, depths[row]) {
+            rows[row].parent_key = Some(rows[*parent].key.clone());
+        }
+    }
+    let mut order: Vec<usize> = (0..rows.len()).collect();
+    order.sort_by_key(|&row| depths[row].unwrap_or(0));
+    let mut taken: Vec<Option<PullTask>> = std::mem::take(rows).into_iter().map(Some).collect();
+    *rows = order.into_iter().filter_map(|row| taken[row].take()).collect();
+}
+
 static BACKLOG: BacklogConnector = BacklogConnector;
+static JIRA: JiraConnector = JiraConnector;
 
 /// The connector for a kind of tracker.
 pub fn connector_for(kind: TrackerKind) -> &'static dyn Connector {
     match kind {
         TrackerKind::Backlog => &BACKLOG,
+        TrackerKind::Jira => &JIRA,
     }
 }

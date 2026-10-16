@@ -23,7 +23,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::fields::FieldValue;
-use crate::model::{ConstraintType, Project, Task};
+use crate::model::{ConstraintType, Project, Resource, Task};
 use crate::source::{ExternalLink, StatusClass, SyncBase};
 use crate::timeutil::{civil, date_key};
 
@@ -144,14 +144,49 @@ pub fn local_value(project: &Project, task: &Task, field: SyncField) -> Option<S
                         .resources
                         .iter()
                         .find(|resource| resource.uid == *person)
-                        .map(|resource| resource.email.trim().to_lowercase())
-                        .filter(|email| !email.is_empty())
-                        .unwrap_or_else(|| format!("#{person}")),
+                        .map_or_else(|| format!("#{person}"), person_text),
                 ),
                 _ => Some("*several".to_string()),
             }
         }
         SyncField::Field(id) => task.values.get(&id).map(field_text),
+    }
+}
+
+/// A person as canonical text: their email (lower-cased), else their id. Both the source's
+/// assignee and a task's are turned into this, so the same person compares equal however
+/// the source named them.
+pub fn person_text(resource: &Resource) -> String {
+    let email = resource.email.trim().to_lowercase();
+    if email.is_empty() {
+        format!("#{}", resource.uid)
+    } else {
+        email
+    }
+}
+
+/// Who the source's assignee is, as canonical text: a person of the project found by email,
+/// else by name (letter case aside, when one person has it), else the email or `name:<name>`
+/// as the source gave it. None when the source names nobody.
+pub fn assignee_text(project: &Project, email: Option<&str>, name: Option<&str>) -> Option<String> {
+    let email = email.map(str::trim).filter(|email| !email.is_empty());
+    let name = name.map(str::trim).filter(|name| !name.is_empty());
+    if let Some(email) = email {
+        let lower = email.to_lowercase();
+        return Some(
+            project
+                .resources
+                .iter()
+                .find(|resource| resource.email.trim().to_lowercase() == lower)
+                .map_or(lower, person_text),
+        );
+    }
+    let name = name?;
+    let lower = name.to_lowercase();
+    let mut found = project.resources.iter().filter(|resource| resource.name.trim().to_lowercase() == lower);
+    match (found.next(), found.next()) {
+        (Some(resource), None) => Some(person_text(resource)),
+        _ => Some(format!("name:{lower}")),
     }
 }
 

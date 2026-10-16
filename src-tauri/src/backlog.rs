@@ -38,7 +38,7 @@ use sheafly_engine::source::{Source, StatusClass};
 use sheafly_engine::timeutil::timestamp;
 
 use crate::backlog_fields::{DateSource, ReadPlan, WorkSource};
-use crate::connector::{Converted, Progress, PullWarning, WarningKind};
+use crate::connector::{link_parents, Converted, Progress, PullWarning, WarningKind};
 use crate::tracker::{Api, TrackerError};
 
 /// Issues one request returns at most.
@@ -282,6 +282,7 @@ pub fn convert(issues: &[Value], source: &Source, fields: &[FieldDef], reads: &R
             due: date_of(issue, &reads.due, reads.due_hour),
             status: status_class(issue.get("status"), source),
             assignee_email: email.map(str::to_string),
+            assignee_name: None,
             values,
             after: Vec::new(),
             planned_start: reads.planned_start.as_deref().and_then(|name| instant_of(custom_value(issue, name), reads.start_hour)),
@@ -293,17 +294,7 @@ pub fn convert(issues: &[Value], source: &Source, fields: &[FieldDef], reads: &R
         .enumerate()
         .map(|(row, parent)| parent.and_then(|id| ids.get(&id).copied()).filter(|p| *p != row))
         .collect();
-    let depths = depths(&parents);
-    for (row, parent) in parents.iter().enumerate() {
-        if let (Some(parent), Some(_)) = (parent, depths[row]) {
-            out.rows[row].parent_key = Some(out.rows[*parent].key.clone());
-        }
-    }
-    // A loop of parents (which Backlog does not allow) has no depth: its rows stand alone.
-    let mut order: Vec<usize> = (0..out.rows.len()).collect();
-    order.sort_by_key(|&row| depths[row].unwrap_or(0));
-    let mut rows: Vec<Option<PullTask>> = out.rows.into_iter().map(Some).collect();
-    out.rows = order.into_iter().filter_map(|row| rows[row].take()).collect();
+    link_parents(&mut out.rows, &parents);
     out
 }
 
@@ -365,25 +356,6 @@ fn custom_values(
         values.push((field.name.clone(), value));
     }
     values
-}
-
-/// How deep each row is under its parents; `None` for a row on a loop of parents.
-fn depths(parents: &[Option<usize>]) -> Vec<Option<usize>> {
-    parents
-        .iter()
-        .map(|&start| {
-            let mut depth = 0;
-            let mut at = start;
-            while let Some(parent) = at {
-                depth += 1;
-                if depth > parents.len() {
-                    return None;
-                }
-                at = parents[parent];
-            }
-            Some(depth)
-        })
-        .collect()
 }
 
 #[cfg(test)]

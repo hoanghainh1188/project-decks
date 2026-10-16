@@ -30,6 +30,7 @@ pub const MAX_EMAIL_CHARS: usize = 254;
 #[serde(rename_all = "snake_case")]
 pub enum TrackerKind {
     Backlog,
+    Jira,
 }
 
 /// How far along a task is, as far as the source says.

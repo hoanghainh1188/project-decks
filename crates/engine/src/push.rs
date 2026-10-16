@@ -197,12 +197,20 @@ pub fn plan(project: &Project, rows: &[PullTask], options: PushOptions) -> PushP
                     match resource.map(|resource| resource.email.trim()).filter(|email| !email.is_empty()) {
                         None => plan.skipped.push(skip(PushSkipReason::NoEmail)),
                         Some(email) => {
-                            let from = row.assignee_email.as_deref().map(str::trim).filter(|e| !e.is_empty());
-                            let same = from.is_some_and(|from| from.eq_ignore_ascii_case(email));
-                            let now = from.map(str::to_lowercase);
-                            if !same && (options.overwrite || from.is_none()) && !guard(&SyncField::Assignee.key(), now, &mut plan) {
+                            // Who the source has on the issue, found by email or, when it hides
+                            // emails, by name; an assignee we cannot identify still counts as one.
+                            let now = sync::assignee_text(project, row.assignee_email.as_deref(), row.assignee_name.as_deref());
+                            let shown = row
+                                .assignee_email
+                                .as_deref()
+                                .map(str::trim)
+                                .filter(|e| !e.is_empty())
+                                .or(row.assignee_name.as_deref().map(str::trim).filter(|n| !n.is_empty()));
+                            let wanted = project.resources.iter().find(|resource| resource.uid == *person).map(sync::person_text);
+                            let same = now.is_some() && now == wanted;
+                            if !same && (options.overwrite || now.is_none()) && !guard(&SyncField::Assignee.key(), now, &mut plan) {
                                 assignee = Some(AssigneeChange {
-                                    from: from.map(str::to_string),
+                                    from: shown.map(str::to_string),
                                     to: email.to_string(),
                                     resource_uid: *person,
                                 });
