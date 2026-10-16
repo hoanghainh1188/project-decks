@@ -240,6 +240,7 @@ pub const FILE_MENU: &[Entry] = &[
         &[
             item("export-xml", "Xuất MSPDI…", "Export MSPDI…", None),
             item("export-pdf", "Xuất PDF", "Export PDF", None),
+            item("push-tracker", "Đẩy ngày về task tracker…", "Push Dates to Task Tracker…", None),
         ],
     ),
 ];

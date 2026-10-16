@@ -15,6 +15,8 @@ import type {
   Forecast,
   PullChanges,
   PullPreview,
+  PushPreview,
+  PushReport,
 } from "../types";
 import { makeMetrics, makeResource, makeSnapshot, makeTask } from "./fixtures";
 
@@ -46,6 +48,9 @@ class FakeBackend {
   pullPreview: PullPreview | null = null;
   /** What `tracker_check` answers; by default the preview's own changes. */
   pullChanges: PullChanges | null = null;
+  /** What `tracker_push_preview` answers (null is a cancelled one) and `tracker_push` reports. */
+  pushPreview: PushPreview | null = null;
+  pushReport: PushReport = { done: [], entries: [], failed: [], not_sent: [], stopped: null };
   /** Sites with a saved API key (`tracker_has_key`). */
   trackerKeys = new Set<string>();
   /** What `pick_table` answers (null is a cancelled dialog); `read_table_sheet` reads it too. */
@@ -71,6 +76,8 @@ class FakeBackend {
     this.table = null;
     this.pullPreview = null;
     this.pullChanges = null;
+    this.pushPreview = null;
+    this.pushReport = { done: [], entries: [], failed: [], not_sent: [], stopped: null };
     this.trackerKeys.clear();
     this.failures.clear();
     this.holds.clear();
@@ -170,6 +177,10 @@ class FakeBackend {
         const base = this.pullPreview;
         return structuredClone(this.pullChanges ?? { changes: base?.changes ?? [], gone: base?.gone ?? [], problems: base?.problems ?? [] });
       }
+      case "tracker_push_preview":
+        return structuredClone(this.pushPreview);
+      case "tracker_push":
+        return structuredClone(this.pushReport);
       case "tracker_cancel":
         return undefined;
       case "pick_table":
@@ -255,6 +266,12 @@ class FakeBackend {
         resource.email = command.email;
         return;
       }
+      case "record_push":
+        for (const entry of command.entries) {
+          const task = project.tasks.find((item) => item.external?.key === entry.key);
+          if (task?.external) task.external = { ...task.external, pushed_start: entry.start ?? task.external.pushed_start, pushed_due: entry.due ?? task.external.pushed_due };
+        }
+        return;
       case "apply_pull":
         // Only the count of tasks: the engine's mapping is tested in Rust.
         for (const row of command.rows) {

@@ -595,6 +595,84 @@ export interface ExternalLink {
   pushed_due?: string | null;
 }
 
+/** Mirror of `push::PushOptions`: what a push writes. */
+export interface PushOptions {
+  start: boolean;
+  due: boolean;
+  assignee: boolean;
+  /** Replace values already at the source; off, only empty ones are filled. */
+  overwrite: boolean;
+}
+
+/** Mirror of `push::DayChange`: a day at the source and the day to write (`YYYY-MM-DD`). */
+export interface DayChange {
+  from: string | null;
+  to: string;
+}
+
+/** Mirror of `push::AssigneeChange`, by email. */
+export interface AssigneeChange {
+  from: string | null;
+  to: string;
+  resource_uid: number;
+}
+
+/** Mirror of `push::PushChange`: what a push writes for one issue. */
+export interface PushChange {
+  uid: number;
+  key: string;
+  name: string;
+  start: DayChange | null;
+  due: DayChange | null;
+  assignee: AssigneeChange | null;
+}
+
+export type PushSkipReason = "many_assignees" | "no_email";
+
+/** Mirror of `push::PushSkip`. */
+export interface PushSkip {
+  uid: number;
+  key: string;
+  name: string;
+  reason: PushSkipReason;
+}
+
+/** Mirror of `push::MissingTask`: a linked task whose issue the source did not return. */
+export interface MissingTask {
+  uid: number;
+  key: string;
+  name: string;
+}
+
+/** Mirror of `push::PushPlan`. */
+export interface PushPlan {
+  changes: PushChange[];
+  skipped: PushSkip[];
+  missing: MissingTask[];
+}
+
+/** Mirror of `PushPreview` in the shell: the plan and the people to assign that the source lacks. */
+export interface PushPreview {
+  plan: PushPlan;
+  unknown_assignees: string[];
+}
+
+/** Mirror of `backlog_push::PushReport`: what a push did. */
+export interface PushReport {
+  done: string[];
+  /** The days written, for `record_push`. */
+  entries: PushedEntry[];
+  failed: { key: string; message: string }[];
+  not_sent: string[];
+  stopped: string | null;
+}
+
+/** The `tracker-push-progress` event. */
+export interface PushProgress {
+  done: number;
+  total: number;
+}
+
 /** Mirror of `push::PushedEntry`: the days a push wrote for one issue. */
 export interface PushedEntry {
   key: string;
