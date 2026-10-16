@@ -33,7 +33,7 @@ pub struct PushFailure {
 pub struct PushReport {
     /// Keys of the issues written.
     pub done: Vec<String>,
-    /// The days written, for `RecordPush`; issues where only the assignee went are not here.
+    /// What was written (days and assignee), for `RecordPush`.
     pub entries: Vec<PushedEntry>,
     pub failed: Vec<PushFailure>,
     /// Keys not reached because the push stopped.
@@ -115,8 +115,9 @@ pub fn push_issues(
                 report.done.push(change.key.clone());
                 let start = change.start.as_ref().map(|day| day.to.clone());
                 let due = change.due.as_ref().map(|day| day.to.clone());
-                if start.is_some() || due.is_some() {
-                    report.entries.push(PushedEntry { key: change.key.clone(), start, due });
+                let assignee = change.assignee.as_ref().map(|assignee| assignee.to.clone());
+                if start.is_some() || due.is_some() || assignee.is_some() {
+                    report.entries.push(PushedEntry { key: change.key.clone(), start, due, assignee });
                 }
             }
             Err(error) => {
@@ -229,8 +230,8 @@ mod tests {
         assert_eq!(
             report.entries,
             vec![
-                PushedEntry { key: "PROJ-1".into(), start: Some("2026-01-05".into()), due: Some("2026-01-06".into()) },
-                PushedEntry { key: "PROJ-2".into(), start: None, due: Some("2026-01-06".into()) },
+                PushedEntry { key: "PROJ-1".into(), start: Some("2026-01-05".into()), due: Some("2026-01-06".into()), assignee: None },
+                PushedEntry { key: "PROJ-2".into(), start: None, due: Some("2026-01-06".into()), assignee: Some("AN@example.com".into()) },
             ]
         );
         assert_eq!(heard, [1, 2]);
@@ -240,13 +241,16 @@ mod tests {
     }
 
     #[test]
-    fn an_assignee_assigned_only_leaves_no_entry_for_record_push() {
+    fn an_assignee_assigned_only_is_recorded_with_no_days() {
         let fake = Fake::new(&[]);
         let mut only = change("PROJ-1", None, None);
         only.assignee = Some(AssigneeChange { from: None, to: "an@example.com".into(), resource_uid: 3 });
         let (report, _) = run(&fake, &[only], &AtomicBool::new(false));
         assert_eq!(report.done, ["PROJ-1"]);
-        assert!(report.entries.is_empty());
+        assert_eq!(
+            report.entries,
+            vec![PushedEntry { key: "PROJ-1".into(), start: None, due: None, assignee: Some("an@example.com".into()) }]
+        );
     }
 
     #[test]

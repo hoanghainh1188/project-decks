@@ -48,6 +48,7 @@ pub mod split;
 pub mod statistics;
 pub mod suggest;
 pub mod store;
+pub mod sync;
 pub mod timeutil;
 pub mod tracking;
 pub mod work;

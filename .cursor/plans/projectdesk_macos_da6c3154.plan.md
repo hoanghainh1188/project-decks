@@ -764,6 +764,30 @@ Kết quả đúng: không còn quá tải, không có giờ rảnh xen giữa c
 
 **Ngoài phạm vi.** Hai chiều và xung đột (pha 3), ghi vào trường tùy chỉnh của Backlog (định dạng giá trị không có trong tài liệu), xóa giá trị ở nguồn, đẩy effort hoặc trạng thái, Jira và Asana.
 
+#### Pha 19, pha 3 — đồng bộ hai chiều và xung đột (L, tách 4 PR)
+
+**Nhu cầu.** Cả hai phía đều sửa: nhóm sửa issue ở Backlog, người lập kế hoạch sửa task ở Sheafly. Kéo hiện nay lấy nguồn làm chuẩn nên **ghi đè ngầm** việc đã sửa ở Sheafly (kể cả khi nguồn không đổi từ lần trước), còn đẩy có thể ghi đè giá trị mới của người khác ở nguồn. Khi cùng một trường đổi ở cả hai phía từ lần đồng bộ trước, phải hiện xung đột để người dùng chọn; không bao giờ ghi đè ngầm.
+
+**Mô hình ba bên.** Mỗi task liên kết nhớ **nền** (`ExternalLink.base`): với mỗi trường đồng bộ, giá trị ở nguồn lần đồng bộ trước (`source`) và giá trị tương đương ở Sheafly lúc đó (`local`), cả hai dưới dạng chuỗi chuẩn. Trường: tên, effort, ngày bắt đầu (ràng buộc "bắt đầu không sớm hơn"), hạn (hạn chót), trạng thái (chưa bắt đầu / đang làm / xong theo phần trăm), người được giao (email của người duy nhất), từng trường tùy chỉnh. Với mỗi trường, so giá trị ở nguồn `s`, nền `b_s`, giá trị ở Sheafly `l`, nền `b_l`:
+- `s = b_s`: nguồn không đổi, giữ nguyên (kể cả khi Sheafly đã sửa; không còn ghi đè ngầm);
+- `s ≠ b_s` và `l = b_l`: chỉ nguồn đổi, lấy `s`;
+- `s ≠ b_s` và `l = s`: hai phía đổi giống nhau, chỉ cập nhật nền;
+- `s ≠ b_s` và `l ≠ b_l`, `l ≠ s`: **xung đột**. Người dùng chọn giữ Sheafly hay lấy nguồn; chưa chọn thì không áp dụng được. Chọn giữ Sheafly thì nền nguồn được cập nhật nhưng nền Sheafly giữ nguyên, nên lần nguồn đổi tiếp theo vẫn xung đột thay vì ghi đè lựa chọn đó.
+- Chưa có nền (liên kết từ trước pha 3): bằng nhau thì ghi nền; khác nhau thì là xung đột (không biết bên nào đổi); riêng ngày bắt đầu và hạn trùng ngày đã đẩy ở pha 2 (`pushed_*`) thì coi như không đổi.
+Đẩy ghi nền: `RecordPush` cập nhật `base.source` cho ngày và người được giao đã ghi, `base.local` giữ nguyên, nên kéo ngay sau đó không đổi gì và không thành xung đột giả. Khi đẩy, trường nào ở nguồn đã đổi so với nền thì bị bỏ qua (`SourceChanged`) thay vì bị ghi đè; hãy kéo và giải quyết trước.
+
+**Tương thích.** Lệnh `ApplyPull` cũ trong tệp phải replay đúng như cũ: nó giữ nguyên luật "nguồn là chuẩn" (đường mã cũ, `resolutions` vắng). Chỉ khi `resolutions` có mặt (giao diện luôn gửi, có thể rỗng) mới dùng ba bên. `FORMAT_VERSION` 19.
+
+**PR.**
+- **PR A — engine (L), không mạng.** `ExternalLink.base`; mô-đun `sync.rs` (giá trị chuẩn, quyết định); `ApplyPull.resolutions`; `PullDiff.conflicts`; `RecordPush` cập nhật nền; `push::plan` bỏ qua trường đã đổi ở nguồn. Test `tests/sync.rs`.
+- **PR B — Tauri (S).** Xung đột trong `PullChanges`/`PullPreview`, `tracker_check` nhận quyết định, lỗi thông báo.
+- **PR C — giao diện (M).** Mục xung đột trong hộp thoại kéo (từng trường: nền, nguồn, Sheafly; chọn giữ Sheafly hoặc lấy nguồn, chọn cả loạt), nút áp dụng chỉ bật khi đã giải quyết hết; hộp thoại đẩy hiện các trường bị bỏ qua vì nguồn đã đổi.
+- **PR D — tài liệu.**
+
+**Xong khi.** Kéo không bao giờ ghi đè giá trị đã sửa ở Sheafly khi nguồn không đổi; cùng trường đổi ở hai phía thì hiện xung đột và không áp dụng được khi chưa chọn; đẩy không ghi đè giá trị mới ở nguồn; kéo ngay sau khi đẩy không đổi gì và không sinh xung đột giả; tệp cũ có `ApplyPull` replay y như cũ; giao diện và lỗi có tiếng Việt và tiếng Anh.
+
+**Ngoài phạm vi.** Đẩy tên, effort và trạng thái về nguồn (hiện chỉ đẩy ngày và người được giao); gộp văn bản; xung đột khi đổi cha; Jira và Asana.
+
 ### Tiếng Anh (sau v1.0.0) — đã xong
 
 Giao diện có tiếng Việt và tiếng Anh. Lần đầu mở theo ngôn ngữ hệ thống (máy tiếng Việt thì tiếng Việt, còn lại tiếng Anh, không lưu); Xem → Ngôn ngữ đổi ngay và lưu lựa chọn vào `settings.json`. Mỗi vùng giao diện có catalog `<Tên>.i18n.ts` (`defineMessages(vi, en)`, kiểu của `en` lấy từ `vi` nên thiếu khóa là lỗi biên dịch). Tiếng Anh dùng ngày ISO `2026-01-05 08:00`, dấu chấm thập phân, `7.5 days`, thuật ngữ Microsoft Project (As Soon As Possible, Fixed Units, Effort driven…). Ô nhập nhận cả hai kiểu ở cả hai ngôn ngữ. Menu, hộp hỏi lưu, hộp Giới thiệu, thông báo lỗi của engine và báo cáo khôi phục tệp theo ngôn ngữ đang chọn (`src-tauri/src/i18n.rs`, `EngineError::message(lang)`). Tên đã ghi vào tệp là dữ liệu, không đổi khi đổi ngôn ngữ, nên replay và tệp đã lưu không phụ thuộc ngôn ngữ. Tên mặc định theo ngôn ngữ lúc tạo: giao diện gửi tên cho công việc, nguồn lực, mốc, lịch, chuỗi lặp mới; dự án mới dùng `Document::new_in(lang)` ("New project", "Task 1", lịch "Standard"). Tiếng Anh chỉ nhận ngày dạng ISO để `1/5/2026` không bị hiểu nhầm; độ trễ gõ "2 hrs", "30 mins" được chuẩn hóa thành "2h", "30m" trước khi gửi, để tệp vẫn mở được ở bản cũ.

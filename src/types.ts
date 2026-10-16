@@ -593,6 +593,18 @@ export interface ExternalLink {
   /** The days (`YYYY-MM-DD`) last written to the source by a push. */
   pushed_start?: string | null;
   pushed_due?: string | null;
+  /** What the source and Sheafly held at the last sync, by field key (`name`, `work`, `start`, `due`, `status`, `assignee`, `field:<id>`). */
+  base?: { source: Record<string, string>; local: Record<string, string> } | null;
+}
+
+/** Which side a conflict resolution keeps (mirror of `sync::Side`). */
+export type Side = "source" | "sheafly";
+
+/** Mirror of `sync::Resolution`: the user's choice for one field of one issue. */
+export interface Resolution {
+  key: string;
+  field: string;
+  keep: Side;
 }
 
 /** Mirror of `push::PushOptions`: what a push writes. */
@@ -678,6 +690,8 @@ export interface PushedEntry {
   key: string;
   start?: string | null;
   due?: string | null;
+  /** The email written as the assignee. */
+  assignee?: string | null;
 }
 
 /** Mirror of `pull::PullTask`, one issue of `apply_pull` as the adapter read it. */
@@ -826,7 +840,7 @@ export type Command =
   | { type: "assign_tasks"; assignments: TaskAssignment[] }
   | { type: "set_resource_email"; uid: number; email: string }
   | { type: "set_source"; source: Source | null }
-  | { type: "apply_pull"; rows: PullTask[]; pulled_at: number }
+  | { type: "apply_pull"; rows: PullTask[]; pulled_at: number; resolutions?: Resolution[] }
   | { type: "record_push"; entries: PushedEntry[] }
   | { type: "import_rows"; after_uid: number | null; resources: ImportResource[]; tasks: ImportTask[] }
   | { type: "apply_plan"; assignments: TaskAssignment[]; delays: LevelingDelay[]; splits: LevelingSplits[] };

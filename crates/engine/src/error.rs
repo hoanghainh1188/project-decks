@@ -136,6 +136,7 @@ pub enum Invalid {
     PullLink,
     PushDate,
     NothingToRecord,
+    PullHasConflicts,
 }
 
 impl EngineError {
@@ -556,6 +557,10 @@ impl Invalid {
                 "Không có công việc liên kết nào khớp để ghi nhớ",
                 "No linked task matches, so there is nothing to record",
             ),
+            Self::PullHasConflicts => fixed(
+                "Một số trường đã đổi ở cả hai phía; hãy chọn giữ bên nào",
+                "Some fields changed on both sides; choose which to keep",
+            ),
         }
     }
 }
@@ -672,6 +677,7 @@ mod tests {
             PullLink,
             PushDate,
             NothingToRecord,
+            PullHasConflicts,
         ];
         for reason in all {
             let (vi, en) = (reason.message(Lang::Vi), reason.message(Lang::En));

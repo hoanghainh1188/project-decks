@@ -8,6 +8,8 @@
 //! Resources gain an email address here too, since people at the source are matched to
 //! people in the project by it.
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 use crate::error::{EngineError, Invalid};
@@ -86,6 +88,23 @@ pub struct ExternalLink {
     pub pushed_start: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pushed_due: Option<String>,
+    /// What the source and Sheafly said at the last sync, field by field (`sync.rs`); the
+    /// base of the three-way comparison that finds conflicts. Absent for a link made
+    /// before it existed, and for one a legacy pull (no `resolutions`) last touched.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base: Option<SyncBase>,
+}
+
+/// The value of each synced field as of the last sync, in the canonical text of
+/// `sync::SyncField`; a field with no value is absent.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SyncBase {
+    /// What the source held.
+    #[serde(default)]
+    pub source: BTreeMap<String, String>,
+    /// What Sheafly held (the value that corresponds to the source's field).
+    #[serde(default)]
+    pub local: BTreeMap<String, String>,
 }
 
 /// `SetSource`: replace or clear the project's source, checked and tidied.

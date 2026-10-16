@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::{EngineError, Invalid};
 use crate::model::Project;
 use crate::pull::PullTask;
+use crate::sync::{self, SyncField};
 use crate::timeutil::{civil, date_key, parse_date_key};
 
 /// What to push.
@@ -70,6 +71,9 @@ pub enum PushSkipReason {
     ManyAssignees,
     /// The person on the task has no email, so the source cannot find them.
     NoEmail,
+    /// The source's value changed since the last sync, so writing over it would lose that
+    /// change: pull and settle it first. `PushSkip::field` names the field.
+    SourceChanged,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -78,6 +82,9 @@ pub struct PushSkip {
     pub key: String,
     pub name: String,
     pub reason: PushSkipReason,
+    /// The field a `SourceChanged` skip is about (`start`, `due`, `assignee`); none for the
+    /// others, which concern the whole task.
+    pub field: Option<String>,
 }
 
 /// A linked task whose issue the source did not return.
@@ -127,9 +134,26 @@ pub fn plan(project: &Project, rows: &[PullTask], options: PushOptions) -> PushP
             plan.missing.push(MissingTask { uid: task.uid, key: link.key.clone(), name: task.name.clone() });
             continue;
         };
-        let skip = |reason| PushSkip { uid: task.uid, key: link.key.clone(), name: task.name.clone(), reason };
-        let start = if options.start { day_change(row.start, task.start, options.overwrite) } else { None };
-        let due = if options.due { day_change(row.due, task.finish, options.overwrite) } else { None };
+        let skip = |reason| PushSkip { uid: task.uid, key: link.key.clone(), name: task.name.clone(), reason, field: None };
+        // A field the source changed since the last sync is left for a pull to settle.
+        let changed_at_source = |field: SyncField, now: Option<String>| {
+            link.base.as_ref().is_some_and(|base| base.source.get(&field.key()) != now.as_ref())
+        };
+        let guard = |field: SyncField, now: Option<String>, plan: &mut PushPlan| {
+            let moved = changed_at_source(field, now);
+            if moved {
+                plan.skipped.push(PushSkip { field: Some(field.key()), ..skip(PushSkipReason::SourceChanged) });
+            }
+            moved
+        };
+        let mut start = if options.start { day_change(row.start, task.start, options.overwrite) } else { None };
+        if start.is_some() && guard(SyncField::Start, row.start.map(sync::day_text), &mut plan) {
+            start = None;
+        }
+        let mut due = if options.due { day_change(row.due, task.finish, options.overwrite) } else { None };
+        if due.is_some() && guard(SyncField::Due, row.due.map(sync::day_text), &mut plan) {
+            due = None;
+        }
         let mut assignee = None;
         if options.assignee {
             let people: Vec<u32> = project
@@ -147,7 +171,8 @@ pub fn plan(project: &Project, rows: &[PullTask], options: PushOptions) -> PushP
                         Some(email) => {
                             let from = row.assignee_email.as_deref().map(str::trim).filter(|e| !e.is_empty());
                             let same = from.is_some_and(|from| from.eq_ignore_ascii_case(email));
-                            if !same && (options.overwrite || from.is_none()) {
+                            let now = from.map(str::to_lowercase);
+                            if !same && (options.overwrite || from.is_none()) && !guard(SyncField::Assignee, now, &mut plan) {
                                 assignee = Some(AssigneeChange {
                                     from: from.map(str::to_string),
                                     to: email.to_string(),
@@ -182,6 +207,9 @@ pub struct PushedEntry {
     pub start: Option<String>,
     #[serde(default)]
     pub due: Option<String>,
+    /// The email of the person written as the assignee.
+    #[serde(default)]
+    pub assignee: Option<String>,
 }
 
 /// `RecordPush`: remember the days written, on the linked tasks, so a pull knows them.
@@ -204,7 +232,20 @@ pub(crate) fn record_push(project: &mut Project, entries: &[PushedEntry]) -> Res
             if entry.due.is_some() {
                 link.pushed_due = entry.due.clone();
             }
-            recorded |= entry.start.is_some() || entry.due.is_some();
+            // The source now holds what was written; what Sheafly held stays, so a pull
+            // right after finds nothing changed at either side.
+            if let Some(base) = link.base.as_mut() {
+                if let Some(day) = &entry.start {
+                    sync::set(&mut base.source, &SyncField::Start.key(), Some(day.clone()));
+                }
+                if let Some(day) = &entry.due {
+                    sync::set(&mut base.source, &SyncField::Due.key(), Some(day.clone()));
+                }
+                if let Some(email) = &entry.assignee {
+                    sync::set(&mut base.source, &SyncField::Assignee.key(), Some(email.trim().to_lowercase()));
+                }
+            }
+            recorded |= entry.start.is_some() || entry.due.is_some() || entry.assignee.is_some();
         }
     }
     if recorded {
