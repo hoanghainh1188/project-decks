@@ -25,6 +25,7 @@ import type {
   PushPreview,
   PushProgress,
   PushReport,
+  Resolution,
   Source,
   Snapshot,
   Suggestion,
@@ -181,8 +182,8 @@ export function trackerPull(source: Source): Promise<PullPreview | null> {
 }
 
 /** What pulling `rows` would do to the project as it is now. */
-export function trackerCheck(rows: PullTask[], pulledAt: number): Promise<PullChanges> {
-  return inOrder(() => invoke<PullChanges>("tracker_check", { rows, pulledAt }));
+export function trackerCheck(rows: PullTask[], pulledAt: number, resolutions: Resolution[] = []): Promise<PullChanges> {
+  return inOrder(() => invoke<PullChanges>("tracker_check", { rows, pulledAt, resolutions }));
 }
 
 /** Stop the pull that is fetching. */

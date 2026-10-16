@@ -1,5 +1,5 @@
 import { useMessages } from "../../i18n";
-import type { PushPreview } from "../../types";
+import type { PushPreview, PushSkip } from "../../types";
 import { trackerPushMessages } from "./TrackerPushDialog.i18n";
 
 /** Rows listed before the rest are counted. */
@@ -9,7 +9,12 @@ const LISTED = 200;
 export function TrackerPushPreview({ preview }: { preview: PushPreview }) {
   const m = useMessages(trackerPushMessages);
   const { changes, skipped, missing } = preview.plan;
-  const reason = (kind: "many_assignees" | "no_email") => (kind === "many_assignees" ? m.skipManyAssignees : m.skipNoEmail);
+  const reason = (item: PushSkip): string => {
+    if (item.reason === "many_assignees") return m.skipManyAssignees;
+    if (item.reason === "no_email") return m.skipNoEmail;
+    const names = { start: m.pushFieldStart, due: m.pushFieldDue, assignee: m.pushFieldAssignee } as Record<string, string>;
+    return m.skipSourceChanged(names[item.field ?? ""] ?? item.field ?? "");
+  };
   return (
     <div className="tracker-preview">
       {changes.length === 0 ? (
@@ -55,7 +60,7 @@ export function TrackerPushPreview({ preview }: { preview: PushPreview }) {
           <ul aria-label={m.skippedTitle} className="import-problems">
             {skipped.slice(0, LISTED).map((item, index) => (
               <li key={`${item.key}-${index}`}>
-                {item.key}: {reason(item.reason)}
+                {item.key}: {reason(item)}
               </li>
             ))}
             {skipped.length > LISTED && <li>{m.moreRows(skipped.length - LISTED)}</li>}

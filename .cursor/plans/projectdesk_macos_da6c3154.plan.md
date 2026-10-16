@@ -780,7 +780,8 @@ Kết quả đúng: không còn quá tải, không có giờ rảnh xen giữa c
 
 **PR.**
 - **PR A — engine (L), không mạng.** `ExternalLink.base`; mô-đun `sync.rs` (giá trị chuẩn, quyết định); `ApplyPull.resolutions`; `PullDiff.conflicts`; `RecordPush` cập nhật nền; `push::plan` bỏ qua trường đã đổi ở nguồn. Test `tests/sync.rs`.
-- **PR B — Tauri (S).** Xung đột trong `PullChanges`/`PullPreview`, `tracker_check` nhận quyết định, lỗi thông báo.
+- **PR B + C (gộp, 16/10/2026).** Gộp vì xem trước ba bên mà áp dụng bằng đường cũ thì hộp thoại tự mâu thuẫn. `tracker::changes` luôn là `diff_with` ba bên; `PullChanges` có `conflicts` và `bases_changed`; `tracker_check` nhận quyết định; hộp thoại kéo có mục xung đột (chọn Nguồn hoặc Sheafly từng trường, chọn cả loạt, hỏi lại engine sau mỗi lựa chọn), luôn gửi `apply_pull` kèm `resolutions`; hộp thoại đẩy hiện trường bị bỏ qua vì nguồn đã đổi.
+- **(kế hoạch ban đầu) PR B — Tauri (S).** Xung đột trong `PullChanges`/`PullPreview`, `tracker_check` nhận quyết định, lỗi thông báo.
 - **PR C — giao diện (M).** Mục xung đột trong hộp thoại kéo (từng trường: nền, nguồn, Sheafly; chọn giữ Sheafly hoặc lấy nguồn, chọn cả loạt), nút áp dụng chỉ bật khi đã giải quyết hết; hộp thoại đẩy hiện các trường bị bỏ qua vì nguồn đã đổi.
 - **PR D — tài liệu.**
 

@@ -828,6 +828,10 @@ input.bad { color: var(--critical-text); border-color: var(--critical-text); fon
 .tracker-emails { list-style: none; margin: 4px 0; padding: 0; display: grid; gap: 4px; }
 .tracker-warnings { margin: 4px 0; padding-left: 18px; }
 .tracker-preview { display: grid; gap: 8px; }
+.tracker-conflicts { display: grid; gap: 6px; margin-bottom: 8px; }
+.tracker-conflicts p { margin: 0; }
+.tracker-conflict-bulk { display: flex; gap: 8px; flex-wrap: wrap; }
+.tracker-conflicts td label { white-space: nowrap; }
 .tracker-preview p { margin: 0; }
 .unmatched summary { cursor: pointer; padding: 2px 0; }
 .unmatched .meta { margin: 2px 0 6px 16px; }

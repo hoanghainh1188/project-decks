@@ -175,7 +175,15 @@ class FakeBackend {
         return structuredClone(this.pullPreview);
       case "tracker_check": {
         const base = this.pullPreview;
-        return structuredClone(this.pullChanges ?? { changes: base?.changes ?? [], gone: base?.gone ?? [], problems: base?.problems ?? [] });
+        return structuredClone(
+          this.pullChanges ?? {
+            changes: base?.changes ?? [],
+            gone: base?.gone ?? [],
+            problems: base?.problems ?? [],
+            conflicts: base?.conflicts ?? [],
+            bases_changed: base?.bases_changed ?? false,
+          },
+        );
       }
       case "tracker_push_preview":
         return structuredClone(this.pushPreview);

@@ -32,6 +32,7 @@ use sheafly_engine::plan::{self, PlanPreview};
 use sheafly_engine::timeutil::parse_date_key;
 use sheafly_engine::skills::TaskAssignment;
 use sheafly_engine::pull::PullTask;
+use sheafly_engine::sync::Resolution;
 use sheafly_engine::push::{self, PushOptions, PushPlan};
 use sheafly_engine::source::{self, Source};
 use tracker::PullPreview;
@@ -616,7 +617,7 @@ fn tracker_pull(app: AppHandle, state: State<'_, AppState>, source: Source) -> R
     let project = lock(&state).project.clone();
     let converted = backlog::convert(&issues, &source, &project.fields);
     let pulled_at = now_millis();
-    let changes = tracker::changes(&project, &converted.rows, pulled_at, lang);
+    let changes = tracker::changes(&project, &converted.rows, pulled_at, &[], lang);
     Ok(Some(PullPreview {
         rows: converted.rows,
         pulled_at,
@@ -740,11 +741,17 @@ fn tracker_push(
 }
 
 /// What pulling `rows` would do to the project as it is now, for when something changed
-/// since the fetch (an email added to a person, an edit) and the rows are still good.
+/// since the fetch (an email added to a person, an edit) and the rows are still good, or
+/// under the choices made for the conflicts.
 #[tauri::command(async)]
-fn tracker_check(state: State<'_, AppState>, rows: Vec<PullTask>, pulled_at: i64) -> tracker::PullChanges {
+fn tracker_check(
+    state: State<'_, AppState>,
+    rows: Vec<PullTask>,
+    pulled_at: i64,
+    resolutions: Vec<Resolution>,
+) -> tracker::PullChanges {
     let project = lock(&state).project.clone();
-    tracker::changes(&project, &rows, pulled_at, lang(&state))
+    tracker::changes(&project, &rows, pulled_at, &resolutions, lang(&state))
 }
 
 /// Stop the pull that is fetching.

@@ -13,10 +13,11 @@ import {
   trackerTest,
 } from "../../api";
 import { useMessages } from "../../i18n";
-import type { Command, Project, PullPreview, PullProgress, Snapshot } from "../../types";
+import type { Command, Project, PullChanges, PullConflict, PullPreview, PullProgress, Resolution, Side, Snapshot } from "../../types";
 import { Button } from "../Button";
 import { Modal } from "../Modal";
 import { trackerDialogMessages } from "./TrackerDialog.i18n";
+import { choiceKey, TrackerConflicts } from "./TrackerConflicts";
 import { counts, TrackerPreview } from "./TrackerPreview";
 import { TrackerSetup } from "./TrackerSetup";
 import { complete, formFor, sameSource, sourceOf, type SourceForm } from "./trackerSource";
@@ -51,6 +52,10 @@ export function TrackerDialog({
   const [note, setNote] = useState<{ text: string; bad: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
   const sending = useRef(false);
+  // What the user chose for each conflict (by `choiceKey`), and what the pull would do under
+  // those choices; null while none is made.
+  const [choices, setChoices] = useState<Record<string, Side>>({});
+  const [resolved, setResolved] = useState<PullChanges | null>(null);
   // The project the preview was made for: a later one means the changes must be asked again.
   const checkedFor = useRef<Project | null>(null);
 
@@ -81,12 +86,47 @@ export function TrackerDialog({
     checkedFor.current = project;
     let current = true;
     trackerCheck(preview.rows, preview.pulled_at)
-      .then((changes) => current && setStage({ kind: "preview", preview: { ...preview, ...changes } }))
+      .then((changes) => {
+        if (!current) return;
+        setStage({ kind: "preview", preview: { ...preview, ...changes } });
+        // A choice for a conflict that is gone is dropped.
+        const present = new Set(changes.conflicts.map(choiceKey));
+        setChoices((now) => Object.fromEntries(Object.entries(now).filter(([key]) => present.has(key))));
+      })
       .catch((err) => current && setNote({ text: errorMessage(err), bad: true }));
     return () => {
       current = false;
     };
   }, [project, preview]);
+
+  // What the pull does under the choices made: asked again on every choice and every change.
+  const rows = preview?.rows;
+  const pulledAt = preview?.pulled_at;
+  const resolutions: Resolution[] = Object.entries(choices).map(([key, keep]) => {
+    const [issue, field] = key.split("\u0000");
+    return { key: issue, field, keep };
+  });
+  const resolutionsSignature = JSON.stringify(resolutions);
+  useEffect(() => {
+    if (!rows || pulledAt == null || resolutionsSignature === "[]") {
+      setResolved(null);
+      return;
+    }
+    let current = true;
+    trackerCheck(rows, pulledAt, JSON.parse(resolutionsSignature) as Resolution[])
+      .then((changes) => current && setResolved(changes))
+      .catch((err) => current && setNote({ text: errorMessage(err), bad: true }));
+    return () => {
+      current = false;
+    };
+  }, [rows, pulledAt, resolutionsSignature, project]);
+
+  function choose(conflict: PullConflict, side: Side) {
+    setChoices((now) => ({ ...now, [choiceKey(conflict)]: side }));
+  }
+  function chooseAll(side: Side) {
+    setChoices(Object.fromEntries((preview?.conflicts ?? []).map((conflict) => [choiceKey(conflict), side])));
+  }
 
   async function saveTypedKey() {
     if (!keyInput.trim()) return;
@@ -137,9 +177,23 @@ export function TrackerDialog({
     }
   }
 
-  const summary = preview ? counts(preview) : null;
+  // The preview as it stands under the choices; the list of conflicts stays the full one.
+  const shown: PullPreview | null = preview
+    ? resolved
+      ? { ...preview, changes: resolved.changes, gone: resolved.gone, problems: resolved.problems, bases_changed: resolved.bases_changed }
+      : preview
+    : null;
+  const summary = shown ? counts(shown) : null;
   const changeCount = summary ? summary.added + summary.changed + summary.gone : 0;
-  const canApply = preview != null && preview.problems.length === 0 && changeCount > 0 && !busy;
+  const unresolved = (preview?.conflicts ?? []).some((conflict) => !choices[choiceKey(conflict)]);
+  const waitingForCheck = (resolutionsSignature !== "[]") !== (resolved != null);
+  const canApply =
+    shown != null &&
+    shown.problems.length === 0 &&
+    !unresolved &&
+    !waitingForCheck &&
+    (changeCount > 0 || shown.bases_changed) &&
+    !busy;
 
   async function apply() {
     if (!preview || sending.current || !canApply) return;
@@ -148,7 +202,7 @@ export function TrackerDialog({
     let done: Snapshot | void = undefined;
     if (!sameSource(project.source, source)) done = await send({ type: "set_source", source });
     else done = {} as Snapshot;
-    if (done) done = await send({ type: "apply_pull", rows: preview.rows, pulled_at: preview.pulled_at });
+    if (done) done = await send({ type: "apply_pull", rows: preview.rows, pulled_at: preview.pulled_at, resolutions });
     sending.current = false;
     setBusy(false);
     if (done) onClose();
@@ -222,11 +276,22 @@ export function TrackerDialog({
           disabled={fetching || busy}
         />
       ) : (
-        <TrackerPreview
-          project={project}
-          preview={stage.preview}
-          onMatchEmail={(uid, email) => void send({ type: "set_resource_email", uid, email })}
-        />
+        <>
+          {stage.preview.conflicts.length > 0 && (
+            <TrackerConflicts
+              project={project}
+              conflicts={stage.preview.conflicts}
+              choices={choices}
+              onChoose={choose}
+              onChooseAll={chooseAll}
+            />
+          )}
+          <TrackerPreview
+            project={project}
+            preview={shown ?? stage.preview}
+            onMatchEmail={(uid, email) => void send({ type: "set_resource_email", uid, email })}
+          />
+        </>
       )}
     </Modal>
   );

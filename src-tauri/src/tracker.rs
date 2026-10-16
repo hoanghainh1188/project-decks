@@ -14,7 +14,8 @@ use std::time::Duration;
 
 use serde::Serialize;
 use serde_json::Value;
-use sheafly_engine::pull::{self, GoneTask, PullColumn, PullRowDiff, PullTask};
+use sheafly_engine::pull::{self, GoneTask, PullColumn, PullConflict, PullRowDiff, PullTask};
+use sheafly_engine::sync::Resolution;
 use sheafly_engine::{Lang, Project};
 
 use crate::backlog::PullWarning;
@@ -276,6 +277,11 @@ pub struct PullChanges {
     pub changes: Vec<PullRowDiff>,
     pub gone: Vec<GoneTask>,
     pub problems: Vec<PullProblem>,
+    /// Fields changed on both sides that the resolutions given do not settle.
+    pub conflicts: Vec<PullConflict>,
+    /// A base would be updated without a task changing (a conflict settled by keeping
+    /// Sheafly): worth applying on its own.
+    pub bases_changed: bool,
 }
 
 /// What a pull found and what it would change. The frontend applies it by sending the
@@ -289,9 +295,18 @@ pub struct PullPreview {
     pub changes: PullChanges,
 }
 
-/// `pull::diff` of `rows` against `project`, with the problems worded for `lang`.
-pub fn changes(project: &Project, rows: &[PullTask], pulled_at: i64, lang: Lang) -> PullChanges {
-    let diff = pull::diff(project, rows, pulled_at);
+/// The three-way `pull::diff_with` of `rows` against `project` under `resolutions`, with the
+/// problems worded for `lang`.
+pub fn changes(
+    project: &Project,
+    rows: &[PullTask],
+    pulled_at: i64,
+    resolutions: &[Resolution],
+    lang: Lang,
+) -> PullChanges {
+    // Always the three-way pull: a field moves only when the source changed it and
+    // Sheafly did not, and fields changed on both sides wait for a choice.
+    let diff = pull::diff_with(project, rows, pulled_at, Some(resolutions));
     PullChanges {
         problems: diff
             .errors
@@ -305,6 +320,8 @@ pub fn changes(project: &Project, rows: &[PullTask], pulled_at: i64, lang: Lang)
             .collect(),
         changes: diff.rows,
         gone: diff.gone,
+        conflicts: diff.conflicts,
+        bases_changed: diff.bases_changed,
     }
 }
 
@@ -349,6 +366,30 @@ mod tests {
         for lang in [Lang::Vi, Lang::En] {
             assert!(!error.message(lang).contains("SECRET"));
         }
+    }
+
+    #[test]
+    fn a_field_changed_on_both_sides_is_a_conflict_until_a_choice_settles_it() {
+        use sheafly_engine::sync::Side;
+        use sheafly_engine::{Command, Document};
+
+        let row = || PullTask { key: "P-1".into(), name: "Ở nguồn".into(), ..PullTask::default() };
+        let mut doc = Document::new_default();
+        doc.apply(Command::ApplyPull { rows: vec![row()], pulled_at: 1, resolutions: Some(vec![]) }).unwrap();
+        let uid = doc.project.tasks.iter().find(|task| task.external.is_some()).unwrap().uid;
+        doc.apply(Command::RenameTask { uid, name: "Ở Sheafly".into() }).unwrap();
+        let mut changed = row();
+        changed.name = "Nguồn đổi".into();
+
+        let open = changes(&doc.project, &[changed.clone()], 2, &[], Lang::En);
+        assert_eq!(open.conflicts.len(), 1);
+        assert_eq!(open.conflicts[0].field, "name");
+        assert!(!open.bases_changed);
+
+        let keep = [Resolution { key: "P-1".into(), field: "name".into(), keep: Side::Sheafly }];
+        let settled = changes(&doc.project, &[changed], 2, &keep, Lang::En);
+        assert!(settled.conflicts.is_empty());
+        assert!(settled.bases_changed, "keeping Sheafly is itself worth recording");
     }
 
     #[test]

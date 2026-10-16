@@ -48,7 +48,10 @@ const PREVIEW: PushPreview = {
         assignee: { from: null, to: "an@example.com", resource_uid: 10 },
       },
     ],
-    skipped: [{ uid: 3, key: "PROJ-3", name: "Việc nhóm", reason: "many_assignees" }],
+    skipped: [
+      { uid: 3, key: "PROJ-3", name: "Việc nhóm", reason: "many_assignees" },
+      { uid: 1, key: "PROJ-1", name: "Màn hình đăng nhập", reason: "source_changed", field: "due" },
+    ],
     missing: [{ uid: 4, key: "PROJ-4", name: "Việc mất" }],
   },
   unknown_assignees: [],
@@ -131,6 +134,9 @@ describe("TrackerPushDialog", () => {
     expect(within(table).getByText("— → an@example.com")).toBeInTheDocument();
     expect(screen.getByText(/Sẽ ghi lên Backlog/)).toBeInTheDocument();
     expect(within(screen.getByRole("list", { name: "Bỏ qua" })).getByText("PROJ-3: có nhiều người, nguồn chỉ nhận một")).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("list", { name: "Bỏ qua" })).getByText("PROJ-1: hạn đã đổi ở nguồn từ lần đồng bộ trước; hãy kéo và giải quyết trước"),
+    ).toBeInTheDocument();
     expect(screen.getByText(/1 việc đã liên kết nhưng nguồn không trả về/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Ghi 2 việc lên Backlog" })).toBeEnabled();
     // Nothing was written by previewing.
