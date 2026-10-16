@@ -108,6 +108,10 @@ pub(crate) fn update_field(
         }
     }
     skills::field_changed(project, id, &kind, &renames);
+    // Numbers cannot group tasks for the forecast.
+    if matches!(kind, FieldKind::Number) && project.forecast.field == Some(id) {
+        project.forecast.field = None;
+    }
     project.fields[position] = FieldDef { id, name, kind };
     Ok(())
 }
@@ -119,6 +123,9 @@ pub(crate) fn delete_field(project: &mut Project, id: u32) -> Result<(), EngineE
     project.fields.remove(position);
     level_order::drop_field(project, id);
     skills::drop_field(project, id);
+    if project.forecast.field == Some(id) {
+        project.forecast.field = None;
+    }
     for task in &mut project.tasks {
         task.values.remove(&id);
     }

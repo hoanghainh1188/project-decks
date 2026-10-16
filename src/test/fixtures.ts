@@ -142,6 +142,7 @@ export function makeProject(overrides: Partial<Project> = {}): Project {
     skills: [],
     next_skill_id: 1,
     assignment_rules: [],
+    forecast: { field: null, group: "medium", common: "low" },
     ...overrides,
   };
 }

@@ -3,12 +3,19 @@
 use sheafly_engine::calendar::TimeRange;
 use sheafly_engine::command::Command;
 use sheafly_engine::statistics::statistics;
+use sheafly_engine::timeutil::timestamp;
 use sheafly_engine::Document;
 
 const DAY: i64 = 480;
 
 fn two_tasks() -> Document {
     let mut doc = Document::new_default();
+    // A fixed Monday: the default project starts today, and a start late in the week
+    // sends the tasks over a weekend.
+    doc.apply(Command::SetProjectStart {
+        start: timestamp(2026, 1, 5, 8, 0),
+    })
+    .unwrap();
     doc.apply(Command::SetDuration {
         uid: 1,
         minutes: 2 * DAY,
