@@ -22,6 +22,7 @@ use sheafly_engine::store;
 use sheafly_engine::suggest::{self, Suggestion};
 use sheafly_engine::command::{LevelingDelay, LevelingSplits};
 use sheafly_engine::import::{self, ImportColumn, ImportResource, ImportTable, ImportTask};
+use sheafly_engine::forecast::{self, Forecast};
 use sheafly_engine::load_map::{self, Bucket, LoadMap};
 use sheafly_engine::plan::{self, PlanPreview};
 use sheafly_engine::timeutil::parse_date_key;
@@ -67,6 +68,8 @@ struct AppState {
     /// The project as `preview_plan` last saw it: `apply_plan` refuses a plan made for
     /// another state (an edit, undo or redo since, which a cursor alone cannot tell).
     plan_base: Mutex<Option<(sheafly_engine::Project, PlanPreview)>>,
+    /// Stops the finish forecast still running when a newer one starts.
+    forecast_cancel: Mutex<Arc<AtomicBool>>,
 }
 
 impl AppState {
@@ -88,6 +91,7 @@ impl AppState {
             settings_lock: Mutex::new(()),
             import_table: Mutex::new(None),
             plan_base: Mutex::new(None),
+            forecast_cancel: Mutex::new(Arc::new(AtomicBool::new(false))),
         }
     }
 }
@@ -98,8 +102,11 @@ const AUTOSAVE_INTERVAL: Duration = Duration::from_secs(30);
 /// Undo steps kept by "Gộp lịch sử hoàn tác".
 const HISTORY_KEPT: usize = 100;
 
+/// The document changed: bump the revision the autosave watches, and stop a finish forecast
+/// still running on the project as it was (it answers `None`).
 fn mark_edited(state: &AppState) {
     state.revision.fetch_add(1, Ordering::AcqRel);
+    state.forecast_cancel.lock().unwrap_or_else(|err| err.into_inner()).store(true, Ordering::Relaxed);
 }
 
 /// The document was saved, discarded, or replaced: nothing is left to recover. Call with
@@ -549,6 +556,25 @@ fn load_map(state: State<'_, AppState>, from: String, to: String, bucket: Bucket
     let to = parse_date_key(&to).ok_or_else(bad)?;
     let project = lock(&state).project.clone();
     load_map::load_map(&project, from, to, bucket).map_err(engine_message(&state))
+}
+
+/// The finish forecast over `iterations` runs of the project as it is now (the engine
+/// makes at most `forecast::MAX_ITERATIONS`). A newer call or any change to the document
+/// stops this one, which then answers `None` (the frontend has moved on).
+#[tauri::command(async)]
+fn forecast(state: State<'_, AppState>, iterations: u32) -> Result<Option<Forecast>, String> {
+    let cancel = Arc::new(AtomicBool::new(false));
+    {
+        let mut running = state.forecast_cancel.lock().unwrap_or_else(|err| err.into_inner());
+        running.store(true, Ordering::Relaxed);
+        *running = cancel.clone();
+    }
+    let project = lock(&state).project.clone();
+    match forecast::forecast(&project, iterations, &cancel) {
+        Ok(result) => Ok(Some(result)),
+        Err(EngineError::Cancelled) => Ok(None),
+        Err(err) => Err(engine_message(&state)(err)),
+    }
 }
 
 /// What assigning `assignments` and leveling would do, without changing the project.
@@ -1324,6 +1350,7 @@ pub fn run() {
             check_import,
             preview_plan,
             load_map,
+            forecast,
             apply_plan,
             export_mspdi,
             save_pdf,

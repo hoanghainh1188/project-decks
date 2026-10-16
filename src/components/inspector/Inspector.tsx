@@ -5,6 +5,7 @@ import { valueOf } from "../../fieldValues";
 import { DateTimeField } from "../DateTimeField";
 import { FieldInput } from "../FieldInput";
 import { AssignmentEditor } from "./AssignmentEditor";
+import { EstimateGroup } from "./EstimateGroup";
 import { canSplit, SplitSection } from "./SplitSection";
 import { inspectorMessages } from "./Inspector.i18n";
 import { useInspectorOpen } from "./useInspectorOpen";
@@ -62,6 +63,7 @@ export function Inspector(props: Props) {
           <SeriesGroup {...props} />
           <ScheduleGroup {...props} />
           {!task.summary && <TrackingGroup {...props} />}
+          <EstimateGroup project={props.project} task={task} send={props.send} />
           <CostGroup {...props} />
           {!task.summary && (
             <fieldset className="inspector-group assign-group">

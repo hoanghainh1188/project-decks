@@ -51,6 +51,9 @@ interface Props {
   /** Whether the task sheet shows the interrupt flag as a column. */
   interruptsColumn: boolean;
   onInterruptsColumn: (show: boolean) => void;
+  /** Whether the task sheet shows the effort range (finish forecast) as two columns. */
+  estimateColumns?: boolean;
+  onEstimateColumns?: (show: boolean) => void;
   /** Where the span of "Không vừa khoảng" ends. */
   spanEnd: SpanEnd;
   onSpanEnd: (end: SpanEnd) => void;
@@ -258,6 +261,16 @@ export function ViewBar(props: Props) {
                 onChange={(event) => props.onInterruptsColumn(event.target.checked)}
               />
               {m.interruptsColumn}
+            </label>
+          )}
+          {chart && props.onEstimateColumns && (
+            <label className="view-control">
+              <input
+                type="checkbox"
+                checked={props.estimateColumns ?? false}
+                onChange={(event) => props.onEstimateColumns?.(event.target.checked)}
+              />
+              {m.estimateColumns}
             </label>
           )}
         </div>

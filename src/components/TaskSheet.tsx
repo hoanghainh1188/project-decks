@@ -6,6 +6,7 @@ import { valueOf } from "../fieldValues";
 import { formatDuration, formatInstant, parseDuration } from "../format";
 import { useMessages } from "../i18n";
 import { resourceNamesByTask } from "../resourceNames";
+import { effortAmount, rangeAfterEdit, type RangeEnd } from "../workRange";
 import type { Assignment, Calendar, FieldDef, FieldValue, FillField, Resource, Task } from "../types";
 import type { ViewRow } from "../viewRows";
 import { taskSheetMessages } from "./TaskSheet.i18n";
@@ -33,11 +34,12 @@ const FIELD_WIDTH = { text: 140, number: 90, choice: 120 } as const;
 interface ColumnOptions {
   tracking: boolean;
   interrupts: boolean;
+  estimates: boolean;
   nameWidth: number;
   fields: FieldDef[];
 }
 
-function sheetColumns(m: SheetMessages, { tracking, interrupts, nameWidth, fields }: ColumnOptions): SheetColumn[] {
+function sheetColumns(m: SheetMessages, { tracking, interrupts, estimates, nameWidth, fields }: ColumnOptions): SheetColumn[] {
   const built: Omit<SheetColumn, "key">[] = [
     { label: m.id, width: 42 },
     { label: m.wbs, width: 72 },
@@ -64,6 +66,12 @@ function sheetColumns(m: SheetMessages, { tracking, interrupts, nameWidth, field
     { label: m.resources, width: 160 },
     { label: m.slack, width: 80 },
     ...(interrupts ? [{ label: m.interrupts, width: 84, fill: "interrupts" as const }] : []),
+    ...(estimates
+      ? [
+          { label: m.workLow, width: 92, fill: "work_range" as const },
+          { label: m.workHigh, width: 92, fill: "work_range" as const },
+        ]
+      : []),
   ];
   // Custom fields follow the built-in columns, in the order they were added.
   return [
@@ -97,6 +105,8 @@ interface Props {
   tracking: boolean;
   /** Show the interrupt flag as a column after the built-in ones. */
   interruptsColumn: boolean;
+  /** Show the effort range of the finish forecast as two columns. */
+  estimateColumns?: boolean;
   bodyRef: RefObject<HTMLDivElement | null>;
   /** `extend` is true for Shift+click, which selects every row from the selected one. */
   onSelect: (uid: number, extend: boolean) => void;
@@ -116,6 +126,8 @@ interface Props {
   /** A custom field value, or null to clear it. */
   onFieldValue: (uid: number, fieldId: number, value: FieldValue | null) => void;
   onInterrupts: (uid: number, interrupts: boolean) => void;
+  /** The effort range of a task; both null clears it. */
+  onWorkRange?: (uid: number, low: number | null, high: number | null) => void;
   onEditSeries: (uid: number) => void;
   onScroll: () => void;
 }
@@ -125,7 +137,12 @@ export function TaskSheet(props: Props) {
   const headRef = useRef<HTMLDivElement>(null);
   const [windowRange, setWindowRange] = useState({ start: 0, end: 40 });
   const [paneWidth, setPaneWidth] = useState(0);
-  const options = { tracking: props.tracking, interrupts: props.interruptsColumn, fields: props.fields };
+  const options = {
+    tracking: props.tracking,
+    interrupts: props.interruptsColumn,
+    estimates: props.estimateColumns ?? false,
+    fields: props.fields,
+  };
   const baseWidth = sheetWidthOf(sheetColumns(m, { ...options, nameWidth: NAME_WIDTH }));
   const nameWidth = NAME_WIDTH + Math.max(0, paneWidth - baseWidth);
   const columns = sheetColumns(m, { ...options, nameWidth });
@@ -303,6 +320,17 @@ export function TaskSheet(props: Props) {
                   />
                 </span>
               )}
+              {props.estimateColumns &&
+                (["low", "high"] as const).map((end) => (
+                  <RangeCell
+                    key={end}
+                    task={task}
+                    end={end}
+                    amount={effortAmount(task, props.assignments)}
+                    label={end === "low" ? m.workLowOf(task.name) : m.workHighOf(task.name)}
+                    onCommit={(low, high) => props.onWorkRange?.(task.uid, low, high)}
+                  />
+                ))}
               {props.fields.map((field) => (
                 <FieldInput
                   key={field.id}
@@ -439,6 +467,59 @@ function DurationCell({
         setEditing(false);
         const parsed = parseDuration(value);
         if (parsed !== null && parsed !== source) onCommit(task.uid, parsed);
+      }}
+    />
+  );
+}
+
+/**
+ * One end of the effort range. Empty means no range; typing an end keeps the other (or
+ * takes it from today's effort), and an end that would cross the other is not sent.
+ */
+function RangeCell({
+  task,
+  end,
+  amount,
+  label,
+  onCommit,
+}: {
+  task: Task;
+  end: RangeEnd;
+  amount: number;
+  label: string;
+  onCommit: (low: number | null, high: number | null) => void;
+}) {
+  const source = end === "low" ? task.work_low : task.work_high;
+  const shown = source == null ? "" : formatDuration(source);
+  const m = useMessages(taskSheetMessages);
+  const [value, setValue] = useState(shown);
+  const [editing, setEditing] = useState(false);
+  // Why the last edit was not taken, until the cell is edited again.
+  const [refused, setRefused] = useState<string | null>(null);
+  return (
+    <input
+      aria-label={label}
+      aria-invalid={refused != null}
+      title={refused ?? undefined}
+      disabled={task.summary || task.milestone}
+      value={editing ? value : shown}
+      onChange={(event) => setValue(event.target.value)}
+      onFocus={() => {
+        setEditing(true);
+        setRefused(null);
+        setValue(shown);
+      }}
+      onBlur={() => {
+        setEditing(false);
+        const text = value.trim();
+        const minutes = text ? parseDuration(text) : null;
+        if (text && minutes == null) return setRefused(m.rangeUnreadable);
+        if (minutes === (source ?? null)) return;
+        const next = rangeAfterEdit(task, amount, end, minutes);
+        if (!next) return setRefused(m.rangeCrossed);
+        if (next.low !== (task.work_low ?? null) || next.high !== (task.work_high ?? null)) {
+          onCommit(next.low, next.high);
+        }
       }}
     />
   );

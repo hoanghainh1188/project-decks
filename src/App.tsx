@@ -128,6 +128,7 @@ export default function App() {
   const [metrics, setMetrics] = useState<ProjectMetrics | null>(null);
   const [networkSummaries, setNetworkSummaries] = useState(false);
   const [interruptsColumn, setInterruptsColumn] = useState(false);
+  const [estimateColumns, setEstimateColumns] = useState(false);
   const [sheetShare, setSheetShare] = useState(readShare);
   const changeSheetShare = useCallback((share: number) => setSheetShare(share), []);
   // Kept once a drag settles, not on every pointer move.
@@ -629,6 +630,8 @@ export default function App() {
         onNetworkSummaries={setNetworkSummaries}
         interruptsColumn={interruptsColumn}
         onInterruptsColumn={setInterruptsColumn}
+        estimateColumns={estimateColumns}
+        onEstimateColumns={setEstimateColumns}
         spanEnd={spanEnd}
         onSpanEnd={setSpanEnd}
       />
@@ -651,6 +654,8 @@ export default function App() {
                   selection={selectionSet}
                   tracking={view === "tracking"}
                   interruptsColumn={interruptsColumn}
+                  estimateColumns={estimateColumns}
+                  onWorkRange={(uid, low, high) => send({ type: "set_work_range", uid, low, high })}
                   share={sheetShare}
                   bodyRef={sheetRef}
                   onSelect={(uid, extend) => (extend && selected != null ? setSelectionEnd(uid) : selectOne(uid))}

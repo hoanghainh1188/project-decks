@@ -25,6 +25,7 @@ const HANDLERS = [
   "onCalendar",
   "onFieldValue",
   "onInterrupts",
+  "onWorkRange",
   "onEditSeries",
   "onScroll",
 ] as const;
@@ -37,6 +38,7 @@ function renderSheet(
     lang?: Lang;
     fields?: FieldDef[];
     interruptsColumn?: boolean;
+    estimateColumns?: boolean;
   } = {},
 ) {
   const handlers = Object.fromEntries(HANDLERS.map((name) => [name, vi.fn<(...args: unknown[]) => void>()])) as Record<
@@ -57,6 +59,7 @@ function renderSheet(
       selected={options.selected ?? null}
       tracking={options.tracking ?? false}
       interruptsColumn={options.interruptsColumn ?? false}
+      estimateColumns={options.estimateColumns ?? false}
       bodyRef={bodyRef}
       {...handlers}
     />,
@@ -480,5 +483,42 @@ describe("TaskSheet interrupt column", () => {
   it("names the column in English", () => {
     const { head } = renderSheet(rows, { interruptsColumn: true, lang: "en" });
     expect(within(head).getByText("Interrupts")).toBeInTheDocument();
+  });
+});
+
+describe("TaskSheet estimate columns", () => {
+  const project = outlineProject();
+  project.tasks = project.tasks.map((task) => (task.uid === 7 ? { ...task, work: 480, work_low: 240, work_high: 960 } : task));
+  const rows = buildViewRows(project, "none", null, "none", "none");
+
+  it("shows the effort range as two columns that edit one end at a time", () => {
+    const { container, head, handlers } = renderSheet(rows, { estimateColumns: true });
+    const labels = [...head.children].map((cell) => cell.textContent);
+    expect(labels.slice(-2)).toEqual(["Effort thấp", "Effort cao"]);
+    const high = within(rowOf(container, 7)).getByLabelText(/^Effort cao: /);
+    expect(high).toHaveValue("2 ngày");
+    fireEvent.focus(high);
+    expect(handlers.onFillField).toHaveBeenLastCalledWith("work_range");
+    fireEvent.change(high, { target: { value: "3d" } });
+    fireEvent.blur(high);
+    expect(handlers.onWorkRange).toHaveBeenCalledWith(7, 240, 1440);
+    // A summary has no range of its own.
+    expect(within(rowOf(container, 1)).getByLabelText(/^Effort thấp: /)).toBeDisabled();
+  });
+
+  it("says why an end was not taken", () => {
+    const { container, handlers } = renderSheet(rows, { estimateColumns: true });
+    const low = within(rowOf(container, 7)).getByLabelText(/^Effort thấp: /);
+    fireEvent.focus(low);
+    fireEvent.change(low, { target: { value: "5d" } });
+    fireEvent.blur(low);
+    expect(handlers.onWorkRange).not.toHaveBeenCalled();
+    expect(low).toHaveAttribute("aria-invalid", "true");
+    expect(low).toHaveAttribute("title", expect.stringContaining("lớn hơn mức cao"));
+  });
+
+  it("names the columns in English", () => {
+    const { head } = renderSheet(rows, { estimateColumns: true, lang: "en" });
+    expect(within(head).getByText("Low effort")).toBeInTheDocument();
   });
 });

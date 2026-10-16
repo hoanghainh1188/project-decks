@@ -12,6 +12,7 @@ import type {
   Task,
   TaskAssignment,
   TaskClipboard,
+  Forecast,
 } from "../types";
 import { makeMetrics, makeResource, makeSnapshot, makeTask } from "./fixtures";
 
@@ -33,6 +34,8 @@ class FakeBackend {
   suggestions: Suggestion[] = [];
   /** What `preview_plan` answers; by default the assignments asked for and no leveling. */
   planPreview: PlanPreview | null = null;
+  /** What `forecast` answers (null is a run stopped by a newer one). */
+  forecast: Forecast | null = null;
   /** What `load_map` answers. */
   loadMap: LoadMap = { buckets: [], rows: [] };
   /** What `check_import` answers. */
@@ -120,6 +123,8 @@ class FakeBackend {
         return structuredClone(this.suggestions);
       case "load_map":
         return structuredClone(this.loadMap);
+      case "forecast":
+        return structuredClone(this.forecast);
       case "preview_plan":
         return structuredClone(
           this.planPreview ?? {
@@ -257,6 +262,10 @@ class FakeBackend {
           if (command.field === "duration") task.duration = source.duration;
           const flagged = !task.summary && !task.milestone && !source.summary && !source.milestone;
           if (command.field === "interrupts" && flagged) task.interrupts = source.interrupts;
+          if (command.field === "work_range" && flagged) {
+            task.work_low = source.work_low ?? null;
+            task.work_high = source.work_high ?? null;
+          }
           if (typeof command.field === "object") setValue(task, command.field.field, source.values[command.field.field] ?? null);
         }
         return;
@@ -478,6 +487,21 @@ class FakeBackend {
         task.interrupts = command.interrupts;
         return;
       }
+      case "set_work_range": {
+        const task = project.tasks.find((item) => item.uid === command.uid);
+        if (!task) throw `Không có công việc ${command.uid}`;
+        if (task.summary || task.milestone) throw "Chỉ việc lá mới có khoảng effort";
+        if ((command.low == null) !== (command.high == null)) throw "Khoảng effort cần cả hai mức";
+        if (command.low != null && command.high != null && (command.low < 0 || command.low > command.high)) {
+          throw "Khoảng effort không hợp lệ";
+        }
+        task.work_low = command.low;
+        task.work_high = command.high;
+        return;
+      }
+      case "set_forecast_settings":
+        project.forecast = structuredClone(command.settings);
+        return;
       case "set_editable_actual_costs":
         project.editable_actual_costs = command.editable;
         return;

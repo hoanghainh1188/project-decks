@@ -821,3 +821,9 @@ input.bad { color: var(--critical-text); border-color: var(--critical-text); fon
 .skills-cell { color: var(--text-muted); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .week-day-head { display: flex; align-items: baseline; gap: 8px; }
 .week-day-head .check { flex: none; white-space: nowrap; }
+
+/* Thông tin dự án → Dự báo: one block per setting, the note under its control. */
+.forecast-tab { display: grid; gap: 14px; }
+.forecast-tab > p { margin: 0; }
+.forecast-tab section { display: grid; justify-items: start; gap: 4px; }
+.forecast-tab section .meta { margin: 0; }

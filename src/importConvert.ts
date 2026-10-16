@@ -151,6 +151,13 @@ function taskRow(cells: string[], context: Context, index: Map<number, number>):
         else issue(context, column, m.level);
         return;
       }
+      case "work_low":
+      case "work_high": {
+        const value = minutes(cell, context.setup.bareWork);
+        if (value == null) issue(context, column, m.work);
+        else task[kind] = value;
+        return;
+      }
       case "work":
       case "duration": {
         const value = minutes(cell, kind === "work" ? context.setup.bareWork : context.setup.bareDuration);
@@ -242,6 +249,8 @@ const ENGINE_COLUMNS: Record<string, string[]> = {
   skills: ["skills"],
   level: ["level"],
   work: ["work"],
+  work_low: ["work_low"],
+  work_high: ["work_high", "work_low"],
   duration: ["duration", "work"],
   priority: ["priority"],
   deadline: ["deadline"],

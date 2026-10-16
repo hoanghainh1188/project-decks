@@ -8,13 +8,14 @@ import type { Command, Project, ProjectStatistics, Snapshot } from "../types";
 import { Button } from "./Button";
 import { DateTimeField } from "./DateTimeField";
 import { FieldsTab } from "./FieldsTab";
+import { ForecastTab } from "./ForecastTab";
 import { LevelingTab } from "./LevelingTab";
 import { Modal } from "./Modal";
 import { projectDialogMessages } from "./ProjectDialog.i18n";
 
-export type ProjectTab = "general" | "statistics" | "fields" | "leveling";
+export type ProjectTab = "general" | "statistics" | "fields" | "leveling" | "forecast";
 type Tab = ProjectTab;
-const TABS: Tab[] = ["general", "statistics", "fields", "leveling"];
+const TABS: Tab[] = ["general", "statistics", "fields", "leveling", "forecast"];
 
 /**
  * Changes apply as they are made, so the Gantt previews them; Lưu keeps them and Hủy
@@ -48,7 +49,7 @@ export function ProjectDialog({
   const m = useMessages(appMessages);
   const p = useMessages(projectDialogMessages);
   const [tab, setTab] = useState<Tab>(initialTab);
-  const tabRefs = useRef<Record<Tab, HTMLButtonElement | null>>({ general: null, statistics: null, fields: null, leveling: null });
+  const tabRefs = useRef<Record<Tab, HTMLButtonElement | null>>({ general: null, statistics: null, fields: null, leveling: null, forecast: null });
 
   function onTabKey(event: KeyboardEvent) {
     const index = TABS.indexOf(tab);
@@ -110,6 +111,8 @@ export function ProjectDialog({
           <FieldsTab project={project} send={send} />
         ) : tab === "leveling" ? (
           <LevelingTab project={project} send={send} />
+        ) : tab === "forecast" ? (
+          <ForecastTab project={project} send={send} />
         ) : (
           <StatisticsTab statistics={statistics} />
         )}
