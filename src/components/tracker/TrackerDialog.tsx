@@ -20,7 +20,7 @@ import { trackerDialogMessages } from "./TrackerDialog.i18n";
 import { choiceKey, TrackerConflicts } from "./TrackerConflicts";
 import { counts, TrackerPreview } from "./TrackerPreview";
 import { TrackerSetup } from "./TrackerSetup";
-import { complete, formFor, sameSource, sourceOf, type SourceForm } from "./trackerSource";
+import { complete, formFor, needsAccount, sameSource, sourceOf, type SourceForm } from "./trackerSource";
 
 type Stage = { kind: "setup" } | { kind: "fetching"; progress: PullProgress | null } | { kind: "preview"; preview: PullPreview };
 
@@ -130,7 +130,8 @@ export function TrackerDialog({
 
   async function saveTypedKey() {
     if (!keyInput.trim()) return;
-    await trackerSaveKey(source.kind, source.site, keyInput);
+    if (needsAccount(source.kind) && !form.account.trim()) throw new Error(m.needAccount);
+    await trackerSaveKey(source.kind, source.site, keyInput, needsAccount(source.kind) ? form.account.trim() : null);
     setKeyInput("");
     setHasKey(true);
   }
@@ -271,6 +272,8 @@ export function TrackerDialog({
           onForm={setForm}
           keyInput={keyInput}
           onKeyInput={setKeyInput}
+          account={form.account}
+          onAccount={(account) => setForm({ ...form, account })}
           hasKey={hasKey}
           onForgetKey={() => void forgetKey()}
           disabled={fetching || busy}

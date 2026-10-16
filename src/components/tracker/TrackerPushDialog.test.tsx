@@ -134,13 +134,13 @@ describe("TrackerPushDialog", () => {
     expect(within(table).getByText("— → 2026-01-05")).toBeInTheDocument();
     expect(within(table).getByText("2026-01-09 → 2026-01-06")).toBeInTheDocument();
     expect(within(table).getByText("— → an@example.com")).toBeInTheDocument();
-    expect(screen.getByText(/Sẽ ghi lên Backlog/)).toBeInTheDocument();
+    expect(screen.getByText(/Sẽ ghi lên tracker/)).toBeInTheDocument();
     expect(within(screen.getByRole("list", { name: "Bỏ qua" })).getByText("PROJ-3: có nhiều người, nguồn chỉ nhận một")).toBeInTheDocument();
     expect(
       within(screen.getByRole("list", { name: "Bỏ qua" })).getByText("PROJ-1: hạn đã đổi ở nguồn từ lần đồng bộ trước; hãy kéo và giải quyết trước"),
     ).toBeInTheDocument();
     expect(screen.getByText(/1 việc đã liên kết nhưng nguồn không trả về/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Ghi 2 việc lên Backlog" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Ghi 2 việc lên tracker" })).toBeEnabled();
     // Nothing was written by previewing.
     expect(calls("tracker_push")).toHaveLength(0);
   });
@@ -154,7 +154,7 @@ describe("TrackerPushDialog", () => {
   it("writes only after the button, then remembers the days that went through", async () => {
     const { user, send } = renderDialog(projectWith(SOURCE));
     await previewed(user);
-    fireEvent.click(screen.getByRole("button", { name: "Ghi 2 việc lên Backlog" }));
+    fireEvent.click(screen.getByRole("button", { name: "Ghi 2 việc lên tracker" }));
     expect(await screen.findByText("Đã ghi 2 việc.")).toBeInTheDocument();
     expect(calls("tracker_push")[0].args).toEqual({
       source: SOURCE,
@@ -196,7 +196,7 @@ describe("TrackerPushDialog", () => {
     await waitFor(() => expect(previewButton()).toBeEnabled());
     await user.click(previewButton());
     expect(await screen.findByText(/Không có gì để ghi/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Ghi 0 việc lên Backlog" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Ghi 0 việc lên tracker" })).toBeDisabled();
   });
 
   it("goes back to the options when the project changes under a preview", async () => {

@@ -54,6 +54,14 @@ describe("TrackerSettingsDialog", () => {
     expect(screen.getByLabelText("Giờ của hạn")).toHaveValue("17");
   });
 
+  it("shows Jira's own defaults: no standard start date, the original estimate, duedate", () => {
+    renderDialog(projectWith({ ...SOURCE, kind: "jira", site: "team.atlassian.net" }));
+    expect(screen.getByRole("textbox", { name: "Hạn: Đọc từ (ở nguồn)" })).toHaveAttribute("placeholder", "duedate");
+    expect(screen.getByRole("textbox", { name: "Effort: Đọc từ (ở nguồn)" })).toHaveAttribute("placeholder", "originalEstimate");
+    expect(screen.getByRole("textbox", { name: "Ngày bắt đầu: Đọc từ (ở nguồn)" })).toHaveAttribute("placeholder", "custom:…");
+    expect(screen.getByText(/Jira không có ngày bắt đầu chuẩn/)).toBeInTheDocument();
+  });
+
   it("saves the defaults as a source with no policies", async () => {
     const { user, send, onClose } = renderDialog(projectWith(SOURCE));
     await user.click(saveButton());

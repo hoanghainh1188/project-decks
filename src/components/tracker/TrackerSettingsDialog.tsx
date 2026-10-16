@@ -3,14 +3,18 @@ import { useState } from "react";
 
 import { errorMessage, trackerTest } from "../../api";
 import { useMessages } from "../../i18n";
-import type { Command, OnConflict, Project, Snapshot, Source, SyncDirection } from "../../types";
+import type { Command, OnConflict, Project, Snapshot, Source, SyncDirection, TrackerKind } from "../../types";
 import { Button } from "../Button";
 import { Modal } from "../Modal";
 import { kindOf, toRows, toSettings, type Row } from "./syncSettings";
 import { trackerSettingsMessages } from "./TrackerSettingsDialog.i18n";
 
-/** What Backlog reads a field from when nothing else is named. */
-const USUAL: Record<string, string> = { work: "estimatedHours", start: "startDate", due: "dueDate" };
+/** What each tracker reads a field from when nothing else is named. */
+const USUAL: Record<TrackerKind, Record<string, string>> = {
+  backlog: { work: "estimatedHours", start: "startDate", due: "dueDate" },
+  // Jira has no standard start date: a start comes only from a date field the settings name.
+  jira: { work: "originalEstimate", due: "duedate" },
+};
 
 const DIRECTIONS: SyncDirection[] = ["both", "pull", "push", "off"];
 const CONFLICTS: OnConflict[] = ["ask", "source", "sheafly"];
@@ -149,7 +153,7 @@ export function TrackerSettingsDialog({
       ) : (
         <div className="tracker-setup">
           <p className="meta">{m.intro}</p>
-          <p className="meta">{m.refHint}</p>
+          <p className="meta">{source.kind === "jira" ? m.refHintJira : m.refHint}</p>
           <div className="suggestion-wrap">
             <table className="suggestions" aria-label={m.title}>
               <thead>
@@ -201,7 +205,7 @@ export function TrackerSettingsDialog({
                           <input
                             aria-label={`${name}: ${m.readFrom}`}
                             value={row.sourceField}
-                            placeholder={m.readPlaceholder(USUAL[row.field] ?? "custom:…")}
+                            placeholder={m.readPlaceholder(USUAL[source.kind][row.field] ?? "custom:…")}
                             spellCheck={false}
                             onChange={(event) => change(row.field, { sourceField: event.target.value })}
                           />
