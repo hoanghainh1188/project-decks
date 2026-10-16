@@ -51,6 +51,8 @@ pub struct AssigneeChange {
     pub from: Option<String>,
     pub to: String,
     pub resource_uid: u32,
+    /// The person's name, for a tracker that finds people by name when it hides emails.
+    pub to_name: String,
 }
 
 /// What a push writes for one issue.
@@ -213,6 +215,7 @@ pub fn plan(project: &Project, rows: &[PullTask], options: PushOptions) -> PushP
                                     from: shown.map(str::to_string),
                                     to: email.to_string(),
                                     resource_uid: *person,
+                                    to_name: resource.map_or_else(String::new, |resource| resource.name.clone()),
                                 });
                             }
                         }

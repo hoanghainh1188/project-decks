@@ -1,5 +1,4 @@
-//! Jira Cloud as a `Connector` (phase 19, phase 4D-2): reading only so far; writing is the next
-//! part, and until then a push is refused with `Unsupported`.
+//! Jira Cloud as a `Connector` (phase 19, phase 4D): reading in `jira.rs`, writing in `jira_push.rs`.
 
 use std::sync::atomic::AtomicBool;
 
@@ -11,6 +10,7 @@ use sheafly_engine::Lang;
 use crate::connector::{Connector, Converted, Progress, PushProgress, PushReport, WriteSetup};
 use crate::jira::{self, project_key_ok};
 use crate::jira_fields::{self, read_plan};
+use crate::jira_push;
 use crate::tracker::{Api, Credentials, TrackerError};
 
 /// Jira Cloud sites live under `*.atlassian.net`. Only they are called, so a project file
@@ -85,28 +85,24 @@ impl Connector for JiraConnector {
 
     fn write_setup(
         &self,
-        _api: &dyn Api,
-        _source: &Source,
-        _fields: &[FieldDef],
-        _plan: &PushPlan,
+        api: &dyn Api,
+        source: &Source,
+        fields: &[FieldDef],
+        plan: &PushPlan,
     ) -> Result<WriteSetup, TrackerError> {
-        Err(TrackerError::Unsupported)
+        jira_push::setup(api, source, fields, plan)
     }
 
     fn write(
         &self,
-        _api: &dyn Api,
+        api: &dyn Api,
         plan: &PushPlan,
-        _setup: &WriteSetup,
+        setup: &WriteSetup,
         lang: Lang,
-        _cancel: &AtomicBool,
-        _progress: &mut dyn FnMut(PushProgress),
+        cancel: &AtomicBool,
+        progress: &mut dyn FnMut(PushProgress),
     ) -> PushReport {
-        PushReport {
-            not_sent: plan.changes.iter().map(|change| change.key.clone()).collect(),
-            stopped: Some(TrackerError::Unsupported.message(lang).to_string()),
-            ..PushReport::default()
-        }
+        jira_push::write(api, plan, setup, lang, cancel, progress)
     }
 }
 
@@ -163,20 +159,6 @@ mod tests {
         assert_eq!(connector.authorize(&Credentials::ApiKey("k".into())), Err(TrackerError::NoKey));
     }
 
-    #[test]
-    fn a_push_is_refused_for_now() {
-        let connector = JiraConnector;
-        let api = Quiet;
-        let plan = PushPlan::default();
-        assert_eq!(
-            connector.write_setup(&api, &sample_source(), &[], &plan).unwrap_err(),
-            TrackerError::Unsupported
-        );
-        let report = connector.write(&api, &plan, &WriteSetup::default(), Lang::En, &AtomicBool::new(false), &mut |_| {});
-        assert!(report.done.is_empty());
-        assert!(report.stopped.unwrap().contains("does not support"));
-    }
-
     fn sample_source() -> Source {
         Source {
             kind: sheafly_engine::source::TrackerKind::Jira,
@@ -186,16 +168,6 @@ mod tests {
             hours_per_point: 4.0,
             status_map: vec![],
             sync: Default::default(),
-        }
-    }
-
-    struct Quiet;
-    impl Api for Quiet {
-        fn get(&self, _: &str, _: &[(String, String)]) -> Result<Value, TrackerError> {
-            Err(TrackerError::NotFound)
-        }
-        fn patch(&self, _: &str, _: &[(String, String)]) -> Result<Value, TrackerError> {
-            Err(TrackerError::NotFound)
         }
     }
 

@@ -47,7 +47,7 @@ const PREVIEW: PushPreview = {
         name: "Kiểm tra mật khẩu",
         start: null,
         due: { from: null, to: "2026-01-07" },
-        assignee: { from: null, to: "an@example.com", resource_uid: 10 },
+        assignee: { from: null, to: "an@example.com", resource_uid: 10, to_name: "An" },
       },
     ],
     skipped: [

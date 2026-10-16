@@ -6,6 +6,7 @@ mod connector;
 mod jira;
 mod jira_connector;
 mod jira_fields;
+mod jira_push;
 mod delta;
 mod i18n;
 mod menu_icons;

@@ -113,6 +113,7 @@ fn the_assignee_is_pushed_for_a_task_with_one_person_with_an_email() {
     assert_eq!(result.changes.len(), 1, "P-2 already has an assignee and overwrite is off");
     let change = result.changes[0].assignee.as_ref().unwrap();
     assert_eq!((change.from.as_deref(), change.to.as_str()), (None, "an@example.com"));
+    assert_eq!(change.to_name, "An", "the name travels for trackers that find people by name");
 
     let over = plan(&doc.project, &rows, PushOptions { overwrite: true, ..options });
     assert_eq!(over.changes.len(), 2);

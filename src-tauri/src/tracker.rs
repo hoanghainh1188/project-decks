@@ -63,8 +63,6 @@ pub enum TrackerError {
     /// A field named in the sync settings is not in the source project, or is not the kind
     /// the sync needs there (a date for a day, a number for points).
     BadField,
-    /// This tracker cannot do that yet.
-    Unsupported,
 }
 
 impl TrackerError {
@@ -131,10 +129,6 @@ impl TrackerError {
                 "Dự án hoặc thiết lập đã đổi từ lúc xem trước; hãy xem trước lại",
                 "The project or settings changed since the preview; preview again",
             ),
-            Self::Unsupported => (
-                "Tracker này chưa hỗ trợ thao tác đó",
-                "This tracker does not support that yet",
-            ),
             Self::BadField => (
                 "Một trường trong thiết lập đồng bộ không có ở nguồn hoặc không đúng kiểu (ngày cho ngày, số cho điểm)",
                 "A field in the sync settings is not at the source or is the wrong kind (a date for a day, a number for points)",
@@ -155,6 +149,10 @@ pub trait Api {
     fn patch(&self, path: &str, form: &[(String, String)]) -> Result<Value, TrackerError>;
     /// A POST of `path` with a JSON body, answered with the JSON body.
     fn post_json(&self, _path: &str, _body: &Value) -> Result<Value, TrackerError> {
+        Err(TrackerError::BadResponse)
+    }
+    /// A PUT of `path` with a JSON body, answered with the JSON body (`Null` when empty).
+    fn put_json(&self, _path: &str, _body: &Value) -> Result<Value, TrackerError> {
         Err(TrackerError::BadResponse)
     }
 }
@@ -325,6 +323,14 @@ impl Api for HttpApi {
         read_json(request.send_json(body))
     }
 
+    fn put_json(&self, path: &str, body: &Value) -> Result<Value, TrackerError> {
+        let request = self
+            .agent
+            .put(format!("{}{path}", self.base))
+            .header(&self.authorization.0, &self.authorization.1)
+            .header("Accept", "application/json");
+        read_json(request.send_json(body))
+    }
 }
 
 /// A problem with one row of a pull, said in the user's language.
@@ -466,7 +472,7 @@ mod tests {
         use TrackerError::*;
         for error in [
             NoKey, Rejected, NotFound, RateLimited, Offline, Server, BadResponse, BadSite,
-            BadProject, BadFilter, TooManyIssues, Cancelled, KeyStore, Refused, NoUser, Stale, BadField, Unsupported,
+            BadProject, BadFilter, TooManyIssues, Cancelled, KeyStore, Refused, NoUser, Stale, BadField,
         ] {
             let (vi, en) = (error.message(Lang::Vi), error.message(Lang::En));
             assert!(!vi.is_empty() && !en.is_empty() && vi != en, "{error:?}");
