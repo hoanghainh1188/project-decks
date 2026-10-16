@@ -26,8 +26,11 @@ interface Props {
   project: Project;
   layout: NetworkLayout | null;
   selected: number | null;
+  /** Rows of a Shift+click range, drawn selected like the selected box; may be empty. */
+  selection?: ReadonlySet<number>;
   highlighted: Set<number>;
-  onSelect: (uid: number) => void;
+  /** `extend` is true for Shift+click, which selects every task from the selected one in outline order. */
+  onSelect: (uid: number, extend: boolean) => void;
   onEdit: (uid: number) => void;
 }
 
@@ -39,7 +42,7 @@ interface PanState {
   top: number;
 }
 
-export function NetworkDiagram({ project, layout, selected, highlighted, onSelect, onEdit }: Props) {
+export function NetworkDiagram({ project, layout, selected, selection, highlighted, onSelect, onEdit }: Props) {
   const m = useMessages(networkDiagramMessages);
   const bodyRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
@@ -201,7 +204,7 @@ export function NetworkDiagram({ project, layout, selected, highlighted, onSelec
                   node={node}
                   task={task}
                   kind={nodeKind(task, occurrences)}
-                  selected={node.uid === selected}
+                  selected={node.uid === selected || (selection?.has(node.uid) ?? false)}
                   highlighted={highlighted.has(node.uid)}
                   onSelect={onSelect}
                   onEdit={onEdit}
@@ -273,7 +276,7 @@ function TaskBox({
   kind: string;
   selected: boolean;
   highlighted: boolean;
-  onSelect: (uid: number) => void;
+  onSelect: (uid: number, extend: boolean) => void;
   onEdit: (uid: number) => void;
 }) {
   const { width: w, height: h } = node;
@@ -288,7 +291,7 @@ function TaskBox({
     <g
       className="network-node"
       transform={`translate(${node.x},${node.y})`}
-      onClick={() => onSelect(task.uid)}
+      onClick={(event) => onSelect(task.uid, event.shiftKey)}
       onDoubleClick={() => onEdit(task.uid)}
     >
       <title>{`${task.wbs} ${name}${task.critical ? m.criticalSuffix : ""}`}</title>
