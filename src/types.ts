@@ -411,6 +411,63 @@ export type ImportColumn =
   | "after"
   | { field: string };
 
+/** What a pulled row changes in its task (mirror of `pull::PullField`). */
+export type PullField = "name" | "work" | "start" | "due" | "assignee" | "status" | "fields" | "links" | "present";
+
+/** Mirror of `pull::PullRowDiff`: a pulled issue and what pulling it does. */
+export interface PullRowDiff {
+  row: number;
+  key: string;
+  name: string;
+  uid: number;
+  kind: "add" | "change" | "same";
+  fields: PullField[];
+}
+
+/** Mirror of `pull::GoneTask`: a linked task whose issue the source no longer has. */
+export interface GoneTask {
+  uid: number;
+  key: string;
+  name: string;
+}
+
+/** The cell of a pulled row a problem is in (mirror of `pull::PullColumn`). */
+export type PullColumn = "row" | "key" | "name" | "parent" | "work" | "assignee" | "after" | { field: string };
+
+/** Mirror of `tracker::PullProblem`; `row` counts from 0, null is the pull as a whole. */
+export interface PullProblem {
+  message: string;
+  row: number | null;
+  key: string;
+  column: PullColumn;
+}
+
+/** Mirror of `tracker::PullChanges`: what a pull would do to the project as it is now. */
+export interface PullChanges {
+  changes: PullRowDiff[];
+  gone: GoneTask[];
+  problems: PullProblem[];
+}
+
+/** Mirror of `backlog::PullWarning`. */
+export interface PullWarning {
+  key: string;
+  kind: "no_email" | "skipped";
+}
+
+/** Mirror of `tracker::PullPreview`: what `tracker_pull` fetched; send `rows` in `apply_pull`. */
+export interface PullPreview extends PullChanges {
+  rows: PullTask[];
+  pulled_at: number;
+  warnings: PullWarning[];
+}
+
+/** The `tracker-progress` event: issues fetched so far, and how many there are. */
+export interface PullProgress {
+  fetched: number;
+  total: number | null;
+}
+
 /** One problem `check_import` found; `row` counts from 0 within its table, null is the whole import. */
 export interface ImportProblem {
   table: "resources" | "tasks";

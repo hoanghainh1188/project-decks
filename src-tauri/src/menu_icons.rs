@@ -16,6 +16,7 @@ pub const SYMBOLS: &[(&str, &str)] = &[
     ("import", "tray.and.arrow.down"),
     ("import-xml", "doc.text"),
     ("import-table", "tablecells"),
+    ("pull-tracker", "arrow.down.circle"),
     ("export", "square.and.arrow.up"),
     ("export-xml", "doc.text"),
     ("export-pdf", "doc.richtext"),
