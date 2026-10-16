@@ -1,3 +1,4 @@
+mod delta;
 mod i18n;
 mod menu_icons;
 mod settings;
@@ -70,6 +71,8 @@ struct AppState {
     plan_base: Mutex<Option<(sheafly_engine::Project, PlanPreview)>>,
     /// Stops the finish forecast still running when a newer one starts.
     forecast_cancel: Mutex<Arc<AtomicBool>>,
+    /// The snapshot sent last, the base of the patch an edit, undo or redo answers with.
+    delta: delta::Delta,
 }
 
 impl AppState {
@@ -92,6 +95,7 @@ impl AppState {
             import_table: Mutex::new(None),
             plan_base: Mutex::new(None),
             forecast_cancel: Mutex::new(Arc::new(AtomicBool::new(false))),
+            delta: delta::Delta::default(),
         }
     }
 }
@@ -455,8 +459,9 @@ async fn quit_if_confirmed<R: Runtime>(app: AppHandle<R>) {
 // so scheduling a big project never freezes the window. `src/api.ts` sends them one at
 // a time, which keeps the order the user pressed the keys in.
 #[tauri::command(async)]
-fn project_state(state: State<'_, AppState>) -> Snapshot {
-    lock(&state).snapshot()
+fn project_state(state: State<'_, AppState>) -> serde_json::Value {
+    let snapshot = lock(&state).snapshot();
+    state.delta.full(snapshot)
 }
 
 #[tauri::command(async)]
@@ -613,32 +618,32 @@ fn apply_plan(
 }
 
 #[tauri::command(async)]
-fn apply_command(state: State<'_, AppState>, command: Command) -> Result<Snapshot, String> {
+fn apply_command(state: State<'_, AppState>, command: Command) -> Result<serde_json::Value, String> {
     // Check under the lock: `confirm_discard` reads `dirty` under it after the dialog
     // flag is set, so an edit either lands before that read or is refused.
     let mut doc = lock(&state);
     ensure_no_dialog(&state)?;
     let snapshot = doc.apply(command).map_err(engine_message(&state))?;
     mark_edited(&state);
-    Ok(snapshot)
+    Ok(state.delta.patch(snapshot))
 }
 
 #[tauri::command(async)]
-fn undo(state: State<'_, AppState>) -> Result<Snapshot, String> {
+fn undo(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
     let mut doc = lock(&state);
     ensure_no_dialog(&state)?;
     let snapshot = doc.undo().map_err(engine_message(&state))?;
     mark_edited(&state);
-    Ok(snapshot)
+    Ok(state.delta.patch(snapshot))
 }
 
 #[tauri::command(async)]
-fn redo(state: State<'_, AppState>) -> Result<Snapshot, String> {
+fn redo(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
     let mut doc = lock(&state);
     ensure_no_dialog(&state)?;
     let snapshot = doc.redo().map_err(engine_message(&state))?;
     mark_edited(&state);
-    Ok(snapshot)
+    Ok(state.delta.patch(snapshot))
 }
 
 #[tauri::command]
@@ -759,35 +764,40 @@ async fn open_pending(app: AppHandle, state: State<'_, AppState>) -> Result<Opti
 }
 
 #[tauri::command]
-async fn save_project(app: AppHandle, state: State<'_, AppState>) -> Result<Snapshot, String> {
+async fn save_project(app: AppHandle, state: State<'_, AppState>) -> Result<serde_json::Value, String> {
     // Saving to the current file shows no dialog, so it needs no permit.
     let current = lock(&state).path.clone();
     if let Some(path) = current {
         let saved = write_document(&state, path);
         refresh_menu(&app);
-        return saved;
+        return saved.map(|snapshot| state.delta.patch(snapshot));
     }
     let Some(_permit) = begin_dialog(&state) else {
         return Err(i18n::text(lang(&state)).dialog_busy.into());
     };
     save_held(&app, &state).await?;
     refresh_menu(&app);
-    Ok(lock(&state).snapshot())
+    let snapshot = lock(&state).snapshot();
+    Ok(state.delta.patch(snapshot))
 }
 
+// Saving changes only the path and the dirty flag, so it answers with a patch like an
+// edit: the frontend keeps the same project and the finish forecast does not run again.
 #[tauri::command]
-async fn save_project_as(app: AppHandle, state: State<'_, AppState>) -> Result<Snapshot, String> {
+async fn save_project_as(app: AppHandle, state: State<'_, AppState>) -> Result<serde_json::Value, String> {
     let Some(_permit) = begin_dialog(&state) else {
-        return Ok(lock(&state).snapshot());
+        let snapshot = lock(&state).snapshot();
+        return Ok(state.delta.patch(snapshot));
     };
-    match pick_save_path(&app, &state).await {
+    let saved = match pick_save_path(&app, &state).await {
         Some(path) => {
             let saved = write_document(&state, path);
             refresh_menu(&app);
             saved
         }
         None => Ok(lock(&state).snapshot()),
-    }
+    };
+    saved.map(|snapshot| state.delta.patch(snapshot))
 }
 
 #[tauri::command]
